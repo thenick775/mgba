@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include "core/core.h"
+#include "core/log.h"
 #include "util/common.h"
+#include "gba/core.h"
 #include "gba/gba.h"
 #include "gba/renderers/video-software.h"
 #include "gba/serialize.h"
@@ -29,6 +31,7 @@ struct VFile* VFileOpenFD(const char* path, int flags) { return NULL; }
 typedef struct
 {
 	struct mCore* core;
+	struct mLogger logger;
 	struct GBA* gba; // anything that uses this will be deprecated eventually
 	color_t vbuff[VIDEO_HORIZONTAL_PIXELS * VIDEO_VERTICAL_PIXELS];
 	void* rom;
@@ -90,10 +93,10 @@ static void TimeCB(struct mRTCSource* rtcSource)
 	// bizctx* ctx = container_of(rtcSource, bizctx, rtcsource);
 	// ctx->lagged = FALSE;
 }
-/*static void logdebug(struct GBAThread* thread, enum GBALogLevel level, const char* format, va_list args)
+static void logdebug(struct mLogger* logger, int category, enum mLogLevel level, const char* format, va_list args)
 {
 
-}*/
+}
 
 EXP void BizDestroy(bizctx* ctx)
 {
@@ -124,18 +127,16 @@ EXP bizctx* BizCreate(const void* bios, const void* data, int length, const over
 		free(ctx);
 		return NULL;
 	}
+
+	ctx->logger.log = logdebug;
+	mLogSetDefaultLogger(&ctx->logger);
+
 	memcpy(ctx->rom, data, length);
 	ctx->romvf = VFileFromMemory(ctx->rom, length);
-	ctx->core = mCoreFindVF(ctx->romvf);
+	ctx->core = GBACoreCreate();
 	if (!ctx->core)
 	{
 		ctx->romvf->close(ctx->romvf);
-		free(ctx->rom);
-		free(ctx);
-		return NULL;
-	}
-	if (ctx->core->platform(ctx->core) != PLATFORM_GBA)
-	{
 		free(ctx->rom);
 		free(ctx);
 		return NULL;
@@ -289,21 +290,7 @@ struct MemoryAreas
 
 EXP int BizGetSaveRamSize(bizctx* ctx)
 {
-	switch (ctx->gba->memory.savedata.type)
-	{
-	case SAVEDATA_AUTODETECT:
-	case SAVEDATA_FLASH1M:
-		return SIZE_CART_FLASH1M;
-	case SAVEDATA_FLASH512:
-		return SIZE_CART_FLASH512;
-	case SAVEDATA_EEPROM:
-		return SIZE_CART_EEPROM;
-	case SAVEDATA_SRAM:
-		return SIZE_CART_SRAM;
-	case SAVEDATA_FORCE_NONE:
-	default:
-		return 0;
-	}
+	return GBASavedataSize(&ctx->gba->memory.savedata);
 }
 
 EXP void BizGetMemoryAreas(bizctx* ctx, struct MemoryAreas* dst)

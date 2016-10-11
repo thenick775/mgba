@@ -156,6 +156,14 @@ void TableEnumerate(const struct Table* table, void (handler(uint32_t key, void*
 	}
 }
 
+void HashTableInit(struct Table* table, size_t initialSize, void (deinitializer(void*))) {
+	TableInit(table, initialSize, deinitializer);
+}
+
+void HashTableDeinit(struct Table* table) {
+	TableDeinit(table);
+}
+
 void* HashTableLookup(const struct Table* table, const char* key) {
 	uint32_t hash = hash32(key, strlen(key), 0);
 	const struct TableList* list;

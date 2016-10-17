@@ -9,6 +9,7 @@
 #include "gba/gba.h"
 #include "gba/io.h"
 #include "gba/renderers/tile-cache.h"
+#include "gba/renderers/obj-cache.h"
 #include "gba/rr/rr.h"
 #include "gba/serialize.h"
 
@@ -262,9 +263,9 @@ static void GBAVideoDummyRendererWritePalette(struct GBAVideoRenderer* renderer,
 }
 
 static void GBAVideoDummyRendererWriteOAM(struct GBAVideoRenderer* renderer, uint32_t oam) {
-	UNUSED(renderer);
-	UNUSED(oam);
-	// Nothing to do
+	if (renderer->objCache) {
+		GBAVideoObjCacheWriteOAM(renderer->cache, oam);
+	}
 }
 
 static void GBAVideoDummyRendererDrawScanline(struct GBAVideoRenderer* renderer, int y) {

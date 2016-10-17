@@ -7,6 +7,7 @@
 
 #include "gba/gba.h"
 #include "gba/io.h"
+#include "gba/renderers/obj-cache.h"
 #include "gba/renderers/tile-cache.h"
 
 #include "util/arm-algo.h"
@@ -350,7 +351,9 @@ static void GBAVideoSoftwareRendererWriteVRAM(struct GBAVideoRenderer* renderer,
 static void GBAVideoSoftwareRendererWriteOAM(struct GBAVideoRenderer* renderer, uint32_t oam) {
 	struct GBAVideoSoftwareRenderer* softwareRenderer = (struct GBAVideoSoftwareRenderer*) renderer;
 	softwareRenderer->oamDirty = 1;
-	UNUSED(oam);
+	if (renderer->objCache) {
+		GBAVideoObjCacheWriteOAM(renderer->objCache, oam);
+	}
 }
 
 static void GBAVideoSoftwareRendererWritePalette(struct GBAVideoRenderer* renderer, uint32_t address, uint16_t value) {

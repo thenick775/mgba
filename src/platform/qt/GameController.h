@@ -28,6 +28,7 @@ extern "C" {
 }
 
 struct GBAAudio;
+struct GBAVideoObjCache;
 struct GBAVideoTileCache;
 struct mCoreConfig;
 struct Configuration;
@@ -87,6 +88,7 @@ public:
 #endif
 
 #ifdef M_CORE_GBA
+	GBAVideoObjCache* objCache();
 	GBAVideoTileCache* tileCache();
 #endif
 
@@ -217,6 +219,7 @@ private:
 
 #ifdef M_CORE_GBA
 	std::unique_ptr<GBAVideoTileCache> m_tileCache;
+	std::unique_ptr<GBAVideoObjCache> m_objCache;
 #endif
 
 	bool m_audioChannels[6];

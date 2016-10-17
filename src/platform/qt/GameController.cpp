@@ -26,6 +26,7 @@ extern "C" {
 #include "gba/core.h"
 #include "gba/gba.h"
 #include "gba/extra/sharkport.h"
+#include "gba/renderers/obj-cache.h"
 #include "gba/renderers/tile-cache.h"
 #endif
 #ifdef M_CORE_GB
@@ -591,6 +592,10 @@ void GameController::cleanGame() {
 	if (m_tileCache) {
 		GBAVideoTileCacheDeinit(m_tileCache.get());
 		m_tileCache.reset();
+	}
+	if (m_objCache) {
+		GBAVideoObjCacheDeinit(m_objCache.get());
+		m_objCache.reset();
 	}
 #endif
 
@@ -1216,5 +1221,22 @@ struct GBAVideoTileCache* GameController::tileCache() {
 	GBAVideoTileCacheAssociate(m_tileCache.get(), &gba->video);
 	threadContinue();
 	return m_tileCache.get();
+}
+
+struct GBAVideoObjCache* GameController::objCache() {
+	if (platform() != PLATFORM_GBA) {
+		return nullptr;
+	}
+	if (m_objCache) {
+		return m_objCache.get();
+	}
+	tileCache();
+	threadInterrupt();
+	GBA* gba = static_cast<GBA*>(m_threadContext.core->board);
+	m_objCache = std::unique_ptr<GBAVideoObjCache>(new GBAVideoObjCache);
+	GBAVideoObjCacheInit(m_objCache.get());
+	GBAVideoObjCacheAssociate(m_objCache.get(), &gba->video);
+	threadContinue();
+	return m_objCache.get();
 }
 #endif

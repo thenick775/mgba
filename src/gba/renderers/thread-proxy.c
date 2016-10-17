@@ -6,6 +6,7 @@
 #include "thread-proxy.h"
 
 #include "gba/io.h"
+#include "gba/renderers/obj-cache.h"
 #include "gba/renderers/tile-cache.h"
 
 #include "util/memory.h"
@@ -219,6 +220,9 @@ void GBAVideoThreadProxyRendererWriteOAM(struct GBAVideoRenderer* renderer, uint
 		0xDEADBEEF,
 	};
 	_writeData(proxyRenderer, &dirty, sizeof(dirty));
+	if (renderer->objCache) {
+		GBAVideoObjCacheWriteOAM(renderer->objCache, oam);
+	}
 }
 
 void GBAVideoThreadProxyRendererDrawScanline(struct GBAVideoRenderer* renderer, int y) {

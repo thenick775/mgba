@@ -13,7 +13,7 @@
 #include "ui_TileView.h"
 
 extern "C" {
-#include "gba/renderers/tile-cache.h"
+#include "core/tile-cache.h"
 }
 
 namespace QGBA {
@@ -23,7 +23,6 @@ Q_OBJECT
 
 public:
 	TileView(GameController* controller, QWidget* parent = nullptr);
-	virtual ~TileView();
 
 public slots:
 	void updateTiles(bool force = false);
@@ -37,10 +36,18 @@ protected:
 	void showEvent(QShowEvent*) override;
 
 private:
+#ifdef M_CORE_GBA
+	void updateTilesGBA(bool force);
+#endif
+#ifdef M_CORE_GB
+	void updateTilesGB(bool force);
+#endif
+
 	Ui::TileView m_ui;
 
 	GameController* m_controller;
-	GBAVideoTileCache m_tileCache;
+	std::shared_ptr<mTileCache> m_tileCache;
+	mTileCacheEntry m_tileStatus[3072 * 32]; // TODO: Correct size
 	int m_paletteId;
 	QTimer m_updateTimer;
 };

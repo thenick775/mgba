@@ -27,10 +27,11 @@ extern "C" {
 #endif
 }
 
+struct Configuration;
 struct GBAAudio;
 struct mCoreConfig;
-struct Configuration;
 struct mDebugger;
+struct mTileCache;
 
 class QThread;
 
@@ -84,6 +85,8 @@ public:
 	mDebugger* debugger();
 	void setDebugger(mDebugger*);
 #endif
+
+	std::shared_ptr<mTileCache> tileCache();
 
 signals:
 	void frameAvailable(const uint32_t*);
@@ -209,6 +212,8 @@ private:
 	bool m_turboForced;
 	float m_turboSpeed;
 	bool m_wasPaused;
+
+	std::shared_ptr<mTileCache> m_tileCache;
 
 	bool m_audioChannels[6];
 	bool m_videoLayers[5];

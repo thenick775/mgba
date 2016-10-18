@@ -1,13 +1,23 @@
 0.6.0: (Future)
 Features:
  - GBA: Support printing debug strings from inside a game
+ - GBA: Better cheat type autodetection
+ - GB: Tile viewer
 Bugfixes:
  - LR35902: Fix core never exiting with certain event patterns
  - GB Timer: Improve DIV reset behavior
+ - GBA Memory: Fix misaligned BIOS reads
+ - GBA BIOS: Fix MidiKey2Freq BIOS reads
+ - GBA BIOS: Fix invalid CpuSet not setting BIOS prefetch
+ - GB MBC: Fix SRAM dangling pointer with RTC games
+ - Windows: Fix Unicode directory handling
+ - Qt: Fix changing resolution of software renderer
+ - Qt: Fix setting overrides
 Misc:
  - SDL: Remove scancode key input
  - GBA Video: Clean up unused timers
  - Test: Add a basic test suite
+ - GBA Video: Allow multiple handles into the same tile cache
 
 0.5.1: (2016-10-05)
 Bugfixes:

@@ -23,6 +23,8 @@ const uint32_t SGB_LR35902_FREQUENCY = 0x418B1E;
 
 const uint32_t GB_COMPONENT_MAGIC = 0x400000;
 
+static const uint8_t _knownHeader[4] = { 0xCE, 0xED, 0x66, 0x66};
+
 #define DMG_BIOS_CHECKSUM 0xC2F5CC97
 #define DMG_2_BIOS_CHECKSUM 0x59C8598E
 #define CGB_BIOS_CHECKSUM 0x41884E46
@@ -76,10 +78,14 @@ static void GBInit(void* cpu, struct mCPUComponent* component) {
 	gb->pristineRomSize = 0;
 	gb->yankedRomSize = 0;
 
+	gb->coreCallbacks = NULL;
 	gb->stream = NULL;
 }
 
 bool GBLoadROM(struct GB* gb, struct VFile* vf) {
+	if (!vf) {
+		return false;
+	}
 	GBUnloadROM(gb);
 	gb->romVf = vf;
 	gb->pristineRomSize = vf->size(vf);
@@ -237,15 +243,15 @@ void GBSavedataUnmask(struct GB* gb) {
 
 void GBUnloadROM(struct GB* gb) {
 	// TODO: Share with GBAUnloadROM
+	if (gb->memory.rom && gb->memory.romBase != gb->memory.rom && gb->memory.romBase != gb->pristineRom) {
+		free(gb->memory.romBase);
+	}
 	if (gb->memory.rom && gb->pristineRom != gb->memory.rom) {
 		if (gb->yankedRomSize) {
 			gb->yankedRomSize = 0;
 		}
 		mappedMemoryFree(gb->memory.rom, GB_SIZE_CART_MAX);
 		gb->memory.rom = gb->pristineRom;
-	}
-	if (gb->memory.rom && gb->memory.romBase != gb->memory.rom) {
-		free(gb->memory.romBase);
 	}
 	gb->memory.rom = 0;
 
@@ -265,6 +271,18 @@ void GBUnloadROM(struct GB* gb) {
 	}
 	gb->sramRealVf = NULL;
 	gb->sramVf = NULL;
+}
+
+void GBSynthesizeROM(struct VFile* vf) {
+	if (!vf) {
+		return;
+	}
+	const struct GBCartridge cart = {
+		.logo = { _knownHeader[0], _knownHeader[1], _knownHeader[2], _knownHeader[3]}
+	};
+
+	vf->seek(vf, 0x100, SEEK_SET);
+	vf->write(vf, &cart, sizeof(cart));
 }
 
 void GBLoadBIOS(struct GB* gb, struct VFile* vf) {
@@ -582,6 +600,7 @@ void GBStop(struct LR35902Core* cpu) {
 		gb->memory.io[REG_KEY1] = 0;
 		gb->memory.io[REG_KEY1] |= gb->doubleSpeed << 7;
 	} else if (cpu->bus) {
+#ifdef USE_DEBUGGERS
 		if (cpu->components && cpu->components[CPU_COMPONENT_DEBUGGER]) {
 			struct mDebuggerEntryInfo info = {
 				.address = cpu->pc - 1,
@@ -589,6 +608,7 @@ void GBStop(struct LR35902Core* cpu) {
 			};
 			mDebuggerEnter((struct mDebugger*) cpu->components[CPU_COMPONENT_DEBUGGER], DEBUGGER_ENTER_ILLEGAL_OP, &info);
 		}
+#endif
 		// Hang forever
 		gb->memory.ime = 0;
 		cpu->pc -= 2;
@@ -599,6 +619,7 @@ void GBStop(struct LR35902Core* cpu) {
 void GBIllegal(struct LR35902Core* cpu) {
 	struct GB* gb = (struct GB*) cpu->master;
 	mLOG(GB, GAME_ERROR, "Hit illegal opcode at address %04X:%02X\n", cpu->pc, cpu->bus);
+#ifdef USE_DEBUGGERS
 	if (cpu->components && cpu->components[CPU_COMPONENT_DEBUGGER]) {
 		struct mDebuggerEntryInfo info = {
 			.address = cpu->pc,
@@ -606,6 +627,7 @@ void GBIllegal(struct LR35902Core* cpu) {
 		};
 		mDebuggerEnter((struct mDebugger*) cpu->components[CPU_COMPONENT_DEBUGGER], DEBUGGER_ENTER_ILLEGAL_OP, &info);
 	}
+#endif
 	// Hang forever
 	gb->memory.ime = 0;
 	--cpu->pc;
@@ -614,12 +636,11 @@ void GBIllegal(struct LR35902Core* cpu) {
 bool GBIsROM(struct VFile* vf) {
 	vf->seek(vf, 0x104, SEEK_SET);
 	uint8_t header[4];
-	static const uint8_t knownHeader[4] = { 0xCE, 0xED, 0x66, 0x66};
 
 	if (vf->read(vf, &header, sizeof(header)) < (ssize_t) sizeof(header)) {
 		return false;
 	}
-	if (memcmp(header, knownHeader, sizeof(header))) {
+	if (memcmp(header, _knownHeader, sizeof(header))) {
 		return false;
 	}
 	return true;

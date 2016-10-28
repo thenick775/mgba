@@ -184,6 +184,11 @@ static size_t _GBACoreGetAudioBufferSize(struct mCore* core) {
 	return gba->audio.samples;
 }
 
+static void _GBACoreSetCoreCallbacks(struct mCore* core, struct mCoreCallbacks* coreCallbacks) {
+	struct GBA* gba = core->board;
+	gba->coreCallbacks = coreCallbacks;
+}
+
 static void _GBACoreSetAVStream(struct mCore* core, struct mAVStream* stream) {
 	struct GBA* gba = core->board;
 	gba->stream = stream;
@@ -434,13 +439,12 @@ static void _GBACoreRawWrite32(struct mCore* core, uint32_t address, int segment
 	GBAPatch32(cpu, address, value, NULL);
 }
 
+#ifdef USE_DEBUGGERS
 static bool _GBACoreSupportsDebuggerType(struct mCore* core, enum mDebuggerType type) {
 	UNUSED(core);
 	switch (type) {
-#ifdef USE_CLI_DEBUGGER
 	case DEBUGGER_CLI:
 		return true;
-#endif
 #ifdef USE_GDB_STUB
 	case DEBUGGER_GDB:
 		return true;
@@ -459,12 +463,7 @@ static struct mDebuggerPlatform* _GBACoreDebuggerPlatform(struct mCore* core) {
 }
 
 static struct CLIDebuggerSystem* _GBACoreCliDebuggerSystem(struct mCore* core) {
-#ifdef USE_CLI_DEBUGGER
 	return &GBACLIDebuggerCreate(core)->d;
-#else
-	UNUSED(core);
-	return NULL;
-#endif
 }
 
 static void _GBACoreAttachDebugger(struct mCore* core, struct mDebugger* debugger) {
@@ -479,6 +478,7 @@ static void _GBACoreDetachDebugger(struct mCore* core) {
 	GBADetachDebugger(core->board);
 	core->debugger = NULL;
 }
+#endif
 
 static struct mCheatDevice* _GBACoreCheatDevice(struct mCore* core) {
 	struct GBACore* gbacore = (struct GBACore*) core;
@@ -550,6 +550,7 @@ struct mCore* GBACoreCreate(void) {
 	core->getAudioChannel = _GBACoreGetAudioChannel;
 	core->setAudioBufferSize = _GBACoreSetAudioBufferSize;
 	core->getAudioBufferSize = _GBACoreGetAudioBufferSize;
+	core->setCoreCallbacks = _GBACoreSetCoreCallbacks;
 	core->setAVStream = _GBACoreSetAVStream;
 	core->isROM = GBAIsROM;
 	core->loadROM = _GBACoreLoadROM;
@@ -588,11 +589,13 @@ struct mCore* GBACoreCreate(void) {
 	core->rawWrite8 = _GBACoreRawWrite8;
 	core->rawWrite16 = _GBACoreRawWrite16;
 	core->rawWrite32 = _GBACoreRawWrite32;
+#ifdef USE_DEBUGGERS
 	core->supportsDebuggerType = _GBACoreSupportsDebuggerType;
 	core->debuggerPlatform = _GBACoreDebuggerPlatform;
 	core->cliDebuggerSystem = _GBACoreCliDebuggerSystem;
 	core->attachDebugger = _GBACoreAttachDebugger;
 	core->detachDebugger = _GBACoreDetachDebugger;
+#endif
 	core->cheatDevice = _GBACoreCheatDevice;
 	core->savedataClone = _GBACoreSavedataClone;
 	core->savedataRestore = _GBACoreSavedataRestore;

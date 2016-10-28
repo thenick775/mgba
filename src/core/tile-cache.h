@@ -23,6 +23,8 @@ struct mTileCacheEntry {
 	uint32_t vramVersion;
 	uint8_t vramClean;
 	uint8_t paletteId;
+	uint8_t activePalette;
+	uint8_t padding;
 };
 
 struct mTileCache {
@@ -33,6 +35,7 @@ struct mTileCache {
 	int activePalette;
 	unsigned entries;
 	unsigned count;
+	unsigned entriesPerTile;
 	unsigned bpp;
 
 	uint16_t* vram;

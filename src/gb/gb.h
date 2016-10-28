@@ -44,6 +44,7 @@ enum GBIRQVector {
 
 struct mCoreSync;
 struct mAVStream;
+struct mCoreCallbacks;
 struct GB {
 	struct mCPUComponent d;
 
@@ -72,6 +73,7 @@ struct GB {
 	int32_t sramDirtAge;
 	bool sramMaskWriteback;
 
+	struct mCoreCallbacks* coreCallbacks;
 	struct mAVStream* stream;
 
 	int32_t eiPending;
@@ -115,6 +117,7 @@ struct VFile;
 bool GBLoadROM(struct GB* gb, struct VFile* vf);
 bool GBLoadSave(struct GB* gb, struct VFile* vf);
 void GBUnloadROM(struct GB* gb);
+void GBSynthesizeROM(struct VFile* vf);
 
 bool GBIsBIOS(struct VFile* vf);
 void GBLoadBIOS(struct GB* gb, struct VFile* vf);

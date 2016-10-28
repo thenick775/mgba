@@ -7,7 +7,7 @@
 
 #include "core/core.h"
 #include "gb/cheats.h"
-#include "gb/cli.h"
+#include "gb/extra/cli.h"
 #include "gb/gb.h"
 #include "gb/mbc.h"
 #include "gb/overrides.h"
@@ -153,6 +153,11 @@ static size_t _GBCoreGetAudioBufferSize(struct mCore* core) {
 	return gb->audio.samples;
 }
 
+static void _GBCoreSetCoreCallbacks(struct mCore* core, struct mCoreCallbacks* coreCallbacks) {
+	struct GB* gb = core->board;
+	gb->coreCallbacks = coreCallbacks;
+}
+
 static void _GBCoreSetAVStream(struct mCore* core, struct mAVStream* stream) {
 	struct GB* gb = core->board;
 	gb->stream = stream;
@@ -212,9 +217,9 @@ static void _GBCoreReset(struct mCore* core) {
 		GBVideoAssociateRenderer(&gb->video, &gbcore->renderer.d);
 	}
 
-	struct GBCartridgeOverride override;
-	const struct GBCartridge* cart = (const struct GBCartridge*) &gb->memory.rom[0x100];
-	if (cart) {
+	if (gb->memory.rom) {
+		struct GBCartridgeOverride override;
+		const struct GBCartridge* cart = (const struct GBCartridge*) &gb->memory.rom[0x100];
 		override.headerCrc32 = doCrc32(cart, sizeof(*cart));
 		if (GBOverrideFind(gbcore->overrides, &override)) {
 			GBOverrideApply(gb, &override);
@@ -422,13 +427,12 @@ static void _GBCoreRawWrite32(struct mCore* core, uint32_t address, int segment,
 	GBPatch8(cpu, address + 3, value >> 24, NULL, segment);
 }
 
+#ifdef USE_DEBUGGERS
 static bool _GBCoreSupportsDebuggerType(struct mCore* core, enum mDebuggerType type) {
 	UNUSED(core);
 	switch (type) {
-#ifdef USE_CLI_DEBUGGER
 	case DEBUGGER_CLI:
 		return true;
-#endif
 	default:
 		return false;
 	}
@@ -443,12 +447,7 @@ static struct mDebuggerPlatform* _GBCoreDebuggerPlatform(struct mCore* core) {
 }
 
 static struct CLIDebuggerSystem* _GBCoreCliDebuggerSystem(struct mCore* core) {
-#ifdef USE_CLI_DEBUGGER
 	return GBCLIDebuggerCreate(core);
-#else
-	UNUSED(core);
-	return NULL;
-#endif
 }
 
 static void _GBCoreAttachDebugger(struct mCore* core, struct mDebugger* debugger) {
@@ -469,6 +468,7 @@ static void _GBCoreDetachDebugger(struct mCore* core) {
 	cpu->components[CPU_COMPONENT_DEBUGGER] = NULL;
 	core->debugger = NULL;
 }
+#endif
 
 static struct mCheatDevice* _GBCoreCheatDevice(struct mCore* core) {
 	struct GBCore* gbcore = (struct GBCore*) core;
@@ -534,6 +534,7 @@ struct mCore* GBCoreCreate(void) {
 	core->setAudioBufferSize = _GBCoreSetAudioBufferSize;
 	core->getAudioBufferSize = _GBCoreGetAudioBufferSize;
 	core->setAVStream = _GBCoreSetAVStream;
+	core->setCoreCallbacks = _GBCoreSetCoreCallbacks;
 	core->isROM = GBIsROM;
 	core->loadROM = _GBCoreLoadROM;
 	core->loadBIOS = _GBCoreLoadBIOS;
@@ -571,11 +572,13 @@ struct mCore* GBCoreCreate(void) {
 	core->rawWrite8 = _GBCoreRawWrite8;
 	core->rawWrite16 = _GBCoreRawWrite16;
 	core->rawWrite32 = _GBCoreRawWrite32;
+#ifdef USE_DEBUGGERS
 	core->supportsDebuggerType = _GBCoreSupportsDebuggerType;
 	core->debuggerPlatform = _GBCoreDebuggerPlatform;
 	core->cliDebuggerSystem = _GBCoreCliDebuggerSystem;
 	core->attachDebugger = _GBCoreAttachDebugger;
 	core->detachDebugger = _GBCoreDetachDebugger;
+#endif
 	core->cheatDevice = _GBCoreCheatDevice;
 	core->savedataClone = _GBCoreSavedataClone;
 	core->savedataRestore = _GBCoreSavedataRestore;

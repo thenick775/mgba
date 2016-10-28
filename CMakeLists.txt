@@ -6,7 +6,8 @@ if(NOT MSVC)
 else()
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_CRT_SECURE_NO_WARNINGS /wd4003 /wd4244 /wd4146")
 endif()
-set(USE_CLI_DEBUGGER ON CACHE BOOL "Whether or not to enable the CLI-mode ARM debugger")
+set(USE_DEBUGGERS ON CACHE BOOL "Whether or not to enable the debugging infrastructure")
+set(USE_EDITLINE ON CACHE BOOL "Whether or not to enable the CLI-mode debugger")
 set(USE_GDB_STUB ON CACHE BOOL "Whether or not to enable the GDB stub ARM debugger")
 set(USE_FFMPEG ON CACHE BOOL "Whether or not to enable FFmpeg support")
 set(USE_ZLIB ON CACHE BOOL "Whether or not to enable zlib support")
@@ -36,13 +37,19 @@ set(BUILD_GLES2 OFF CACHE STRING "Build with OpenGL|ES 2")
 set(USE_EPOXY ON CACHE STRING "Build with libepoxy")
 set(DISABLE_DEPS OFF CACHE BOOL "Build without dependencies")
 file(GLOB ARM_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/arm/*.c)
+file(GLOB ARM_TEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/arm/test/*.c)
 file(GLOB LR35902_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/lr35902/*.c)
+file(GLOB LR35902_TEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/lr35902/test/*.c)
 file(GLOB GBA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gba/*.c)
+file(GLOB GBA_TEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gba/test/*.c)
 file(GLOB GB_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gb/*.c)
+file(GLOB GB_TEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gb/test/*.c)
 file(GLOB GBA_CHEATS_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gba/cheats/*.c)
 file(GLOB GBA_RR_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gba/rr/*.c)
-file(GLOB GBA_EXTRA_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gba/extra/*.c)
-file(GLOB UTIL_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/util/*.[cSs] ${CMAKE_CURRENT_SOURCE_DIR}/src/core/*.c)
+file(GLOB CORE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/core/*.c)
+file(GLOB CORE_TEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/core/test/*.c)
+file(GLOB UTIL_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/util/*.[cSs])
+file(GLOB UTIL_TEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/util/test/*.c)
 file(GLOB GUI_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/util/gui/*.c ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/gui/*.c)
 file(GLOB GBA_RENDERER_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gba/renderers/*.c)
 file(GLOB SIO_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gba/sio/lockstep.c)
@@ -54,7 +61,7 @@ set(VFS_SRC)
 source_group("ARM core" FILES ${ARM_SRC})
 source_group("LR35902 core" FILES ${LR35902_SRC})
 source_group("GBA board" FILES ${GBA_SRC} ${GBA_RENDERER_SRC} ${SIO_SRC})
-source_group("GBA extra" FILES ${GBA_CHEATS_SRC} ${GBA_EXTRA_SRC} ${GBA_RR_SRC})
+source_group("GBA extra" FILES ${GBA_CHEATS_SRC} ${GBA_RR_SRC})
 source_group("GB board" FILES ${GB_SRC})
 source_group("Utilities" FILES ${UTIL_SRC})
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -229,7 +236,16 @@ if(PSP2 OR WII)
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-format")
 endif()
 
-if(DEFINED 3DS OR DEFINED PSP2 OR DEFINED WII OR NOT M_CORE_GBA)
+if(DEFINED 3DS OR DEFINED PSP2 OR DEFINED WII)
+	set(USE_DEBUGGERS OFF)
+endif()
+
+if(NOT M_CORE_GBA)
+	set(USE_GDB_STUB OFF)
+endif()
+
+if(NOT USE_DEBUGGERS)
+	set(USE_EDITLINE OFF)
 	set(USE_GDB_STUB OFF)
 endif()
 
@@ -308,7 +324,7 @@ if(CMAKE_SYSTEM_NAME MATCHES .*BSD)
 		list(APPEND LIBEDIT_LIBRARIES -ltermcap)
 	endif()
 else()
-	find_feature(USE_CLI_DEBUGGER "libedit")
+	find_feature(USE_EDITLINE "libedit")
 endif()
 if(BUILD_GL)
 	find_package(OpenGL QUIET)
@@ -344,7 +360,11 @@ find_feature(USE_EPOXY "epoxy")
 find_feature(USE_CMOCKA "cmocka")
 
 # Features
-set(DEBUGGER_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/debugger/debugger.c)
+set(DEBUGGER_SRC
+	${CMAKE_CURRENT_SOURCE_DIR}/src/debugger/debugger.c
+	${CMAKE_CURRENT_SOURCE_DIR}/src/debugger/parser.c
+	${CMAKE_CURRENT_SOURCE_DIR}/src/debugger/cli-debugger.c)
+
 set(FEATURE_SRC)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6")
 
@@ -352,21 +372,13 @@ if(DISABLE_DEPS)
 	set(USE_GDB_STUB OFF)
 endif()
 
-if(USE_CLI_DEBUGGER)
-	list(APPEND FEATURES CLI_DEBUGGER)
-	list(APPEND FEATURE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/debugger/cli-debugger.c)
-	list(APPEND FEATURE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/debugger/parser.c)
-	if(M_CORE_GBA)
-		list(APPEND FEATURE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/arm/debugger/cli-debugger.c)
-		list(APPEND FEATURE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gba/extra/cli.c)
-	endif()
-	if(M_CORE_GB)
-		list(APPEND FEATURE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/lr35902/debugger/cli-debugger.c)
-	endif()
+if(USE_EDITLINE)
+	list(APPEND FEATURES EDITLINE)
 	include_directories(AFTER ${LIBEDIT_INCLUDE_DIRS})
 	link_directories(${LIBEDIT_LIBRARY_DIRS})
 	set(DEBUGGER_LIB ${LIBEDIT_LIBRARIES})
 	set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},libedit2")
+	list(APPEND FEATURE_SRC "${CMAKE_CURRENT_SOURCE_DIR}/src/feature/editline/cli-el-backend.c")
 else()
 	set(DEBUGGER_LIB "")
 endif()
@@ -528,35 +540,51 @@ if(USE_EPOXY)
 	set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},libepoxy0")
 endif()
 
-
-set(FEATURE_DEFINES)
-foreach(FEATURE IN LISTS FEATURES)
-	list(APPEND FEATURE_DEFINES "USE_${FEATURE}")
-endforeach()
-
-set(CORE_SRC)
+set(TEST_SRC ${CORE_TEST_SRC})
 if(M_CORE_GB)
 	add_definitions(-DM_CORE_GB)
 	list(APPEND CORE_SRC
 		${LR35902_SRC}
-		${CMAKE_CURRENT_SOURCE_DIR}/src/lr35902/debugger/debugger.c
 		${GB_SRC}
 		${GB_RENDERER_SRC})
+	list(APPEND DEBUGGER_SRC
+		${CMAKE_CURRENT_SOURCE_DIR}/src/lr35902/debugger/cli-debugger.c
+		${CMAKE_CURRENT_SOURCE_DIR}/src/lr35902/debugger/debugger.c
+		${CMAKE_CURRENT_SOURCE_DIR}/src/gb/extra/cli.c)
+	list(APPEND TEST_SRC
+		${LR35902_TEST_SRC}
+		${GB_TEST_SRC})
 endif()
 
 if(M_CORE_GBA)
 	add_definitions(-DM_CORE_GBA)
 	list(APPEND CORE_SRC 
 		${ARM_SRC}
-		${CMAKE_CURRENT_SOURCE_DIR}/src/arm/debugger/debugger.c
-		${CMAKE_CURRENT_SOURCE_DIR}/src/arm/debugger/memory-debugger.c
 		${GBA_SRC}
 		${GBA_CHEATS_SRC}
 		${GBA_RENDERER_SRC})
+	list(APPEND DEBUGGER_SRC
+		${CMAKE_CURRENT_SOURCE_DIR}/src/arm/debugger/cli-debugger.c
+		${CMAKE_CURRENT_SOURCE_DIR}/src/arm/debugger/debugger.c
+		${CMAKE_CURRENT_SOURCE_DIR}/src/arm/debugger/memory-debugger.c
+		${CMAKE_CURRENT_SOURCE_DIR}/src/gba/extra/cli.c)
+	list(APPEND TEST_SRC
+		${ARM_TEST_SRC}
+		${GBA_TEST_SRC})
 	if(NOT M_CORE_GB)
 		list(APPEND CORE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gb/audio.c)
 	endif()
 endif()
+
+if(USE_DEBUGGERS)
+	list(APPEND FEATURE_SRC ${DEBUGGER_SRC})
+	list(APPEND FEATURES DEBUGGERS)
+endif()
+
+set(FEATURE_DEFINES)
+foreach(FEATURE IN LISTS FEATURES)
+	list(APPEND FEATURE_DEFINES "USE_${FEATURE}")
+endforeach()
 
 source_group("Virtual files" FILES ${CORE_VFS_SRC} ${VFS_SRC})
 source_group("Extra features" FILES ${FEATURE_SRC})
@@ -579,9 +607,9 @@ endif()
 list(APPEND CORE_SRC
 	${UTIL_SRC}
 	${CORE_VFS_SRC}
-	${DEBUGGER_SRC}
 	${OS_SRC}
 	${THIRD_PARTY_SRC})
+list(APPEND TEST_SRC ${UTIL_TEST_SRC})
 
 set(SRC ${CORE_SRC} ${VFS_SRC})
 if(NOT MINIMAL_CORE)
@@ -709,11 +737,15 @@ endif()
 if(NOT USE_CMOCKA)
 	set(BUILD_SUITE OFF)
 endif()
-if(USE_CMOCKA)
+if(BUILD_SUITE)
 	enable_testing()
 	include_directories(AFTER ${CMOCKA_INCLUDE_DIRS})
 	link_directories(${CMOCKA_LIBRARY_DIRS})
-	add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/test/suite ${CMAKE_CURRENT_BINARY_DIR}/suite)
+
+	add_executable(${BINARY_NAME}-suite ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/test/suite-main.c ${TEST_SRC})
+	target_link_libraries(${BINARY_NAME}-suite ${BINARY_NAME} ${PLATFORM_LIBRARY} cmocka)
+	set_target_properties(${BINARY_NAME}-suite PROPERTIES COMPILE_DEFINITIONS "${OS_DEFINES};${FEATURE_DEFINES};${FUNCTION_DEFINES}")
+	add_test(${BINARY_NAME}-suite ${BINARY_NAME}-suite)
 endif()
 
 if(BUILD_PYTHON)
@@ -789,7 +821,8 @@ if(NOT QUIET)
 	message(STATUS "	Game Boy Advance: ${M_CORE_GBA}")
 	message(STATUS "	Game Boy: ${M_CORE_GB}")
 	message(STATUS "Features:")
-	message(STATUS "	CLI debugger: ${USE_CLI_DEBUGGER}")
+	message(STATUS "	Debuggers: ${USE_DEBUGGERS}")
+	message(STATUS "	CLI debugger: ${USE_EDITLINE}")
 	message(STATUS "	GDB stub: ${USE_GDB_STUB}")
 	message(STATUS "	Video recording: ${USE_FFMPEG}")
 	message(STATUS "	GIF recording: ${USE_MAGICK}")

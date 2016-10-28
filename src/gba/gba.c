@@ -94,9 +94,11 @@ static void GBAInit(void* cpu, struct mCPUComponent* component) {
 	gba->romVf = 0;
 	gba->biosVf = 0;
 
-	gba->stream = 0;
-	gba->keyCallback = 0;
-	gba->stopCallback = 0;
+	gba->stream = NULL;
+	gba->keyCallback = NULL;
+	gba->stopCallback = NULL;
+	gba->stopCallback = NULL;
+	gba->coreCallbacks = NULL;
 
 	gba->biosChecksum = GBAChecksum(gba->memory.bios, SIZE_BIOS);
 
@@ -488,6 +490,9 @@ bool GBALoadMB(struct GBA* gba, struct VFile* vf) {
 }
 
 bool GBALoadROM(struct GBA* gba, struct VFile* vf) {
+	if (!vf) {
+		return false;
+	}
 	GBAUnloadROM(gba);
 	gba->romVf = vf;
 	gba->pristineRomSize = vf->size(vf);
@@ -786,6 +791,7 @@ void GBAGetGameTitle(const struct GBA* gba, char* out) {
 
 void GBAHitStub(struct ARMCore* cpu, uint32_t opcode) {
 	struct GBA* gba = (struct GBA*) cpu->master;
+#ifdef USE_DEBUGGERS
 	if (gba->debugger) {
 		struct mDebuggerEntryInfo info = {
 			.address = _ARMPCAddress(cpu),
@@ -793,6 +799,7 @@ void GBAHitStub(struct ARMCore* cpu, uint32_t opcode) {
 		};
 		mDebuggerEnter(gba->debugger->d.p, DEBUGGER_ENTER_ILLEGAL_OP, &info);
 	}
+#endif
 	// TODO: More sensible category?
 	mLOG(GBA, ERROR, "Stub opcode: %08x", opcode);
 }
@@ -803,13 +810,16 @@ void GBAIllegal(struct ARMCore* cpu, uint32_t opcode) {
 		// TODO: More sensible category?
 		mLOG(GBA, WARN, "Illegal opcode: %08x", opcode);
 	}
+#ifdef USE_DEBUGGERS
 	if (gba->debugger) {
 		struct mDebuggerEntryInfo info = {
 			.address = _ARMPCAddress(cpu),
 			.opcode = opcode
 		};
 		mDebuggerEnter(gba->debugger->d.p, DEBUGGER_ENTER_ILLEGAL_OP, &info);
-	} else {
+	} else
+#endif
+	{
 		ARMRaiseUndefined(cpu);
 	}
 }
@@ -820,6 +830,7 @@ void GBABreakpoint(struct ARMCore* cpu, int immediate) {
 		return;
 	}
 	switch (immediate) {
+#ifdef USE_DEBUGGERS
 	case CPU_COMPONENT_DEBUGGER:
 		if (gba->debugger) {
 			struct mDebuggerEntryInfo info = {
@@ -829,6 +840,7 @@ void GBABreakpoint(struct ARMCore* cpu, int immediate) {
 			mDebuggerEnter(gba->debugger->d.p, DEBUGGER_ENTER_BREAKPOINT, &info);
 		}
 		break;
+#endif
 	case CPU_COMPONENT_CHEAT_DEVICE:
 		if (gba->cpu->components[CPU_COMPONENT_CHEAT_DEVICE]) {
 			struct mCheatDevice* device = (struct mCheatDevice*) gba->cpu->components[CPU_COMPONENT_CHEAT_DEVICE];
@@ -854,8 +866,10 @@ void GBABreakpoint(struct ARMCore* cpu, int immediate) {
 void GBAFrameStarted(struct GBA* gba) {
 	UNUSED(gba);
 
-	struct mCoreThread* thread = mCoreThreadGet();
-	mCoreThreadFrameStarted(thread);
+	struct mCoreCallbacks* callbacks = gba->coreCallbacks;
+	if (callbacks && callbacks->videoFrameStarted) {
+		callbacks->videoFrameStarted(callbacks->context);
+	}
 }
 
 void GBAFrameEnded(struct GBA* gba) {
@@ -885,10 +899,10 @@ void GBAFrameEnded(struct GBA* gba) {
 		GBAHardwarePlayerUpdate(gba);
 	}
 
-	struct mCoreThread* thread = mCoreThreadGet();
-	mCoreThreadFrameEnded(thread);
-
-	// TODO: Put back RR
+	struct mCoreCallbacks* callbacks = gba->coreCallbacks;
+	if (callbacks && callbacks->videoFrameEnded) {
+		callbacks->videoFrameEnded(callbacks->context);
+	}
 }
 
 void GBASetBreakpoint(struct GBA* gba, struct mCPUComponent* component, uint32_t address, enum ExecutionMode mode, uint32_t* opcode) {

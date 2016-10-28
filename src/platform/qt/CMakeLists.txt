@@ -69,6 +69,8 @@ endif()
 set(SOURCE_FILES
 	AboutScreen.cpp
 	ArchiveInspector.cpp
+	AssetTile.cpp
+	AssetView.cpp
 	AudioProcessor.cpp
 	CheatsModel.cpp
 	CheatsView.cpp
@@ -94,6 +96,7 @@ set(SOURCE_FILES
 	MemoryView.cpp
 	MessagePainter.cpp
 	MultiplayerController.cpp
+	ObjView.cpp
 	OverrideView.cpp
 	PaletteView.cpp
 	ROMInfo.cpp
@@ -113,12 +116,15 @@ set(SOURCE_FILES
 set(UI_FILES
 	AboutScreen.ui
 	ArchiveInspector.ui
+	AssetTile.ui
 	CheatsView.ui
+	DebuggerConsole.ui
 	GIFView.ui
 	IOViewer.ui
 	LoadSaveState.ui
 	LogView.ui
 	MemoryView.ui
+	ObjView.ui
 	OverrideView.ui
 	PaletteView.ui
 	ROMInfo.ui
@@ -172,8 +178,15 @@ if(NOT AUDIO_SRC)
 	return()
 endif()
 
+if(USE_DEBUGGERS)
+	list(APPEND SOURCE_FILES
+		DebuggerController.cpp
+		DebuggerConsole.cpp
+		DebuggerConsoleController.cpp)
+endif()
+
 if(USE_GDB_STUB)
-	list(APPEND PLATFORM_SRC GDBController.cpp GDBWindow.cpp)
+	list(APPEND SOURCE_FILES GDBController.cpp GDBWindow.cpp)
 endif()
 
 qt5_add_resources(RESOURCES resources.qrc)

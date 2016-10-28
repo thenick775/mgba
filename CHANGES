@@ -3,6 +3,8 @@ Features:
  - GBA: Support printing debug strings from inside a game
  - GBA: Better cheat type autodetection
  - GB: Tile viewer
+ - Sprite viewer
+ - Debugging console
 Bugfixes:
  - LR35902: Fix core never exiting with certain event patterns
  - GB Timer: Improve DIV reset behavior
@@ -13,11 +15,25 @@ Bugfixes:
  - Windows: Fix Unicode directory handling
  - Qt: Fix changing resolution of software renderer
  - Qt: Fix setting overrides
+ - GBA Cheats: Fix GameShark ROM patches
+ - Qt: Fix cut off tiles and alignment issues in tile viewer
+ - GB MBC: Fix initializing MBC when no ROM is loaded
+ - VFS: Fix resizing memory chunks when not needed
+ - GB Memory: Fix patching ROM bank 0
 Misc:
  - SDL: Remove scancode key input
  - GBA Video: Clean up unused timers
  - Test: Add a basic test suite
  - GBA Video: Allow multiple handles into the same tile cache
+ - VFS: Call msync when syncing mapped data
+ - GBA Video, GB Video: Colors are now fully scaled
+ - PSP2: Improved controller rumble
+ - GB, GBA: Prevent loading null ROMs
+ - VFS: Allow truncating memory chunk VFiles
+ - Debugger: Modularize CLI debugger
+ - Core: Clean up some thread state checks
+ - Debugger: Make building with debugging aspects optional
+ - GBA Memory: Support for Mo Jie Qi Bing by Vast Fame (taizou)
 
 0.5.1: (2016-10-05)
 Bugfixes:

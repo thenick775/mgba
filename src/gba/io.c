@@ -333,10 +333,15 @@ void GBAIOInit(struct GBA* gba) {
 	gba->memory.io[REG_BG2PD >> 1] = 0x100;
 	gba->memory.io[REG_BG3PA >> 1] = 0x100;
 	gba->memory.io[REG_BG3PD >> 1] = 0x100;
+
+	if (!gba->biosVf) {
+		gba->memory.io[REG_VCOUNT >> 1] = 0x7E;
+		gba->memory.io[REG_POSTFLG >> 1] = 1;
+	}
 }
 
 void GBAIOWrite(struct GBA* gba, uint32_t address, uint16_t value) {
-	if (address < REG_SOUND1CNT_LO && address != REG_DISPSTAT) {
+	if (address < REG_SOUND1CNT_LO && (address > REG_VCOUNT || address == REG_DISPCNT)) {
 		value = gba->video.renderer->writeVideoRegister(gba->video.renderer, address, value);
 	} else {
 		switch (address) {
@@ -344,6 +349,10 @@ void GBAIOWrite(struct GBA* gba, uint32_t address, uint16_t value) {
 		case REG_DISPSTAT:
 			value &= 0xFFF8;
 			GBAVideoWriteDISPSTAT(&gba->video, value);
+			return;
+
+		case REG_VCOUNT:
+			mLOG(GBA_IO, GAME_ERROR, "Write to read-only I/O register: %03X", address);
 			return;
 
 		// Audio
@@ -573,6 +582,10 @@ void GBAIOWrite8(struct GBA* gba, uint32_t address, uint8_t value) {
 		} else {
 			GBAStop(gba);
 		}
+		return;
+	}
+	if (address == REG_POSTFLG) {
+		gba->memory.io[(address & (SIZE_IO - 1)) >> 1] = value;
 		return;
 	}
 	if (address >= REG_DEBUG_STRING && address - REG_DEBUG_STRING < sizeof(gba->debugString)) {

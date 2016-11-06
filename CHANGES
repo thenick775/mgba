@@ -5,7 +5,9 @@ Features:
  - GB: Tile viewer
  - Sprite viewer
  - Debugging console
+ - Improved memory viewer
 Bugfixes:
+ - Libretro: Fix unterminated SET_INPUT_DESCRIPTORS
  - LR35902: Fix core never exiting with certain event patterns
  - GB Timer: Improve DIV reset behavior
  - GBA Memory: Fix misaligned BIOS reads
@@ -20,6 +22,11 @@ Bugfixes:
  - GB MBC: Fix initializing MBC when no ROM is loaded
  - VFS: Fix resizing memory chunks when not needed
  - GB Memory: Fix patching ROM bank 0
+ - GB: Fix audio not being deinitialized
+ - GBA Memory: Fix VCOUNT being writable
+ - GBA Memory: Improve initial skipped BIOS state
+ - Qt: Only reset window dimensions when first shown
+ - GB Memory: Fix starting HDMAs during mode 0
 Misc:
  - SDL: Remove scancode key input
  - GBA Video: Clean up unused timers
@@ -34,6 +41,8 @@ Misc:
  - Core: Clean up some thread state checks
  - Debugger: Make building with debugging aspects optional
  - GBA Memory: Support for Mo Jie Qi Bing by Vast Fame (taizou)
+ - GBA Memory: Support reading/writing POSTFLG
+ - Util: Add size counting to Table
 
 0.5.1: (2016-10-05)
 Bugfixes:

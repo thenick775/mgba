@@ -11,6 +11,11 @@
 #include <QSize>
 #include <QStaticText>
 #include <QVector>
+#include <memory>
+
+extern "C" {
+#include "util/text-codec.h"
+}
 
 struct mCore;
 
@@ -32,12 +37,21 @@ public:
 	void setAlignment(int);
 	int alignment() const { return m_align; }
 
+	QByteArray serialize();
+	void deserialize(const QByteArray&);
+	QString decodeText(const QByteArray&);
+
 public slots:
 	void jumpToAddress(const QString& hex);
 	void jumpToAddress(uint32_t);
 
+	void loadTBL(const QString& path);
+	void loadTBL();
+
 	void copy();
+	void paste();
 	void save();
+	void load();
 
 signals:
 	void selectionChanged(uint32_t start, uint32_t end);
@@ -59,9 +73,13 @@ private:
 
 	void adjustCursor(int adjust, bool shift);
 
-	void serialize(QDataStream* stream);
+	class TextCodecFree {
+	public:
+		void operator()(TextCodec*);
+	};
 
 	mCore* m_core;
+	std::unique_ptr<TextCodec, TextCodecFree> m_codec;
 	QFont m_font;
 	int m_cellHeight;
 	int m_letterWidth;
@@ -71,7 +89,7 @@ private:
 	int m_align;
 	QMargins m_margins;
 	QVector<QStaticText> m_staticNumbers;
-	QVector<QStaticText> m_staticAscii;
+	QVector<QStaticText> m_staticLatin1;
 	QStaticText m_regionName;
 	QSizeF m_cellSize;
 	QPair<uint32_t, uint32_t> m_selection;

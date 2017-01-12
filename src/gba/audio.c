@@ -14,6 +14,8 @@
 #include <mgba/internal/gba/serialize.h>
 #include <mgba/internal/gba/video.h>
 
+#define MKS4AGB_LOCK_MAX 8
+
 #ifdef _3DS
 #define blip_add_delta blip_add_delta_fast
 #endif
@@ -49,6 +51,7 @@ void GBAAudioInit(struct GBAAudio* audio, size_t samples) {
 	CircleBufferInit(&audio->chA.fifo, GBA_AUDIO_FIFO_SIZE);
 	CircleBufferInit(&audio->chB.fifo, GBA_AUDIO_FIFO_SIZE);
 
+	audio->externalMixing = false;
 	audio->forceDisableChA = false;
 	audio->forceDisableChB = false;
 	audio->masterVolume = GBA_AUDIO_VOLUME_MAX;
@@ -110,6 +113,20 @@ void GBAAudioScheduleFifoDma(struct GBAAudio* audio, int number, struct GBADMA* 
 	default:
 		mLOG(GBA_AUDIO, GAME_ERROR, "Invalid FIFO destination: 0x%08X", info->dest);
 		return;
+	}
+	uint32_t source = info->source;
+	uint32_t magic[2] = {
+		audio->p->cpu->memory.load32(audio->p->cpu, source - 0x350, NULL),
+		audio->p->cpu->memory.load32(audio->p->cpu, source - 0x980, NULL)
+	};
+	if (audio->mixer) {
+		if (magic[0] - MKS4AGB_MAGIC <= MKS4AGB_LOCK_MAX) {
+			audio->externalMixing = audio->mixer->engage(audio->mixer, source - 0x350);
+		} else if (magic[1] - MKS4AGB_MAGIC <= MKS4AGB_LOCK_MAX) {
+			audio->externalMixing = audio->mixer->engage(audio->mixer, source - 0x980);
+		} else {
+			audio->externalMixing = false;
+		}
 	}
 	info->reg = GBADMARegisterSetDestControl(info->reg, GBA_DMA_FIXED);
 	info->reg = GBADMARegisterSetWidth(info->reg, 1);
@@ -265,24 +282,28 @@ static void _sample(struct mTiming* timing, void* user, uint32_t cyclesLate) {
 	sampleLeft >>= psgShift;
 	sampleRight >>= psgShift;
 
-	if (!audio->forceDisableChA) {
-		if (audio->chALeft) {
-			sampleLeft += (audio->chA.sample << 2) >> !audio->volumeChA;
+	if (!audio->externalMixing) {
+		if (!audio->forceDisableChA) {
+			if (audio->chALeft) {
+				sampleLeft += (audio->chA.sample << 2) >> !audio->volumeChA;
+			}
+
+			if (audio->chARight) {
+				sampleRight += (audio->chA.sample << 2) >> !audio->volumeChA;
+			}
 		}
 
-		if (audio->chARight) {
-			sampleRight += (audio->chA.sample << 2) >> !audio->volumeChA;
-		}
-	}
+		if (!audio->forceDisableChB) {
+			if (audio->chBLeft) {
+				sampleLeft += (audio->chB.sample << 2) >> !audio->volumeChB;
+			}
 
-	if (!audio->forceDisableChB) {
-		if (audio->chBLeft) {
-			sampleLeft += (audio->chB.sample << 2) >> !audio->volumeChB;
+			if (audio->chBRight) {
+				sampleRight += (audio->chB.sample << 2) >> !audio->volumeChB;
+			}
 		}
-
-		if (audio->chBRight) {
-			sampleRight += (audio->chB.sample << 2) >> !audio->volumeChB;
-		}
+	} else {
+		audio->mixer->step(audio->mixer);
 	}
 
 	sampleLeft = _applyBias(audio, sampleLeft);

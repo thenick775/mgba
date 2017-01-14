@@ -16,7 +16,7 @@ CXX_GUARD_START
 #include <mgba-util/circle-buffer.h>
 
 #define MKS4AGB_MAGIC 0x68736D53
-#define MKS4AGB_MAX_FIFO_CHANNELS 12
+#define MKS4AGB_MAX_SOUND_CHANNELS 12
 
 mLOG_DECLARE_CATEGORY(GBA_AUDIO);
 
@@ -92,68 +92,161 @@ struct GBAStereoSample {
 	int16_t right;
 };
 
+struct GBAMKS4AGBADSR {
+	uint8_t attack;
+	uint8_t decay;
+	uint8_t sustain;
+	uint8_t release;
+};
+
 struct GBAMKS4AGBSoundChannel {
-    uint8_t status;
-    uint8_t type;
-    uint8_t rightVolume;
-    uint8_t leftVolume;
-    uint8_t attack;
-    uint8_t decay;
-    uint8_t sustain;
-    uint8_t release;
-    uint8_t ky;
-    uint8_t ev;
-    uint8_t er;
-    uint8_t el;
-    uint8_t echoVolume;
-    uint8_t echoLength;
-    uint8_t d1;
-    uint8_t d2;
-    uint8_t gt;
-    uint8_t mk;
-    uint8_t ve;
-    uint8_t pr;
-    uint8_t rp;
-    uint8_t d3[3];
-    uint32_t ct;
-    uint32_t fw;
-    uint32_t freq;
-    uint32_t waveData;
-    uint32_t cp;
-    uint32_t track;
-    uint32_t pp;
-    uint32_t np;
-    uint32_t d4;
-    uint16_t xpi;
-    uint16_t xpc;
+	uint8_t status;
+	uint8_t type;
+	uint8_t rightVolume;
+	uint8_t leftVolume;
+	struct GBAMKS4AGBADSR adsr;
+	uint8_t ky;
+	uint8_t envelopeV;
+	uint8_t envelopeRight;
+	uint8_t envelopeLeft;
+	uint8_t echoVolume;
+	uint8_t echoLength;
+	uint8_t d1;
+	uint8_t d2;
+	uint8_t gt;
+	uint8_t mk;
+	uint8_t ve;
+	uint8_t pr;
+	uint8_t rp;
+	uint8_t d3[3];
+	uint32_t ct;
+	uint32_t fw;
+	uint32_t freq;
+	uint32_t waveData;
+	uint32_t cp;
+	uint32_t track;
+	uint32_t pp;
+	uint32_t np;
+	uint32_t d4;
+	uint16_t xpi;
+	uint16_t xpc;
 };
 
 struct GBAMKS4AGBContext {
 	uint32_t magic;
-    uint8_t pcmDmaCounter;
-    uint8_t reverb;
-    uint8_t maxChans;
-    uint8_t masterVolume;
-    uint8_t freq;
-    uint8_t mode;
-    uint8_t c15;
-    uint8_t pcmDmaPeriod;
-    uint8_t maxLines;
-    uint8_t gap[3];
-    int32_t pcmSamplesPerVBlank;
-    int32_t pcmFreq;
-    int32_t divFreq;
-    uint32_t cgbChans;
-    uint32_t func;
-    uint32_t musicPlayer;
-    uint32_t cgbSound;
-    uint32_t cgbOscOff;
-    uint32_t midiKeyToCgbFreq;
-    uint32_t mPlayJumpTable;
-    uint32_t plynote;
-    uint32_t extVolPit;
-    uint8_t gap2[16];
-    struct GBAMKS4AGBSoundChannel chans[MKS4AGB_MAX_FIFO_CHANNELS];
+	uint8_t pcmDmaCounter;
+	uint8_t reverb;
+	uint8_t maxChans;
+	uint8_t masterVolume;
+	uint8_t freq;
+	uint8_t mode;
+	uint8_t c15;
+	uint8_t pcmDmaPeriod;
+	uint8_t maxLines;
+	uint8_t gap[3];
+	int32_t pcmSamplesPerVBlank;
+	int32_t pcmFreq;
+	int32_t divFreq;
+	uint32_t cgbChans;
+	uint32_t func;
+	uint32_t intp;
+	uint32_t cgbSound;
+	uint32_t cgbOscOff;
+	uint32_t midiKeyToCgbFreq;
+	uint32_t mPlayJumpTable;
+	uint32_t plynote;
+	uint32_t extVolPit;
+	uint8_t gap2[16];
+	struct GBAMKS4AGBSoundChannel chans[MKS4AGB_MAX_SOUND_CHANNELS];
+};
+
+struct GBAMKS4AGBMusicPlayerInfo {
+	uint32_t songHeader;
+	uint32_t status;
+	uint8_t trackCount;
+	uint8_t priority;
+	uint8_t cmd;
+	uint8_t unk_B;
+	uint32_t clock;
+	uint8_t gap[8];
+	uint32_t memAccArea;
+	uint16_t tempoD;
+	uint16_t tempoU;
+	uint16_t tempoI;
+	uint16_t tempoC;
+	uint16_t fadeOI;
+	uint16_t fadeOC;
+	uint16_t fadeOV;
+	uint32_t tracks;
+	uint32_t tone;
+	uint32_t magic;
+	uint32_t func;
+	uint32_t intp;
+};
+
+struct GBAMKS4AGBInstrument {
+	uint8_t type;
+	uint8_t key;
+	uint8_t length;
+	union {
+		uint8_t pan;
+		uint8_t sweep;
+	};
+	union {
+		uint32_t waveData;
+		uint32_t subTable;
+	};
+	union {
+		struct GBAMKS4AGBADSR adsr;
+		uint32_t map;
+	};
+};
+
+struct GBAMKS4AGBMusicPlayerTrack {
+	uint8_t flags;
+	uint8_t wait;
+	uint8_t patternLevel;
+	uint8_t repN;
+	uint8_t gateTime;
+	uint8_t key;
+	uint8_t velocity;
+	uint8_t runningStatus;
+	uint8_t keyM;
+	uint8_t pitM;
+	int8_t keyShift;
+	int8_t keyShiftX;
+	int8_t tune;
+	uint8_t pitX;
+	int8_t bend;
+	uint8_t bendRange;
+	uint8_t volMR;
+	uint8_t volML;
+	uint8_t vol;
+	uint8_t volX;
+	int8_t pan;
+	int8_t panX;
+	int8_t modM;
+	uint8_t mod;
+	uint8_t modT;
+	uint8_t lfoSpeed;
+	uint8_t lfoSpeedC;
+	uint8_t lfoDelay;
+	uint8_t lfoDelayC;
+	uint8_t priority;
+	uint8_t echoVolume;
+	uint8_t echoLength;
+	uint32_t chan;
+	struct GBAMKS4AGBInstrument instrument;
+	uint8_t gap[10];
+	uint16_t unk_3A;
+	uint32_t unk_3C;
+	uint32_t cmdPtr;
+	uint32_t patternStack[3];
+};
+
+struct GBAMKS4AGBTrack {
+	struct GBAMKS4AGBMusicPlayerTrack track;
+	uint8_t lastCommand;
 };
 
 struct GBAAudioMixer {
@@ -163,9 +256,13 @@ struct GBAAudioMixer {
 	uint32_t contextAddress;
 
 	bool (*engage)(struct GBAAudioMixer* mixer, uint32_t address);
-	void (*step)(struct GBAAudioMixer* mixer);
+	void (*vblank)(struct GBAAudioMixer* mixer);
+
+	struct mTimingEvent stepEvent;
 
 	struct GBAMKS4AGBContext context;
+	struct GBAMKS4AGBMusicPlayerInfo player;
+	struct GBAMKS4AGBTrack activeTracks[MKS4AGB_MAX_SOUND_CHANNELS];
 };
 
 void GBAAudioInit(struct GBAAudio* audio, size_t samples);

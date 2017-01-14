@@ -121,9 +121,9 @@ void GBAAudioScheduleFifoDma(struct GBAAudio* audio, int number, struct GBADMA* 
 	};
 	if (audio->mixer) {
 		if (magic[0] - MKS4AGB_MAGIC <= MKS4AGB_LOCK_MAX) {
-			audio->externalMixing = audio->mixer->engage(audio->mixer, source - 0x350);
+			audio->mixer->engage(audio->mixer, source - 0x350);
 		} else if (magic[1] - MKS4AGB_MAGIC <= MKS4AGB_LOCK_MAX) {
-			audio->externalMixing = audio->mixer->engage(audio->mixer, source - 0x980);
+			audio->mixer->engage(audio->mixer, source - 0x980);
 		} else {
 			audio->externalMixing = false;
 		}
@@ -302,8 +302,6 @@ static void _sample(struct mTiming* timing, void* user, uint32_t cyclesLate) {
 				sampleRight += (audio->chB.sample << 2) >> !audio->volumeChB;
 			}
 		}
-	} else {
-		audio->mixer->step(audio->mixer);
 	}
 
 	sampleLeft = _applyBias(audio, sampleLeft);

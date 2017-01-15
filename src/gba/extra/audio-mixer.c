@@ -15,6 +15,8 @@ static bool _mks4agbEngage(struct GBAAudioMixer* mixer, uint32_t address);
 static void _mks4agbVblank(struct GBAAudioMixer* mixer);
 static void _mks4agbStep(struct GBAAudioMixer* mixer);
 
+static const float FACTOR = 1.f / 42134400.f; // VIDEO_TOTAL_LENGTH * 150
+
 static const uint8_t _duration[0x30] = {
 	01,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12,
 	13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
@@ -158,10 +160,144 @@ static int _playNote(struct GBAAudioMixer* mixer, struct GBAMKS4AGBTrack* track,
 	return nArgs;
 }
 
+static uint32_t _runCommand(struct GBAAudioMixer* mixer, size_t channelId, uint8_t command, uint32_t base) {
+	struct ARMCore* cpu = mixer->p->p->cpu;
+	struct ARMMemory* memory = &cpu->memory;
+	struct GBAMKS4AGBTrack* track = &mixer->activeTracks[channelId];
+	uint32_t address;
+	int nArgs = 0;
+
+	switch (command) {
+	case 0x80:
+		// NOP
+		break;
+	case 0xB1:
+		// FINE
+		mLOG(GBA_AUDIO, DEBUG, "FINE");
+		track->notePlaying = 0;
+		break;
+	case 0xB2:
+		// GOTO
+		address = memory->load8(cpu, base + 1, 0);
+		address |= memory->load8(cpu, base + 2, 0) << 8;
+		address |= memory->load8(cpu, base + 3, 0) << 16;
+		address |= memory->load8(cpu, base + 4, 0) << 24;
+		mLOG(GBA_AUDIO, DEBUG, "GOTO %08X", address);
+		return address;
+	case 0xB3:
+		// PATT
+		address = memory->load8(cpu, base + 1, 0);
+		address |= memory->load8(cpu, base + 2, 0) << 8;
+		address |= memory->load8(cpu, base + 3, 0) << 16;
+		address |= memory->load8(cpu, base + 4, 0) << 24;
+		nArgs = 4;
+		mLOG(GBA_AUDIO, DEBUG, "PATT %08X", address);
+		break;
+	case 0xB4:
+		mLOG(GBA_AUDIO, DEBUG, "PEND");
+		break;
+	case 0xB5:
+		mLOG(GBA_AUDIO, DEBUG, "REPT");
+		break;
+	case 0xB6:
+	case 0xB7:
+	case 0xB8:
+	case 0xB9:
+	case 0xC6:
+	case 0xC7:
+	case 0xC9:
+	case 0xCA:
+	case 0xCB:
+	case 0xCD:
+		mLOG(GBA_AUDIO, DEBUG, "Unknown command, reseting");
+		track->lastCommand = command;
+		mixer->p->externalMixing = false;
+		return 0;
+	case 0xBA:
+		mLOG(GBA_AUDIO, DEBUG, "PRIO");
+		break;
+	case 0xBB:
+		mLOG(GBA_AUDIO, DEBUG, "TEMPO");
+		mixer->tempoI = 0.5f / memory->load8(cpu, base + 1, 0);
+		nArgs = 1;
+		break;
+	case 0xBC:
+		mLOG(GBA_AUDIO, DEBUG, "KEYSH");
+		break;
+	case 0xBD:
+		mLOG(GBA_AUDIO, DEBUG, "VOICE");
+		break;
+	case 0xBE:
+		mLOG(GBA_AUDIO, DEBUG, "VOL");
+		track->lastCommand = command;
+		break;
+	case 0xBF:
+		mLOG(GBA_AUDIO, DEBUG, "PAN");
+		track->lastCommand = command;
+		break;
+	case 0xC0:
+		mLOG(GBA_AUDIO, DEBUG, "BEND");
+		track->lastCommand = command;
+		break;
+	case 0xC1:
+		mLOG(GBA_AUDIO, DEBUG, "BENDR");
+		track->lastCommand = command;
+		break;
+	case 0xC2:
+		mLOG(GBA_AUDIO, DEBUG, "LFOS");
+		break;
+	case 0xC3:
+		mLOG(GBA_AUDIO, DEBUG, "LFODL");
+		break;
+	case 0xC4:
+		mLOG(GBA_AUDIO, DEBUG, "MOD");
+		track->lastCommand = command;
+		break;
+	case 0xC5:
+		mLOG(GBA_AUDIO, DEBUG, "MODT");
+		break;
+	case 0xC8:
+		mLOG(GBA_AUDIO, DEBUG, "TUNE");
+		break;
+	case 0xCC:
+		mLOG(GBA_AUDIO, DEBUG, "PORT");
+		break;
+	case 0xCE:
+		mLOG(GBA_AUDIO, DEBUG, "ENDTIE");
+		track->notePlaying = 0;
+		track->lastCommand = command;
+		break;
+	case 0xCF:
+		mLOG(GBA_AUDIO, DEBUG, "TIE");
+		track->notePlaying = -1;
+		nArgs += _playNote(mixer, track, base + 1);
+		track->lastCommand = command;
+		break;
+	default:
+		if (command >= 0xD0) {
+			track->lastCommand = command;
+			track->notePlaying = _duration[command - 0xD0];
+			nArgs += _playNote(mixer, track, base + 1);
+		}
+		if (command < 0x80) {
+			mLOG(GBA_AUDIO, DEBUG, "Argument");
+			if (track->lastCommand < 0x80) {
+				break;
+			}
+			return _runCommand(mixer, channelId, track->lastCommand, base);
+		}
+		if (command <= 0xB0) {
+			mLOG(GBA_AUDIO, DEBUG, "Waiting: %02X", _duration[command - 0x81]);
+			return 0;
+		}
+		break;
+	}
+	return base + nArgs + 1;
+}
+
 static void _stepTrack(struct GBAAudioMixer* mixer, size_t channelId) {
 	struct ARMCore* cpu = mixer->p->p->cpu;
 	struct ARMMemory* memory = &cpu->memory;
-	struct GBAMKS4AGBSoundChannel* ch = &mixer->context.chans[channelId];
 	struct GBAMKS4AGBTrack* track = &mixer->activeTracks[channelId];
 
 	uint32_t base = track->track.cmdPtr;
@@ -170,131 +306,14 @@ static void _stepTrack(struct GBAAudioMixer* mixer, size_t channelId) {
 	}
 	while (true) {
 		uint8_t command = memory->load8(cpu, base, 0);
-		uint32_t address;
 
 		mLOG(GBA_AUDIO, DEBUG, "Updating track for channel %zu, command %02X", channelId, command);
-		size_t nArgs = 0;
-		switch (command) {
-		case 0x80:
-			// NOP
-			break;
-		case 0xB1:
-			// FINE
-			mLOG(GBA_AUDIO, DEBUG, "FINE");
-			track->notePlaying = 0;
-			break;
-		case 0xB2:
-			// GOTO
-			address = memory->load8(cpu, base + 1, 0);
-			address |= memory->load8(cpu, base + 2, 0) << 8;
-			address |= memory->load8(cpu, base + 3, 0) << 16;
-			address |= memory->load8(cpu, base + 4, 0) << 24;
-			nArgs = 4;
-			mLOG(GBA_AUDIO, DEBUG, "GOTO %08X", address);
-			break;
-		case 0xB3:
-			// PATT
-			address = memory->load8(cpu, base + 1, 0);
-			address |= memory->load8(cpu, base + 2, 0) << 8;
-			address |= memory->load8(cpu, base + 3, 0) << 16;
-			address |= memory->load8(cpu, base + 4, 0) << 24;
-			nArgs = 4;
-			mLOG(GBA_AUDIO, DEBUG, "PATT %08X", address);
-			break;
-		case 0xB4:
-			mLOG(GBA_AUDIO, DEBUG, "PEND");
-			break;
-		case 0xB5:
-			mLOG(GBA_AUDIO, DEBUG, "REPT");
-			break;
-		case 0xB6:
-		case 0xB7:
-		case 0xB8:
-		case 0xB9:
-		case 0xC6:
-		case 0xC7:
-		case 0xC9:
-		case 0xCA:
-		case 0xCB:
-		case 0xCD:
-			mLOG(GBA_AUDIO, DEBUG, "Unknown command, reseting");
-			track->lastCommand = command;
-			mixer->p->externalMixing = false;
-			return;
-		case 0xBA:
-			mLOG(GBA_AUDIO, DEBUG, "PRIO");
-			break;
-		case 0xBB:
-			mLOG(GBA_AUDIO, DEBUG, "TEMPO");
-			break;
-		case 0xBC:
-			mLOG(GBA_AUDIO, DEBUG, "KEYSH");
-			break;
-		case 0xBD:
-			mLOG(GBA_AUDIO, DEBUG, "VOICE");
-			break;
-		case 0xBE:
-			mLOG(GBA_AUDIO, DEBUG, "VOL");
-			track->lastCommand = command;
-			break;
-		case 0xBF:
-			mLOG(GBA_AUDIO, DEBUG, "PAN");
-			track->lastCommand = command;
-			break;
-		case 0xC0:
-			mLOG(GBA_AUDIO, DEBUG, "BEND");
-			track->lastCommand = command;
-			break;
-		case 0xC1:
-			mLOG(GBA_AUDIO, DEBUG, "BENDR");
-			track->lastCommand = command;
-			break;
-		case 0xC2:
-			mLOG(GBA_AUDIO, DEBUG, "LFOS");
-			break;
-		case 0xC3:
-			mLOG(GBA_AUDIO, DEBUG, "LFODL");
-			break;
-		case 0xC4:
-			mLOG(GBA_AUDIO, DEBUG, "MOD");
-			track->lastCommand = command;
-			break;
-		case 0xC5:
-			mLOG(GBA_AUDIO, DEBUG, "MODT");
-			break;
-		case 0xC8:
-			mLOG(GBA_AUDIO, DEBUG, "TUNE");
-			break;
-		case 0xCC:
-			mLOG(GBA_AUDIO, DEBUG, "PORT");
-			break;
-		case 0xCE:
-			mLOG(GBA_AUDIO, DEBUG, "ENDTIE");
-			track->notePlaying = 0;
-			track->lastCommand = command;
-			break;
-		case 0xCF:
-			mLOG(GBA_AUDIO, DEBUG, "TIE");
-			track->notePlaying = -1;
-			nArgs += _playNote(mixer, track, base + 1);
-			track->lastCommand = command;
-			break;
-		default:
-			if (command >= 0xD0) {
-				track->notePlaying = _duration[command - 0xD0];
-				nArgs += _playNote(mixer, track, base + 1);
-			}
-			if (command < 0x80) {
-				mLOG(GBA_AUDIO, DEBUG, "Argument");
-				break;
-			}
-			if (command <= 0xB0) {
-				mLOG(GBA_AUDIO, DEBUG, "Waiting: %02X", _duration[command - 0x81]);
-				return;
-			}
+		uint32_t newAddress = _runCommand(mixer, channelId, command, base);
+		if (newAddress == 0) {
+			++base;
 			break;
 		}
-		base += nArgs + 1;
+		base = newAddress;
 	}
 }
 
@@ -407,7 +426,7 @@ void _mks4agbStep(struct GBAAudioMixer* mixer) {
 	if (!mixer->p->externalMixing) {
 		return;
 	}
-	mixer->frame += mixer->p->sampleInterval / (float) GBA_ARM7TDMI_FREQUENCY;
+	mixer->frame += mixer->p->sampleInterval * FACTOR;
 	while (mixer->frame >= mixer->tempoI) {
 		int i;
 		for (i = 0; i < MKS4AGB_MAX_SOUND_CHANNELS; ++i) {

@@ -155,7 +155,10 @@ static int _playNote(struct GBAAudioMixer* mixer, struct GBAMKS4AGBTrack* track,
 		}
 		++nArgs;
 	} while (false);
-	track->lastNote = arguments[0];
+	if (arguments[0] >= 0) {
+		track->lastNote = arguments[0];
+	}
+	mLOG(GBA_AUDIO, DEBUG, "Playing note %02X", track->lastNote);
 	_stepSample(mixer, track);
 	return nArgs;
 }
@@ -223,50 +226,62 @@ static uint32_t _runCommand(struct GBAAudioMixer* mixer, size_t channelId, uint8
 		break;
 	case 0xBC:
 		mLOG(GBA_AUDIO, DEBUG, "KEYSH");
+		nArgs = 1;
 		break;
 	case 0xBD:
 		mLOG(GBA_AUDIO, DEBUG, "VOICE");
+		nArgs = 1;
 		break;
 	case 0xBE:
 		mLOG(GBA_AUDIO, DEBUG, "VOL");
 		track->lastCommand = command;
+		nArgs = 1;
 		break;
 	case 0xBF:
 		mLOG(GBA_AUDIO, DEBUG, "PAN");
 		track->lastCommand = command;
+		nArgs = 1;
 		break;
 	case 0xC0:
 		mLOG(GBA_AUDIO, DEBUG, "BEND");
 		track->lastCommand = command;
+		nArgs = 1;
 		break;
 	case 0xC1:
 		mLOG(GBA_AUDIO, DEBUG, "BENDR");
 		track->lastCommand = command;
+		nArgs = 1;
 		break;
 	case 0xC2:
 		mLOG(GBA_AUDIO, DEBUG, "LFOS");
+		nArgs = 1;
 		break;
 	case 0xC3:
 		mLOG(GBA_AUDIO, DEBUG, "LFODL");
+		nArgs = 1;
 		break;
 	case 0xC4:
 		mLOG(GBA_AUDIO, DEBUG, "MOD");
+		nArgs = 1;
 		track->lastCommand = command;
 		break;
 	case 0xC5:
 		mLOG(GBA_AUDIO, DEBUG, "MODT");
+		nArgs = 1;
 		break;
 	case 0xC8:
 		mLOG(GBA_AUDIO, DEBUG, "TUNE");
+		nArgs = 1;
 		break;
 	case 0xCC:
 		mLOG(GBA_AUDIO, DEBUG, "PORT");
+		nArgs = 1;
 		break;
 	case 0xCE:
 		mLOG(GBA_AUDIO, DEBUG, "ENDTIE");
 		track->notePlaying = 0;
 		track->lastCommand = command;
-		break;
+		return 0;
 	case 0xCF:
 		mLOG(GBA_AUDIO, DEBUG, "TIE");
 		track->notePlaying = -1;
@@ -284,7 +299,7 @@ static uint32_t _runCommand(struct GBAAudioMixer* mixer, size_t channelId, uint8
 			if (track->lastCommand < 0x80) {
 				break;
 			}
-			return _runCommand(mixer, channelId, track->lastCommand, base);
+			return _runCommand(mixer, channelId, track->lastCommand, base - 1);
 		}
 		if (command <= 0xB0) {
 			mLOG(GBA_AUDIO, DEBUG, "Waiting: %02X", _duration[command - 0x81]);

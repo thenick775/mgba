@@ -114,7 +114,7 @@ struct GBAMKS4AGBSoundChannel {
 	uint8_t d1;
 	uint8_t d2;
 	uint8_t gt;
-	uint8_t mk;
+	uint8_t midiKey;
 	uint8_t ve;
 	uint8_t pr;
 	uint8_t rp;
@@ -247,6 +247,12 @@ struct GBAMKS4AGBMusicPlayerTrack {
 struct GBAMKS4AGBTrack {
 	struct GBAMKS4AGBMusicPlayerTrack track;
 	uint8_t lastCommand;
+	uint8_t lastNote;
+	struct GBAStereoSample lastSample;
+	uint32_t notePlaying;
+	uint32_t samplePlaying;
+	float currentOffset;
+	bool waiting;
 };
 
 struct GBAAudioMixer {
@@ -257,12 +263,13 @@ struct GBAAudioMixer {
 
 	bool (*engage)(struct GBAAudioMixer* mixer, uint32_t address);
 	void (*vblank)(struct GBAAudioMixer* mixer);
-
-	struct mTimingEvent stepEvent;
+	void (*step)(struct GBAAudioMixer* mixer);
 
 	struct GBAMKS4AGBContext context;
 	struct GBAMKS4AGBMusicPlayerInfo player;
 	struct GBAMKS4AGBTrack activeTracks[MKS4AGB_MAX_SOUND_CHANNELS];
+	float tempoI;
+	float frame;
 };
 
 void GBAAudioInit(struct GBAAudio* audio, size_t samples);

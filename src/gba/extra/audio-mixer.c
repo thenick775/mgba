@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include <mgba/internal/gba/extra/audio-mixer.h>
 
+#include <mgba/core/blip_buf.h>
 #include <mgba/internal/gba/gba.h>
 
 static void _mks4agbInit(void* cpu, struct mCPUComponent* component);
@@ -12,8 +13,7 @@ static void _mks4agbDeinit(struct mCPUComponent* component);
 
 static bool _mks4agbEngage(struct GBAAudioMixer* mixer, uint32_t address);
 static void _mks4agbVblank(struct GBAAudioMixer* mixer);
-
-static void _mks4agbStep(struct mTiming* timing, void* context, uint32_t cyclesLate);
+static void _mks4agbStep(struct GBAAudioMixer* mixer);
 
 static const uint8_t _duration[0x30] = {
 	01,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12,
@@ -27,6 +27,7 @@ void GBAAudioMixerCreate(struct GBAAudioMixer* mixer) {
 	mixer->d.deinit = _mks4agbDeinit;
 	mixer->engage = _mks4agbEngage;
 	mixer->vblank = _mks4agbVblank;
+	mixer->step = _mks4agbStep;
 }
 
 void _mks4agbInit(void* cpu, struct mCPUComponent* component) {
@@ -36,17 +37,125 @@ void _mks4agbInit(void* cpu, struct mCPUComponent* component) {
 	gba->audio.mixer = mixer;
 	mixer->p = &gba->audio;
 	mixer->contextAddress = 0;
+	mixer->tempoI = 1.f / 120.f;
+	mixer->frame = 0;
 	memset(&mixer->context, 0, sizeof(mixer->context));
-
-	mixer->stepEvent.context = mixer;
-	mixer->stepEvent.name = "GBA Audio Mix Step";
-	mixer->stepEvent.callback = _mks4agbStep;
-	mixer->stepEvent.priority = 0x17;
+	memset(&mixer->activeTracks, 0, sizeof(mixer->activeTracks));
 }
 
 void _mks4agbDeinit(struct mCPUComponent* component) {
 	struct GBAAudioMixer* mixer = (struct GBAAudioMixer*) component;
-	mTimingDeschedule(&mixer->p->p->timing, &mixer->stepEvent);
+}
+
+static void _loadInstrument(struct ARMCore* cpu, struct GBAMKS4AGBInstrument* instrument, uint32_t base) {
+	struct ARMMemory* memory = &cpu->memory;
+	instrument->type = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, type), 0);
+	instrument->key = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, key), 0);
+	instrument->length = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, length), 0);
+	instrument->pan = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, pan), 0);
+	if (instrument->type == 0x40 || instrument->type == 0x80) {
+		instrument->subTable = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBInstrument, subTable), 0);
+		instrument->map = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBInstrument, map), 0);
+	} else {
+		instrument->waveData = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBInstrument, waveData), 0);
+		instrument->adsr.attack = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, adsr.attack), 0);
+		instrument->adsr.decay = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, adsr.decay), 0);
+		instrument->adsr.sustain = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, adsr.sustain), 0);
+		instrument->adsr.release = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, adsr.release), 0);
+	}
+}
+
+static void _lookupInstrument(struct ARMCore* cpu, struct GBAMKS4AGBInstrument* instrument, uint8_t key) {
+	struct ARMMemory* memory = &cpu->memory;
+	if (instrument->type == 0x40) {
+		uint32_t subInstrumentBase = instrument->subTable;
+		uint32_t keyTable = instrument->map;
+		uint8_t id = memory->load8(cpu, keyTable + key, 0);
+		subInstrumentBase += 12 * id;
+		_loadInstrument(cpu, instrument, subInstrumentBase);
+	}
+}
+
+static void _stepSample(struct GBAAudioMixer* mixer, struct GBAMKS4AGBTrack* track) {
+	struct ARMCore* cpu = mixer->p->p->cpu;
+	struct ARMMemory* memory = &cpu->memory;
+	uint32_t headerAddress;
+	struct GBAMKS4AGBInstrument instrument = track->track.instrument;
+
+	uint8_t note = track->lastNote;
+	_lookupInstrument(cpu, &instrument, note);
+	switch (instrument.type) {
+	case 0x00:
+	case 0x08:
+	case 0x40:
+	case 0x80:
+		break;
+	default:
+		// We don't care about PSG channels
+		return;
+	}
+	headerAddress = instrument.waveData;
+	if (headerAddress < 0x20) {
+		mLOG(GBA_AUDIO, ERROR, "Audio track has invalid instrument");
+		return;
+	}
+	uint32_t pitch = memory->load32(cpu, headerAddress + 0x4, 0);
+	uint32_t loopOffset = memory->load32(cpu, headerAddress + 0x8, 0);
+	uint32_t endOffset = memory->load32(cpu, headerAddress + 0xC, 0);
+	uint32_t sampleBase = headerAddress + 0x10;
+	endOffset += sampleBase;
+
+	if (track->samplePlaying) {
+		sampleBase = track->samplePlaying;
+	}
+
+	struct GBAStereoSample lastSample = track->lastSample;
+	float distance = 1024.0f / (pitch * powf(2.0f, (note - 60) / 12.0f));
+	float base;
+	for (base = track->currentOffset; base < mixer->tempoI; base += distance) {
+		int8_t sample = memory->load8(cpu, sampleBase, 0);
+		blip_add_delta(mixer->p->psg.left, mixer->p->clock + base * GBA_ARM7TDMI_FREQUENCY, ((sample * track->track.volML) >> 1) - lastSample.left);
+		blip_add_delta(mixer->p->psg.right, mixer->p->clock + base * GBA_ARM7TDMI_FREQUENCY, ((sample * track->track.volMR) >> 1) - lastSample.right);
+		lastSample.left = (sample * track->track.volML) >> 1;
+		lastSample.right = (sample * track->track.volMR) >> 1;
+		++sampleBase;
+		if (sampleBase >= endOffset) {
+			sampleBase = headerAddress + loopOffset + 0x10;
+		}
+	}
+
+	track->lastSample = lastSample;
+	track->samplePlaying = sampleBase;
+	track->currentOffset = base - mixer->tempoI;
+}
+
+static int _playNote(struct GBAAudioMixer* mixer, struct GBAMKS4AGBTrack* track, uint32_t base) {
+	struct ARMCore* cpu = mixer->p->p->cpu;
+	struct ARMMemory* memory = &cpu->memory;
+	int8_t arguments[3] = {
+		track->lastNote
+	};
+	int nArgs = 0;
+	do {
+		arguments[0] = memory->load8(cpu, base, 0);
+		if (arguments[0] < 0) {
+			break;
+		}
+		++nArgs;
+		arguments[1] = memory->load8(cpu, base + 1, 0);
+		if (arguments[1] < 0) {
+			break;
+		}
+		++nArgs;
+		arguments[2] = memory->load8(cpu, base + 2, 0);
+		if (arguments[2] < 0) {
+			break;
+		}
+		++nArgs;
+	} while (false);
+	track->lastNote = arguments[0];
+	_stepSample(mixer, track);
+	return nArgs;
 }
 
 static void _stepTrack(struct GBAAudioMixer* mixer, size_t channelId) {
@@ -54,7 +163,11 @@ static void _stepTrack(struct GBAAudioMixer* mixer, size_t channelId) {
 	struct ARMMemory* memory = &cpu->memory;
 	struct GBAMKS4AGBSoundChannel* ch = &mixer->context.chans[channelId];
 	struct GBAMKS4AGBTrack* track = &mixer->activeTracks[channelId];
+
 	uint32_t base = track->track.cmdPtr;
+	if (base < 0x20) {
+		return;
+	}
 	while (true) {
 		uint8_t command = memory->load8(cpu, base, 0);
 		uint32_t address;
@@ -68,6 +181,7 @@ static void _stepTrack(struct GBAAudioMixer* mixer, size_t channelId) {
 		case 0xB1:
 			// FINE
 			mLOG(GBA_AUDIO, DEBUG, "FINE");
+			track->notePlaying = 0;
 			break;
 		case 0xB2:
 			// GOTO
@@ -103,8 +217,6 @@ static void _stepTrack(struct GBAAudioMixer* mixer, size_t channelId) {
 		case 0xCA:
 		case 0xCB:
 		case 0xCD:
-		case 0xCE:
-		case 0xCF:
 			mLOG(GBA_AUDIO, DEBUG, "Unknown command, reseting");
 			track->lastCommand = command;
 			mixer->p->externalMixing = false;
@@ -156,28 +268,21 @@ static void _stepTrack(struct GBAAudioMixer* mixer, size_t channelId) {
 		case 0xCC:
 			mLOG(GBA_AUDIO, DEBUG, "PORT");
 			break;
+		case 0xCE:
+			mLOG(GBA_AUDIO, DEBUG, "ENDTIE");
+			track->notePlaying = 0;
+			track->lastCommand = command;
+			break;
+		case 0xCF:
+			mLOG(GBA_AUDIO, DEBUG, "TIE");
+			track->notePlaying = -1;
+			nArgs += _playNote(mixer, track, base + 1);
+			track->lastCommand = command;
+			break;
 		default:
 			if (command >= 0xD0) {
-				int8_t arguments[3];
-				arguments[0] = memory->load8(cpu, base + 1, 0);
-				if (arguments[0] < 0) {
-					mLOG(GBA_AUDIO, DEBUG, "Arguments: None");
-					break;
-				}
-				++nArgs;
-				arguments[1] = memory->load8(cpu, base + 2, 0);
-				if (arguments[1] < 0) {
-					mLOG(GBA_AUDIO, DEBUG, "Arguments: %02X", arguments[0]);
-					break;
-				}
-				++nArgs;
-				arguments[2] = memory->load8(cpu, base + 3, 0);
-				if (arguments[2] < 0) {
-					mLOG(GBA_AUDIO, DEBUG, "Arguments: %02X %02X", arguments[0], arguments[1]);
-					break;
-				}
-				++nArgs;
-				mLOG(GBA_AUDIO, DEBUG, "Arguments: %02X %02X %02X", arguments[0], arguments[1], arguments[2]);
+				track->notePlaying = _duration[command - 0xD0];
+				nArgs += _playNote(mixer, track, base + 1);
 			}
 			if (command < 0x80) {
 				mLOG(GBA_AUDIO, DEBUG, "Argument");
@@ -193,24 +298,6 @@ static void _stepTrack(struct GBAAudioMixer* mixer, size_t channelId) {
 	}
 }
 
-static void _loadInstrument(struct ARMCore* cpu, struct GBAMKS4AGBInstrument* instrument, uint32_t base) {
-	struct ARMMemory* memory = &cpu->memory;
-	instrument->type = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, type), 0);
-	instrument->key = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, key), 0);
-	instrument->length = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, length), 0);
-	instrument->pan = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, pan), 0);
-	if (instrument->type == 0x40 || instrument->type == 0x80) {
-		instrument->subTable = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBInstrument, subTable), 0);
-		instrument->map = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBInstrument, map), 0);
-	} else {
-		instrument->waveData = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBInstrument, waveData), 0);
-		instrument->adsr.attack = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, adsr.attack), 0);
-		instrument->adsr.decay = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, adsr.decay), 0);
-		instrument->adsr.sustain = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, adsr.sustain), 0);
-		instrument->adsr.release = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, adsr.release), 0);
-	}
-}
-
 static void _mks4agbReload(struct GBAAudioMixer* mixer) {
 	struct ARMCore* cpu = mixer->p->p->cpu;
 	struct ARMMemory* memory = &cpu->memory;
@@ -219,6 +306,7 @@ static void _mks4agbReload(struct GBAAudioMixer* mixer) {
 	for (i = 0; i < MKS4AGB_MAX_SOUND_CHANNELS; ++i) {
 		struct GBAMKS4AGBSoundChannel* ch = &mixer->context.chans[i];
 		struct GBAMKS4AGBTrack* track = &mixer->activeTracks[i];
+		track->waiting = false;
 		uint32_t base = mixer->contextAddress + offsetof(struct GBAMKS4AGBContext, chans[i]);
 
 		ch->status = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, status), 0);
@@ -238,7 +326,7 @@ static void _mks4agbReload(struct GBAAudioMixer* mixer) {
 		ch->d1 = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, d1), 0);
 		ch->d2 = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, d2), 0);
 		ch->gt = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, gt), 0);
-		ch->mk = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, mk), 0);
+		ch->midiKey = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, midiKey), 0);
 		ch->ve = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, ve), 0);
 		ch->pr = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, pr), 0);
 		ch->rp = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, rp), 0);
@@ -297,10 +385,6 @@ static void _mks4agbReload(struct GBAAudioMixer* mixer) {
 			track->track.patternStack[0] = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, patternStack[0]), 0);
 			track->track.patternStack[1] = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, patternStack[1]), 0);
 			track->track.patternStack[2] = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, patternStack[2]), 0);
-
-			if (!track->track.wait) {
-				_stepTrack(mixer, i);
-			}
 		} else {
 			memset(&track->track, 0, sizeof(track->track));
 		}
@@ -319,19 +403,39 @@ bool _mks4agbEngage(struct GBAAudioMixer* mixer, uint32_t address) {
 	return true;
 }
 
+void _mks4agbStep(struct GBAAudioMixer* mixer) {
+	if (!mixer->p->externalMixing) {
+		return;
+	}
+	mixer->frame += mixer->p->sampleInterval / (float) GBA_ARM7TDMI_FREQUENCY;
+	while (mixer->frame >= mixer->tempoI) {
+		int i;
+		for (i = 0; i < MKS4AGB_MAX_SOUND_CHANNELS; ++i) {
+			struct GBAMKS4AGBTrack* track = &mixer->activeTracks[i];
+			if (track->notePlaying > 0) {
+				--track->notePlaying;
+				if (!track->notePlaying) {
+					track->currentOffset = 0;
+					track->samplePlaying = 0;
+				}
+			}
+			if (track->notePlaying) {
+				_stepSample(mixer, track);
+			}
+			if (!track->track.wait && !track->waiting) {
+				_stepTrack(mixer, i);
+				track->waiting = true;
+			}
+		}
+		mixer->frame -= mixer->tempoI;
+	}
+}
+
 void _mks4agbVblank(struct GBAAudioMixer* mixer) {
 	if (!mixer->contextAddress) {
 		return;
 	}
-
 	mLOG(GBA_AUDIO, DEBUG, "Frame");
 	mixer->p->externalMixing = true;
 	_mks4agbReload(mixer);
-	mTimingDeschedule(&mixer->p->p->timing, &mixer->stepEvent);
-	mTimingSchedule(&mixer->p->p->timing, &mixer->stepEvent, 0x8928);
-}
-
-void _mks4agbStep(struct mTiming* timing, void* context, uint32_t cyclesLate) {
-	struct GBAAudioMixer* mixer = context;
-
 }

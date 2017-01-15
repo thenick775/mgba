@@ -26,7 +26,7 @@ const unsigned GBA_AUDIO_SAMPLES = 2048;
 const unsigned GBA_AUDIO_FIFO_SIZE = 8 * sizeof(int32_t);
 const int GBA_AUDIO_VOLUME_MAX = 0x100;
 
-static const int CLOCKS_PER_FRAME = 0x400;
+static const int CLOCKS_PER_FRAME = 0x800;
 
 static int _applyBias(struct GBAAudio* audio, int sample);
 static void _sample(struct mTiming* timing, void* user, uint32_t cyclesLate);
@@ -282,6 +282,9 @@ static void _sample(struct mTiming* timing, void* user, uint32_t cyclesLate) {
 	sampleLeft >>= psgShift;
 	sampleRight >>= psgShift;
 
+	if (audio->mixer) {
+		audio->mixer->step(audio->mixer);
+	}
 	if (!audio->externalMixing) {
 		if (!audio->forceDisableChA) {
 			if (audio->chALeft) {

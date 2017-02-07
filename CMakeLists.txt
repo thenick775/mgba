@@ -49,6 +49,7 @@ file(GLOB GBA_CHEATS_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gba/cheats/*.c)
 file(GLOB GBA_RR_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/gba/rr/*.c)
 file(GLOB CORE_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/core/*.c)
 file(GLOB CORE_TEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/core/test/*.c)
+file(GLOB NETPLAY_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/netplay/*.c)
 file(GLOB UTIL_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/util/*.[cSs])
 file(GLOB UTIL_TEST_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/util/test/*.c)
 file(GLOB GUI_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/util/gui/*.c ${CMAKE_CURRENT_SOURCE_DIR}/src/feature/gui/*.c)
@@ -647,6 +648,7 @@ list(APPEND TEST_SRC ${UTIL_TEST_SRC})
 
 set(SRC ${CORE_SRC} ${VFS_SRC})
 if(NOT MINIMAL_CORE)
+	list(APPEND SRC ${NETPLAY_SRC})
 	if(M_CORE_GBA)
 		list(APPEND SRC
 			${GBA_RR_SRC}

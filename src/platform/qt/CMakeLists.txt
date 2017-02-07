@@ -95,6 +95,7 @@ set(SOURCE_FILES
 	MemoryView.cpp
 	MessagePainter.cpp
 	MultiplayerController.cpp
+	NetplayController.cpp
 	ObjView.cpp
 	OverrideView.cpp
 	PaletteView.cpp

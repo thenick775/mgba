@@ -12,6 +12,7 @@
 
 #include "ConfigController.h"
 #include "MultiplayerController.h"
+#include "NetplayController.h"
 
 struct NoIntroDB;
 
@@ -61,6 +62,12 @@ public:
 	const NoIntroDB* gameDB() const { return m_db; }
 	bool reloadGameDB();
 
+public slots:
+	void startServer();
+	void stopServer();
+	void connectServer();
+	void disconnectServer();
+
 protected:
 	bool event(QEvent*);
 
@@ -83,6 +90,7 @@ private:
 	ConfigController m_configController;
 	QList<Window*> m_windows;
 	MultiplayerController m_multiplayer;
+	NetplayController m_netplay;
 
 	NoIntroDB* m_db;
 #ifdef USE_SQLITE3

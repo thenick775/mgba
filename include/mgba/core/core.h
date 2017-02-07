@@ -26,10 +26,10 @@ CXX_GUARD_START
 enum mPlatform {
 	PLATFORM_NONE = -1,
 #ifdef M_CORE_GBA
-	PLATFORM_GBA,
+	PLATFORM_GBA = 0,
 #endif
 #ifdef M_CORE_GB
-	PLATFORM_GB,
+	PLATFORM_GB = 1,
 #endif
 };
 

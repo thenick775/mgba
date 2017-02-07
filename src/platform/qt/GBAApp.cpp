@@ -18,6 +18,7 @@
 
 #include <mgba/core/version.h>
 #include <mgba/internal/gba/video.h>
+#include <mgba/internal/netplay/server.h>
 #include <mgba-util/socket.h>
 #include <mgba-util/vfs.h>
 
@@ -34,6 +35,7 @@ mLOG_DEFINE_CATEGORY(QT, "Qt");
 GBAApp::GBAApp(int& argc, char* argv[])
 	: QApplication(argc, argv)
 	, m_db(nullptr)
+	, m_netplay(&m_multiplayer)
 {
 	g_app = this;
 
@@ -240,6 +242,28 @@ bool GBAApp::reloadGameDB() {
 	return false;
 }
 #endif
+
+void GBAApp::startServer() {
+	Address address;
+	address.version = IPV4;
+	address.ipv4 = 0;
+	m_netplay.startServer({ address, 4267 });
+}
+
+void GBAApp::stopServer() {
+	m_netplay.stopServer();
+}
+
+void GBAApp::connectServer() {
+	Address address;
+	address.version = IPV4;
+	address.ipv4 = 0x7F000001;
+	m_netplay.connectToServer({ address, 4278 });
+}
+
+void GBAApp::disconnectServer() {
+	m_netplay.disconnectFromServer();
+}
 
 GBAApp::FileDialog::FileDialog(GBAApp* app, QWidget* parent, const QString& caption, const QString& filter)
 	: QFileDialog(parent, caption, app->m_configController.getOption("lastDirectory"), filter)

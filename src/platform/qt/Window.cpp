@@ -1037,13 +1037,6 @@ void Window::setupMenu(QMenuBar* menubar) {
 	addControlledAction(fileMenu, exportShark, "exportShark");
 #endif
 
-	fileMenu->addSeparator();
-	QAction* multiWindow = new QAction(tr("New multiplayer window"), fileMenu);
-	connect(multiWindow, &QAction::triggered, [this]() {
-		GBAApp::app()->newWindow();
-	});
-	addControlledAction(fileMenu, multiWindow, "multiWindow");
-
 #ifndef Q_OS_MAC
 	fileMenu->addSeparator();
 #endif
@@ -1188,6 +1181,40 @@ void Window::setupMenu(QMenuBar* menubar) {
 		});
 		addControlledAction(solarMenu, setSolar, QString("luminanceLevel.%1").arg(QString::number(i)));
 	}
+
+	emulationMenu->addSeparator();
+	QMenu* multiplayerMenu = emulationMenu->addMenu(tr("Multiplayer"));
+
+	QAction* multiWindow = new QAction(tr("New window"), multiplayerMenu);
+	connect(multiWindow, &QAction::triggered, [this]() {
+		GBAApp::app()->newWindow();
+	});
+	addControlledAction(multiplayerMenu, multiWindow, "multiWindow");
+
+	multiplayerMenu->addSeparator();
+	QAction* startServer = new QAction(tr("Start server"), multiplayerMenu);
+	connect(startServer, &QAction::triggered, [this]() {
+		GBAApp::app()->startServer();
+	});
+	addControlledAction(multiplayerMenu, startServer, "netplayServerStart");
+
+	QAction* stopServer = new QAction(tr("Stop server"), multiplayerMenu);
+	connect(stopServer, &QAction::triggered, [this]() {
+		GBAApp::app()->stopServer();
+	});
+	addControlledAction(multiplayerMenu, stopServer, "netplayServerStop");
+
+	QAction* connectServer = new QAction(tr("Connect to server"), multiplayerMenu);
+	connect(connectServer, &QAction::triggered, [this]() {
+		GBAApp::app()->connectServer();
+	});
+	addControlledAction(multiplayerMenu, connectServer, "netplayServerConnect");
+
+	QAction* disconnectServer = new QAction(tr("Disconnect from server"), multiplayerMenu);
+	connect(disconnectServer, &QAction::triggered, [this]() {
+		GBAApp::app()->disconnectServer();
+	});
+	addControlledAction(multiplayerMenu, disconnectServer, "netplayServerDisconnect");
 
 	QMenu* avMenu = menubar->addMenu(tr("Audio/&Video"));
 	m_shortcutController->addMenu(avMenu);

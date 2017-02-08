@@ -47,13 +47,18 @@ enum mNPReplyType {
 	mNP_REPLY_FULL = -2,
 	mNP_REPLY_PROTO_TOO_OLD = -3,
 	mNP_REPLY_MALFORMED = -4,
+	mNP_REPLY_DOES_NOT_EXIST = -5
+};
+
+enum mNPListType {
+	mNP_LIST_CORES,
+	mNP_LIST_ROOMS
 };
 
 struct mNPPacketHeader {
 	uint32_t packetType;
 	uint32_t size;
 	uint32_t flags;
-	uint32_t coreId;
 };
 
 struct mNPPacketAck {
@@ -67,28 +72,43 @@ struct mNPPacketConnect {
 
 struct mNPPacketJoin {
 	uint32_t roomId;
+	uint32_t coreId;
 };
 
 struct mNPPacketLeave {
 	uint32_t roomId;
+	uint32_t coreId;
 };
 
 struct mNPPacketList {
+	uint32_t type;
+	uint32_t parent;
+};
+
+struct mNPPacketListCores {
 	uint32_t nCores;
 	struct mNPCoreInfo cores[];
 };
 
+struct mNPPacketListRooms {
+	uint32_t nRooms;
+	struct mNPRoomInfo rooms[];
+};
+
 struct mNPPacketData {
 	uint32_t type;
+	uint32_t coreId;
 	uint8_t data[];
 };
 
 struct mNPPacketSmallData {
 	uint32_t type;
+	uint32_t coreId;
 	uint32_t datum;
 };
 
 struct mNPPacketRequest {
+	uint32_t coreId;
 	uint32_t type;
 };
 

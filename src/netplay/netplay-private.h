@@ -15,6 +15,7 @@
 #include <mgba-util/threading.h>
 
 #define PKT_CHUNK_SIZE 0x10000
+#define PKT_MAX_SIZE 0x4000000
 #define COMM_FIFO_SIZE 0x40000
 
 struct mNPContext {
@@ -32,7 +33,7 @@ struct mNPContext {
 	struct Table coresWaiting;
 };
 
-void mNPContextRecv(struct mNPContext*, const struct mNPPacketHeader* header, const void* body);
+bool mNPContextRecv(struct mNPContext*, const struct mNPPacketHeader* header, const void* body);
 void mNPContextSend(struct mNPContext*, const struct mNPPacketHeader* header, const void* body);
 
 #endif

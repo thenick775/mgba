@@ -15,6 +15,8 @@ mLOG_DEFINE_CATEGORY(NP_SERVER, "Netplay Server")
 static THREAD_ENTRY _listenThread(void* context);
 static THREAD_ENTRY _clientThread(void* context);
 
+#define CLIENT_POLL_TIMEOUT 500
+
 struct mNPServer {
 	Socket serverSocket;
 
@@ -52,12 +54,18 @@ struct mNPClient {
 struct mNPServer* mNPServerStart(const struct mNPServerOptions* opts) {
 	Socket serverSocket = SocketOpenTCP(opts->port, &opts->address);
 	if (SOCKET_FAILED(serverSocket)) {
+		mLOG(NP_SERVER, ERROR, "Failed to start server on port %u", opts->port);
 		return NULL;
 	}
 	if (SOCKET_FAILED(SocketListen(serverSocket, 0))) {
+		mLOG(NP_SERVER, ERROR, "Failed to listen on port %u", opts->port);
 		return NULL;
 	}
 	struct mNPServer* serv = malloc(sizeof(*serv));
+	if (!serv) {
+		mLOG(NP_SERVER, ERROR, "Out of memory");
+		return NULL;
+	}
 	serv->serverSocket = serverSocket;
 	serv->clientCounter = 1;
 	serv->capacity = 100;
@@ -123,8 +131,7 @@ THREAD_ENTRY _listenThread(void* context) {
 			struct mNPPacketHeader header = {
 				.packetType = mNP_PKT_ACK,
 				.size = sizeof(struct mNPPacketAck),
-				.flags = 0,
-				.coreId = 0
+				.flags = 0
 			};
 			struct mNPPacketAck ack = {
 				.reply = mNP_REPLY_FULL
@@ -162,41 +169,65 @@ THREAD_ENTRY _listenThread(void* context) {
 	return 0;
 }
 
-static int _clientRecv(struct mNPClient* client) {
+
+static bool _clientWelcome(struct mNPClient* client) {
 	Socket reads[1] = { client->sock };
 	Socket errors[1] = { client->sock };
+	SocketPoll(1, reads, NULL, errors, CLIENT_POLL_TIMEOUT);
+	if (!SOCKET_FAILED(*errors)) {
+		mLOG(NP_SERVER, WARN, "Socket error on client %" PRIi32, client->clientId);
+		return false;
+	}
+	if (SOCKET_FAILED(*reads)) {
+		return true;
+	}
+	struct mNPPacketHeader header;
+	ssize_t len = SocketRecv(client->sock, &header, sizeof(header));
+	if (len < 0 && SocketWouldBlock()) {
+		return true;
+	}
+	if (len != sizeof(header)) {
+		mLOG(NP_SERVER, WARN, "Malformed header on client %" PRIi32, client->clientId);
+		return false;
+	}
+	if (header.packetType != mNP_PKT_CONNECT || header.size != sizeof(struct mNPPacketConnect)) {
+		mLOG(NP_SERVER, WARN, "Received invalid Connect packet on client %" PRIi32, client->clientId);
+		return false;
+	}
+
+	reads[0] = client->sock;
+	errors[0] = client->sock;
+	SocketPoll(1, reads, NULL, errors, CLIENT_POLL_TIMEOUT);
+	if (!SOCKET_FAILED(*errors)) {
+		mLOG(NP_SERVER, WARN, "Socket error on client %" PRIi32, client->clientId);
+		return false;
+	}
+	if (SOCKET_FAILED(*reads)) {
+		mLOG(NP_SERVER, WARN, "Timeout reading Connect packet on client %" PRIi32, client->clientId);
+		return false;
+	}
+	len = SocketRecv(client->sock, &client->clientInfo, sizeof(client->clientInfo));
+	if (len < 0) {
+		mLOG(NP_SERVER, WARN, "Failed to read Connect packet on client %" PRIi32, client->clientId);
+		return false;
+	}
+	if (len != sizeof(client->clientInfo)) {
+		mLOG(NP_SERVER, WARN, "Malformed Connect packet on client %" PRIi32, client->clientId);
+		return false;
+	}
+	return true;
+}
+
+static int _clientRecv(struct mNPClient* client) {
 	SocketSetBlocking(client->sock, false);
 	if (!client->clientInfo.protocolVersion) {
-		SocketPoll(1, reads, NULL, errors, 250);
-		if (!SOCKET_FAILED(*errors)) {
-			return 0;
-		}
-		if (SOCKET_FAILED(*reads)) {
-			return 0;
-		}
-		struct mNPPacketHeader header;
-		ssize_t len = SocketRecv(client->sock, &header, sizeof(header));
-		if (len < 0 && !SocketWouldBlock()) {
-			return 0;
-		}
-		if (len != sizeof(header)) {
-			return 0;
-		}
-		if (header.packetType != mNP_PKT_CONNECT || header.size != sizeof(struct mNPPacketConnect)) {
-			return 0;
-		}
-		
-		len = SocketRecv(client->sock, &client->clientInfo, sizeof(client->clientInfo));
-		if (len < 0 && !SocketWouldBlock()) {
-			return 0;
-		}
-		if (len != sizeof(client->clientInfo)) {
-			return 0;
-		}
-		return 1;
+		return _clientWelcome(client) ? 1 : -1;
 	}
+	Socket reads[1] = { client->sock };
+	Socket errors[1] = { client->sock };
 	SocketPoll(1, reads, NULL, errors, 4);
 	if (!SOCKET_FAILED(*errors)) {
+		mLOG(NP_SERVER, WARN, "Socket error on client %" PRIi32, client->clientId);
 		return 0;
 	}
 	if (SOCKET_FAILED(*reads)) {
@@ -204,20 +235,57 @@ static int _clientRecv(struct mNPClient* client) {
 	}
 	struct mNPPacketHeader header;
 	ssize_t len = SocketRecv(client->sock, &header, sizeof(header));
-	if (len < 0 && !SocketWouldBlock()) {
+	if ((len < 0 && !SocketWouldBlock()) || len != sizeof(header)) {
+		mLOG(NP_SERVER, WARN, "Malformed header on client %" PRIi32, client->clientId);
 		return 0;
 	}
-	if (len != sizeof(header)) {
-		return 0;
+	void* data = NULL;
+	if (header.size && header.size <= PKT_CHUNK_SIZE) {
+		data = malloc(header.size);
+		if (!data) {
+			return -1;
+		}
+		uint8_t* ptr = data;
+		size_t size = header.size;
+		while (size) {
+			reads[0] = client->sock;
+			errors[0] = client->sock;
+			SocketPoll(1, reads, NULL, errors, CLIENT_POLL_TIMEOUT);
+			if (!SOCKET_FAILED(*errors)) {
+				return -1;
+			}
+			if (!SOCKET_FAILED(*reads)) {
+				free(data);
+				break;
+			}
+			ssize_t len = SocketRecv(client->sock, ptr, size);
+			if (len < 0) {
+				break;
+			}
+			ptr += len;
+			size -= len;
+		};
+		if (size) {
+			free(data);
+			return 0;
+		}
 	}
+	int result = 1;
 	switch (header.packetType) {
 	case mNP_PKT_SHUTDOWN:
-		return -1;
+		result = -1;
+		break;
 	default:
 		mLOG(NP_SERVER, DEBUG, "Unknown packet type %" PRIi32, header.packetType);
-		// TODO: skip data
-		return 0;
+		result = 0;
+		break;
 	}
+	if (data) {
+		free(data);
+	} else if (header.size) {
+		// TODO: skip data
+	}
+	return result;
 }
 
 static bool _clientSend(struct mNPClient* client) {
@@ -241,8 +309,7 @@ static THREAD_ENTRY _clientThread(void* context) {
 			struct mNPPacketHeader header = {
 				.packetType = mNP_PKT_ACK,
 				.size = sizeof(struct mNPPacketAck),
-				.flags = 0,
-				.coreId = 0
+				.flags = 0
 			};
 			struct mNPPacketAck ack = {
 				.reply = mNP_REPLY_MALFORMED
@@ -264,8 +331,7 @@ static THREAD_ENTRY _clientThread(void* context) {
 	struct mNPPacketHeader header = {
 		.packetType = mNP_PKT_SHUTDOWN,
 		.size = 0,
-		.flags = 0,
-		.coreId = 0
+		.flags = 0
 	};
 	SocketSend(client->sock, &header, sizeof(header));
 	SocketClose(client->sock);

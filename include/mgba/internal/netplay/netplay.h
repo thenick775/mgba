@@ -21,9 +21,12 @@ mLOG_DECLARE_CATEGORY(NP);
 struct mNPContext;
 
 struct mNPCallbacks {
-	void (*clientConnected)(struct mNPContext*, void* user);
-	void (*clientDisconnected)(struct mNPContext*, void* user);
-	void (*coreAttached)(struct mNPContext*, uint32_t coreId, void* user);
+	void (*serverShutdown)(struct mNPContext*, void* user);
+};
+
+enum mNPCoreFlags {
+	mNP_CORE_ALLOW_OBSERVE = 1,
+	mNP_CORE_ALLOW_CONTROL = 2,
 };
 
 struct mNPCoreInfo {
@@ -32,9 +35,21 @@ struct mNPCoreInfo {
 	char gameCode[8];
 	uint32_t crc32;
 	uint32_t coreId;
+	uint32_t flags;
+};
+
+enum mNPRoomFlags {
+	mNP_ROOM_REQUIRE_VERSION = 1,
+};
+
+struct mNPRoomInfo {
+	uint8_t requiredCommitHash[20];
+	uint32_t nCores;
+	uint32_t flags;
 };
 
 struct mNPContext* mNPContextCreate(void);
+void mNPContextAttachCallbacks(struct mNPContext*, struct mNPCallbacks*, void* user);
 void mNPContextDestroy(struct mNPContext*);
 
 struct mCoreThread;

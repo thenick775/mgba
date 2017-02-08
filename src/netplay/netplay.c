@@ -45,10 +45,18 @@ struct mNPCore {
 
 struct mNPContext* mNPContextCreate(void) {
 	struct mNPContext* context = malloc(sizeof(*context));
+	if (!context) {
+		return NULL;
+	}
 	memset(context, 0, sizeof(*context));
 	TableInit(&context->cores, 8, free); // TODO: Properly free
 	TableInit(&context->coresWaiting, 8, NULL);
 	return context;
+}
+
+void mNPContextAttachCallbacks(struct mNPContext* context, struct mNPCallbacks* callbacks, void* user) {
+	context->callbacks = *callbacks;
+	context->userContext = user;
 }
 
 void mNPContextDestroy(struct mNPContext* context) {
@@ -59,6 +67,9 @@ void mNPContextDestroy(struct mNPContext* context) {
 
 void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread, uint32_t coreId, bool hasControl) {
 	struct mNPCore* core = malloc(sizeof(*core));
+	if (!core) {
+		return;
+	}
 	core->p = context;
 	core->thread = thread;
 	MutexInit(&core->mutex);
@@ -101,11 +112,11 @@ void mNPContextPushInput(struct mNPContext* context, uint32_t coreId, uint32_t i
 		struct mNPPacketHeader header = {
 			.packetType = mNP_PKT_DATA,
 			.size = sizeof(struct mNPPacketSmallData),
-			.flags = 0,
-			.coreId = coreId
+			.flags = 0
 		};
 		struct mNPPacketSmallData data = {
 			.type = mNP_DATA_KEY_INPUT,
+			.coreId = coreId,
 			.datum = input
 		};
 		mNPContextSend(context, &header, &data);
@@ -122,8 +133,7 @@ bool mNPContextConnect(struct mNPContext* context, const struct mNPServerOptions
 	struct mNPPacketHeader header = {
 		.packetType = mNP_PKT_CONNECT,
 		.size = sizeof(struct mNPPacketConnect),
-		.flags = 0,
-		.coreId = 0
+		.flags = 0
 	};
 	struct mNPPacketConnect data = { .protocolVersion = mNP_PROTOCOL_VERSION };
 	const char* ptr = gitCommit;
@@ -150,8 +160,7 @@ void mNPContextDisconnect(struct mNPContext* context) {
 	struct mNPPacketHeader header = {
 		.packetType = mNP_PKT_SHUTDOWN,
 		.size = 0,
-		.flags = 0,
-		.coreId = 0
+		.flags = 0
 	};
 	mNPContextSend(context, &header, NULL);
 	ThreadJoin(context->commThread);
@@ -233,9 +242,12 @@ static bool _commRecv(struct mNPContext* context) {
 		return true;
 	}
 	void* data = NULL;
-	if (header.size && header.size < 0x4000000) {
+	if (header.size && header.size < PKT_MAX_SIZE) {
 		SocketSetBlocking(context->server, true);
 		data = malloc(header.size);
+		if (!data) {
+			return false;
+		}
 		uint8_t* ptr = data;
 		size_t size = header.size;
 		while (size) {
@@ -245,6 +257,7 @@ static bool _commRecv(struct mNPContext* context) {
 			}
 			ssize_t received = SocketRecv(context->server, ptr, chunkSize);
 			if (received < 0 || (size_t) received != chunkSize) {
+				free(data);
 				return false;
 			}
 			size -= chunkSize;
@@ -255,16 +268,20 @@ static bool _commRecv(struct mNPContext* context) {
 			data = NULL;
 		}
 	}
-	mNPContextRecv(context, &header, data);
+	bool result = mNPContextRecv(context, &header, data);
 	if (data) {
 		free(data);
 	}
-	return true;
+	return result;
 }
 
 static bool _commSend(struct mNPContext* context) {
 	struct mNPPacketHeader header;
-	uint8_t chunkedData[PKT_CHUNK_SIZE];
+	uint8_t* chunkedData = malloc(PKT_CHUNK_SIZE);
+	if (!chunkedData) {
+		mLOG(NP, ERROR, "Out of memory");
+		return false;
+	}
 	MutexLock(&context->commMutex);
 	while (RingFIFORead(&context->commFifo, &header, sizeof(header))) {
 		SocketSetBlocking(context->server, true);
@@ -287,16 +304,19 @@ static bool _commSend(struct mNPContext* context) {
 			SocketSend(context->server, chunkedData, chunkSize);
 		}
 		if (header.packetType == mNP_PKT_SHUTDOWN) {
+			free(chunkedData);
 			return false;
 		}
 		MutexLock(&context->commMutex);
 	}
 	MutexUnlock(&context->commMutex);
+	free(chunkedData);
 	return true;
 }
 
 static THREAD_ENTRY _commThread(void* user) {
 	ThreadSetName("Netplay Client Thread");
+	mLOG(NP, INFO, "Client thread started");
 	struct mNPContext* context = user;
 	bool running = true;
 	while (running) {
@@ -308,6 +328,7 @@ static THREAD_ENTRY _commThread(void* user) {
 		// Send
 		running = _commSend(user);
 	}
+	mLOG(NP, INFO, "Client thread exited");
 	SocketClose(context->server);
 	ConditionDeinit(&context->commFifoFull);
 	ConditionDeinit(&context->commFifoEmpty);
@@ -343,6 +364,16 @@ void mNPContextSend(struct mNPContext* context, const struct mNPPacketHeader* he
 	}
 }
 
-void mNPContextRecv(struct mNPContext* context, const struct mNPPacketHeader* header, const void* body) {
+bool mNPContextRecv(struct mNPContext* context, const struct mNPPacketHeader* header, const void* body) {
+	switch (header->packetType) {
+	case mNP_PKT_SHUTDOWN:
+		mLOG(NP, INFO, "Server shut down");
+		if (context->callbacks.serverShutdown) {
+			context->callbacks.serverShutdown(context, context->userContext);
+		}
+		return false;
+	default:
+		return true;
+	}
 	// TODO
 }

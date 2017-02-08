@@ -17,10 +17,8 @@ mLOG_DEFINE_CATEGORY(NP, "Netplay")
 
 const uint32_t mNP_PROTOCOL_VERSION = 1;
 
-static void _coreStart(struct mCoreThread* threadContext);
-static void _coreReset(struct mCoreThread* threadContext);
-static void _coreClean(struct mCoreThread* threadContext);
-static void _coreFrame(struct mCoreThread* threadContext);
+static void _coreReset(void* context);
+static void _coreFrame(void* context);
 
 struct mNPCore;
 
@@ -29,17 +27,29 @@ static THREAD_ENTRY _commThread(void* context);
 DECLARE_VECTOR(mNPEventQueue, struct mNPEvent);
 DEFINE_VECTOR(mNPEventQueue, struct mNPEvent);
 
+struct mNPContext {
+	struct mNPCallbacks callbacks;
+	void* userContext;
+	Socket server;
+
+	Thread commThread;
+	Mutex commMutex;
+	struct RingFIFO commFifo;
+	Condition commFifoFull;
+	Condition commFifoEmpty;
+
+	struct Table cores;
+	struct Table pending;
+};
+
 struct mNPCore {
 	struct mNPContext* p;
 	struct mCoreThread* thread;
-	ThreadCallback startCallback;
-	ThreadCallback resetCallback;
-	ThreadCallback cleanCallback;
-	ThreadCallback frameCallback;
 	Mutex mutex;
-	void* threadData;
 	uint32_t coreId;
+	uint32_t roomId;
 	int32_t frameOffset;
+	uint32_t flags;
 	struct mNPEventQueue queue;
 };
 
@@ -50,6 +60,7 @@ struct mNPContext* mNPContextCreate(void) {
 	}
 	memset(context, 0, sizeof(*context));
 	TableInit(&context->cores, 8, free); // TODO: Properly free
+	TableInit(&context->pending, 4, free);
 	return context;
 }
 
@@ -82,6 +93,9 @@ void mNPContextRegisterCore(struct mNPContext* context, struct mCoreThread* thre
 	thread->core->getGameCode(thread->core, data.info.gameCode);
 	thread->core->checksum(thread->core, &data.info.crc32, CHECKSUM_CRC32);
 	mCoreThreadContinue(thread);
+	struct mNPPacketRegisterCore* pending = malloc(sizeof(*pending));
+	memcpy(pending, &data, sizeof(data));
+	TableInsert(&context->pending, nonce, pending);
 	mNPContextSend(context, &header, &data);
 }
 
@@ -98,33 +112,42 @@ void mNPContextJoinRoom(struct mNPContext* context, uint32_t roomId, uint32_t co
 	mNPContextSend(context, &header, &data);
 }
 
-void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread, uint32_t coreId) {
+void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread, uint32_t nonce) {
+	struct mNPCoreInfo* info = TableLookup(&context->pending, nonce);
+	if (!info) {
+		return;
+	}
+
 	struct mNPCore* core = malloc(sizeof(*core));
 	if (!core) {
 		return;
 	}
+
 	core->p = context;
 	core->thread = thread;
 	MutexInit(&core->mutex);
 	mCoreThreadInterrupt(thread);
-	core->startCallback = thread->startCallback;
-	core->resetCallback = thread->resetCallback;
-	core->cleanCallback = thread->cleanCallback;
-	core->frameCallback = thread->frameCallback;
-	core->threadData = thread->userData;
-	core->frameOffset = 0;
-	thread->startCallback = _coreStart;
-	thread->resetCallback = _coreReset;
-	thread->cleanCallback = _coreClean;
-	thread->frameCallback = _coreFrame;
-	thread->userData = core;
+	core->flags = info->flags;
+	core->roomId = info->roomId;
+	core->coreId = info->coreId;
+	core->frameOffset = info->frameOffset;
+	struct mCoreCallbacks callbacks = {
+		.context = core,
+		.videoFrameStarted = _coreFrame,
+		.coreReset = _coreReset
+	};
+	thread->core->addCoreCallbacks(thread->core, &callbacks);
 	mCoreThreadContinue(thread);
-	core->coreId = coreId;
-	TableInsert(&context->cores, coreId, core);
+	TableInsert(&context->cores, info->coreId, core);
+	TableRemove(&context->pending, nonce);
 }
 
 void mNPContextPushInput(struct mNPContext* context, uint32_t coreId, uint32_t input) {
 	struct mNPCore* core = TableLookup(&context->cores, coreId);
+	if (!(core->flags & mNP_CORE_ALLOW_CONTROL) || !core->roomId) {
+		return;
+	}
+
 	mLOG(NP, DEBUG, "Recieved input for coreId %" PRIi32 ": %" PRIx32, coreId, input);
 
 	struct mNPPacketHeader header = {
@@ -207,6 +230,9 @@ static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
 static void _pollEvent(struct mNPCore* core) {
 	// TODO: Implement rollback
 	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
+	if (!core->roomId) {
+		return;
+	}
 	bool needsToWait = true;
 	MutexLock(&core->mutex);
 	while (needsToWait && mNPEventQueueSize(&core->queue)) {
@@ -228,35 +254,13 @@ static void _pollEvent(struct mNPCore* core) {
 	}
 }
 
-static void _coreStart(struct mCoreThread* threadContext) {
-	struct mNPCore* core = threadContext->userData;
-	threadContext->userData = core->threadData;
-	core->startCallback(threadContext);
-	threadContext->userData = core;
+static void _coreReset(void* context) {
+	struct mNPCore* core = context;
 	_pollEvent(core);
 }
 
-static void _coreReset(struct mCoreThread* threadContext) {
-	struct mNPCore* core = threadContext->userData;
-	threadContext->userData = core->threadData;
-	core->resetCallback(threadContext);
-	threadContext->userData = core;
-	_pollEvent(core);
-}
-
-static void _coreClean(struct mCoreThread* threadContext) {
-	struct mNPCore* core = threadContext->userData;
-	threadContext->userData = core->threadData;
-	core->cleanCallback(threadContext);
-	threadContext->userData = core;
-	// TODO: Send PKT_LEAVE
-}
-
-static void _coreFrame(struct mCoreThread* threadContext) {
-	struct mNPCore* core = threadContext->userData;
-	threadContext->userData = core->threadData;
-	core->frameCallback(threadContext);
-	threadContext->userData = core;
+static void _coreFrame(void* context) {
+	struct mNPCore* core = context;
 	_pollEvent(core);
 }
 
@@ -426,6 +430,10 @@ static void _parseJoin(struct mNPContext* context, const struct mNPPacketJoin* j
 	if (sizeof(*join) != size) {
 		return;
 	}
+	struct mNPCore* core = TableLookup(&context->cores, join->coreId);
+	if (core) {
+		core->roomId = join->roomId;
+	}
 	context->callbacks.roomJoined(context, join->roomId, join->coreId, context->userContext);
 }
 
@@ -433,6 +441,9 @@ static void _parseRegisterCore(struct mNPContext* context, const struct mNPPacke
 	if (sizeof(*reg) != size) {
 		return;
 	}
+	struct mNPPacketRegisterCore* pending = TableLookup(&context->pending, reg->nonce);
+	pending->info.coreId = reg->info.coreId;
+	pending->info.flags |= mNP_CORE_ALLOW_CONTROL | mNP_CORE_ALLOW_OBSERVE;
 	context->callbacks.coreRegistered(context, &reg->info, reg->nonce, context->userContext);
 }
 

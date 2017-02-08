@@ -32,7 +32,7 @@ public:
 public slots:
 	void stopServer();
 	void disconnectFromServer();
-	void addGameController(GameController*, quint32 id = 0);
+	void addGameController(GameController*);
 
 private slots:
 	void addGameController(quint32 nonce, quint32 id);

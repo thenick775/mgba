@@ -50,6 +50,7 @@ enum mNPRoomFlags {
 struct mNPRoomInfo {
 	uint8_t requiredCommitHash[20];
 	uint32_t nCores;
+	uint32_t syncDuration;
 	uint32_t flags;
 };
 
@@ -75,7 +76,7 @@ void mNPContextDestroy(struct mNPContext*);
 struct mCoreThread;
 void mNPContextRegisterCore(struct mNPContext*, struct mCoreThread*, uint32_t nonce);
 void mNPContextJoinRoom(struct mNPContext*, uint32_t roomId, uint32_t coreId);
-void mNPContextAttachCore(struct mNPContext*, struct mCoreThread*, uint32_t coreId);
+void mNPContextAttachCore(struct mNPContext*, struct mCoreThread*, uint32_t nonce);
 void mNPContextPushInput(struct mNPContext*, uint32_t coreId, uint32_t input);
 
 struct mNPServer;

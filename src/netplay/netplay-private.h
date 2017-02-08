@@ -18,20 +18,6 @@
 #define PKT_MAX_SIZE 0x4000000
 #define COMM_FIFO_SIZE 0x40000
 
-struct mNPContext {
-	struct mNPCallbacks callbacks;
-	void* userContext;
-	Socket server;
-
-	Thread commThread;
-	Mutex commMutex;
-	struct RingFIFO commFifo;
-	Condition commFifoFull;
-	Condition commFifoEmpty;
-
-	struct Table cores;
-};
-
 bool mNPContextRecv(struct mNPContext*, const struct mNPPacketHeader* header, const void* body);
 void mNPContextSend(struct mNPContext*, const struct mNPPacketHeader* header, const void* body);
 

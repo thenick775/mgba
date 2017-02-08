@@ -75,6 +75,7 @@ struct mNPPacketConnect {
 struct mNPPacketJoin {
 	uint32_t roomId;
 	uint32_t coreId;
+	uint32_t syncDuration;
 };
 
 struct mNPPacketLeave {

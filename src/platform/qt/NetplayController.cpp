@@ -78,20 +78,16 @@ void NetplayController::disconnectFromServer() {
 	m_np = nullptr;
 }
 
-void NetplayController::addGameController(GameController* controller, uint32_t id) {
+void NetplayController::addGameController(GameController* controller) {
 	if (!m_np || !controller->isLoaded()) {
 		return;
 	}
-	if (!id) {
-		uint32_t nonce = qrand();
-		while (m_pendingCores.contains(nonce)) {
-			nonce = qrand();
-		}
-		m_pendingCores[nonce] = controller;
-		mNPContextRegisterCore(m_np, controller->thread(), nonce);
-		return;
+	uint32_t nonce = qrand();
+	while (m_pendingCores.contains(nonce)) {
+		nonce = qrand();
 	}
-	mNPContextAttachCore(m_np, controller->thread(), id);
+	m_pendingCores[nonce] = controller;
+	mNPContextRegisterCore(m_np, controller->thread(), nonce);
 }
 
 void NetplayController::addGameController(uint32_t nonce, uint32_t id) {
@@ -99,7 +95,10 @@ void NetplayController::addGameController(uint32_t nonce, uint32_t id) {
 		return;
 	}
 	GameController* controller = m_pendingCores.take(nonce);
-	addGameController(controller, id);
+	mNPContextAttachCore(m_np, controller->thread(), nonce);
+	connect(controller, &GameController::keysUpdated, [this, id](quint32 keys) {
+		mNPContextPushInput(m_np, id, keys);
+	});
 }
 
 void NetplayController::cbServerShutdown(mNPContext* context, void* user) {

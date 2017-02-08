@@ -105,6 +105,7 @@ signals:
 	void stateLoaded(mCoreThread*);
 	void rewound(mCoreThread*);
 	void unimplementedBiosCall(int);
+	void keysUpdated(quint32);
 
 	void luminanceValueChanged(int);
 

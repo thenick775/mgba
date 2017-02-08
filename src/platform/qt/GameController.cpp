@@ -1196,12 +1196,13 @@ void GameController::setFakeEpoch(const QDateTime& time) {
 }
 
 void GameController::updateKeys() {
-	int activeKeys = m_activeKeys;
+	quint32 activeKeys = m_activeKeys;
 	activeKeys |= m_activeButtons;
 	activeKeys &= ~m_inactiveKeys;
 	if (isLoaded()) {
 		m_threadContext.core->setKeys(m_threadContext.core, activeKeys);
 	}
+	emit keysUpdated(activeKeys);
 }
 
 void GameController::redoSamples(int samples) {

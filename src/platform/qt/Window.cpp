@@ -740,6 +740,7 @@ void Window::gameStarted(mCoreThread* context, const QString& fname) {
 		resizeFrame(QSize(width, height) * m_savedScale);
 	}
 	attachWidget(m_display);
+	GBAApp::app()->attachToNetplay(m_controller);
 
 #ifndef Q_OS_MAC
 	if (isFullScreen()) {
@@ -1195,6 +1196,7 @@ void Window::setupMenu(QMenuBar* menubar) {
 	QAction* startServer = new QAction(tr("Start server"), multiplayerMenu);
 	connect(startServer, &QAction::triggered, [this]() {
 		GBAApp::app()->startServer();
+		GBAApp::app()->attachToNetplay(m_controller);
 	});
 	addControlledAction(multiplayerMenu, startServer, "netplayServerStart");
 
@@ -1207,6 +1209,7 @@ void Window::setupMenu(QMenuBar* menubar) {
 	QAction* connectServer = new QAction(tr("Connect to server"), multiplayerMenu);
 	connect(connectServer, &QAction::triggered, [this]() {
 		GBAApp::app()->connectServer();
+		GBAApp::app()->attachToNetplay(m_controller);
 	});
 	addControlledAction(multiplayerMenu, connectServer, "netplayServerConnect");
 

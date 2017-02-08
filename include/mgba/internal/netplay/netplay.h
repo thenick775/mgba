@@ -19,14 +19,17 @@ extern const uint32_t mNP_PROTOCOL_VERSION;
 mLOG_DECLARE_CATEGORY(NP);
 
 struct mNPContext;
+struct mNPCoreInfo;
 
 struct mNPCallbacks {
 	void (*serverShutdown)(struct mNPContext*, void* user);
+	void (*coreRegistered)(struct mNPContext*, const struct mNPCoreInfo*, uint32_t nonce, void* user);
+	void (*roomJoined)(struct mNPContext*, uint32_t roomId, uint32_t coreId, void* user);
 };
 
 enum mNPCoreFlags {
 	mNP_CORE_ALLOW_OBSERVE = 1,
-	mNP_CORE_ALLOW_CONTROL = 2,
+	mNP_CORE_ALLOW_CONTROL = 2
 };
 
 struct mNPCoreInfo {
@@ -35,6 +38,8 @@ struct mNPCoreInfo {
 	char gameCode[8];
 	uint32_t crc32;
 	uint32_t coreId;
+	uint32_t roomId;
+	int32_t frameOffset;
 	uint32_t flags;
 };
 
@@ -48,13 +53,29 @@ struct mNPRoomInfo {
 	uint32_t flags;
 };
 
+enum mNPEventType {
+	mNP_EVENT_NONE = 0,
+	mNP_EVENT_KEY_INPUT,
+	mNP_EVENT_FRAME,
+	mNP_EVENT_RESET,
+	mNP_EVENT_MAX
+};
+
+struct mNPEvent {
+	uint32_t eventType;
+	uint32_t coreId;
+	uint32_t eventDatum;
+	uint32_t frameId;
+};
+
 struct mNPContext* mNPContextCreate(void);
-void mNPContextAttachCallbacks(struct mNPContext*, struct mNPCallbacks*, void* user);
+void mNPContextAttachCallbacks(struct mNPContext*, const struct mNPCallbacks*, void* user);
 void mNPContextDestroy(struct mNPContext*);
 
 struct mCoreThread;
-void mNPContextWillAttachCore(struct mNPContext*, struct mCoreThread*, uint32_t roomId);
-void mNPContextAttachCore(struct mNPContext*, struct mCoreThread*, uint32_t coreId, bool hasControl);
+void mNPContextRegisterCore(struct mNPContext*, struct mCoreThread*, uint32_t nonce);
+void mNPContextJoinRoom(struct mNPContext*, uint32_t roomId, uint32_t coreId);
+void mNPContextAttachCore(struct mNPContext*, struct mCoreThread*, uint32_t coreId);
 void mNPContextPushInput(struct mNPContext*, uint32_t coreId, uint32_t input);
 
 struct mNPServer;

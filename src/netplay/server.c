@@ -51,6 +51,9 @@ struct mNPClient {
 	bool running;
 };
 
+struct mNPRoom {
+};
+
 struct mNPServer* mNPServerStart(const struct mNPServerOptions* opts) {
 	Socket serverSocket = SocketOpenTCP(opts->port, &opts->address);
 	if (SOCKET_FAILED(serverSocket)) {
@@ -97,6 +100,16 @@ void mNPServerStop(struct mNPServer* serv) {
 	free(serv);
 }
 
+static void _registerCore(struct mNPServer* serv, struct mNPCoreInfo* info) {
+	MutexLock(&serv->mutex);
+	info->coreId = serv->coreCounter;
+	TableInsert(&serv->cores, info->coreId, info);
+	while (TableLookup(&serv->cores, serv->coreCounter)) {
+		++serv->coreCounter;
+	}
+	MutexUnlock(&serv->mutex);
+}
+
 static void _shutdownClients(uint32_t id, void* value, void* user) {
 	UNUSED(id);
 	UNUSED(user);
@@ -125,6 +138,7 @@ THREAD_ENTRY _listenThread(void* context) {
 		if (SOCKET_FAILED(newClient)) {
 			continue;
 		}
+		SocketSetTCPPush(newClient, 1);
 		MutexLock(&serv->mutex);
 		if (TableSize(&serv->clients) >= serv->capacity) {
 			MutexUnlock(&serv->mutex);
@@ -147,7 +161,7 @@ THREAD_ENTRY _listenThread(void* context) {
 		struct mNPClient* client = malloc(sizeof(*client));
 		client->p = serv;
 		client->sock = newClient;
-		TableInit(&client->cores, 8, free);
+		TableInit(&client->cores, 8, NULL);
 		MutexInit(&client->mutex);
 		RingFIFOInit(&client->fifo, COMM_FIFO_SIZE);
 		ConditionInit(&client->fifoFull);
@@ -169,6 +183,35 @@ THREAD_ENTRY _listenThread(void* context) {
 	return 0;
 }
 
+static bool _processJoin(struct mNPClient* client, const struct mNPPacketJoin* join, size_t size) {
+	if (sizeof(*join) != size || !join) {
+		return false;
+	}
+	// TODO
+	return true;
+}
+
+static bool _processRegisterCore(struct mNPClient* client, const struct mNPPacketRegisterCore* reg, size_t size) {
+	if (sizeof(*reg) != size || !reg) {
+		return false;
+	}
+	struct mNPCoreInfo* info = malloc(sizeof(*info));
+	memcpy(info, &reg->info, sizeof(*info));
+	_registerCore(client->p, info);
+	TableInsert(&client->cores, info->coreId, info);
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_REGISTER_CORE,
+		.size = sizeof(struct mNPPacketRegisterCore),
+		.flags = 0
+	};
+	struct mNPPacketRegisterCore data = {
+		.info = *info,
+		.nonce = reg->nonce
+	};
+	SocketSend(client->sock, &header, sizeof(header));
+	SocketSend(client->sock, &data, sizeof(data));
+	return true;
+}
 
 static bool _clientWelcome(struct mNPClient* client) {
 	Socket reads[1] = { client->sock };
@@ -252,10 +295,10 @@ static int _clientRecv(struct mNPClient* client) {
 			errors[0] = client->sock;
 			SocketPoll(1, reads, NULL, errors, CLIENT_POLL_TIMEOUT);
 			if (!SOCKET_FAILED(*errors)) {
+				free(data);
 				return -1;
 			}
-			if (!SOCKET_FAILED(*reads)) {
-				free(data);
+			if (SOCKET_FAILED(*reads)) {
 				break;
 			}
 			ssize_t len = SocketRecv(client->sock, ptr, size);
@@ -274,6 +317,12 @@ static int _clientRecv(struct mNPClient* client) {
 	switch (header.packetType) {
 	case mNP_PKT_SHUTDOWN:
 		result = -1;
+		break;
+	case mNP_PKT_JOIN:
+		result = _processJoin(client, data, header.size);
+		break;
+	case mNP_PKT_REGISTER_CORE:
+		result = _processRegisterCore(client, data, header.size);
 		break;
 	default:
 		mLOG(NP_SERVER, DEBUG, "Unknown packet type %" PRIi32, header.packetType);
@@ -319,7 +368,7 @@ static THREAD_ENTRY _clientThread(void* context) {
 			break;
 		}
 		if (status < 0) {
-			// Received shutdown packet
+			// Received shutdown packet or a critical error
 			break;
 		}
 

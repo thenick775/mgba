@@ -10,6 +10,7 @@
 #include <mgba/core/version.h>
 #include <mgba/internal/netplay/server.h>
 #include <mgba-util/string.h>
+#include <mgba-util/vector.h>
 #include "netplay-private.h"
 
 mLOG_DEFINE_CATEGORY(NP, "Netplay")
@@ -22,10 +23,11 @@ static void _coreClean(struct mCoreThread* threadContext);
 static void _coreFrame(struct mCoreThread* threadContext);
 
 struct mNPCore;
-static void _pollInput(struct mNPCore* core);
-static void _updateInput(struct mNPCore* core);
 
 static THREAD_ENTRY _commThread(void* context);
+
+DECLARE_VECTOR(mNPEventQueue, struct mNPEvent);
+DEFINE_VECTOR(mNPEventQueue, struct mNPEvent);
 
 struct mNPCore {
 	struct mNPContext* p;
@@ -36,11 +38,9 @@ struct mNPCore {
 	ThreadCallback frameCallback;
 	Mutex mutex;
 	void* threadData;
-	bool hasControl;
 	uint32_t coreId;
-	unsigned nClients;
-	uint32_t nPendingInputs;
-	uint32_t pendingInput;
+	int32_t frameOffset;
+	struct mNPEventQueue queue;
 };
 
 struct mNPContext* mNPContextCreate(void) {
@@ -50,22 +50,55 @@ struct mNPContext* mNPContextCreate(void) {
 	}
 	memset(context, 0, sizeof(*context));
 	TableInit(&context->cores, 8, free); // TODO: Properly free
-	TableInit(&context->coresWaiting, 8, NULL);
 	return context;
 }
 
-void mNPContextAttachCallbacks(struct mNPContext* context, struct mNPCallbacks* callbacks, void* user) {
+void mNPContextAttachCallbacks(struct mNPContext* context, const struct mNPCallbacks* callbacks, void* user) {
 	context->callbacks = *callbacks;
 	context->userContext = user;
 }
 
 void mNPContextDestroy(struct mNPContext* context) {
 	TableDeinit(&context->cores);
-	TableDeinit(&context->coresWaiting);
 	free(context);
 }
 
-void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread, uint32_t coreId, bool hasControl) {
+void mNPContextRegisterCore(struct mNPContext* context, struct mCoreThread* thread, uint32_t nonce) {
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_REGISTER_CORE,
+		.size = sizeof(struct mNPPacketRegisterCore),
+		.flags = 0
+	};
+	mCoreThreadInterrupt(thread);
+	struct mNPPacketRegisterCore data = {
+		.info = {
+			.platform = thread->core->platform(thread->core),
+			.frameOffset = thread->core->frameCounter(thread->core),
+			.flags = 0
+		},
+		.nonce = nonce
+	};
+	thread->core->getGameTitle(thread->core, data.info.gameTitle);
+	thread->core->getGameCode(thread->core, data.info.gameCode);
+	thread->core->checksum(thread->core, &data.info.crc32, CHECKSUM_CRC32);
+	mCoreThreadContinue(thread);
+	mNPContextSend(context, &header, &data);
+}
+
+void mNPContextJoinRoom(struct mNPContext* context, uint32_t roomId, uint32_t coreId) {
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_JOIN,
+		.size = sizeof(struct mNPPacketJoin),
+		.flags = 0
+	};
+	struct mNPPacketJoin data = {
+		.roomId = roomId,
+		.coreId = coreId
+	};
+	mNPContextSend(context, &header, &data);
+}
+
+void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread, uint32_t coreId) {
 	struct mNPCore* core = malloc(sizeof(*core));
 	if (!core) {
 		return;
@@ -79,13 +112,13 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 	core->cleanCallback = thread->cleanCallback;
 	core->frameCallback = thread->frameCallback;
 	core->threadData = thread->userData;
+	core->frameOffset = 0;
 	thread->startCallback = _coreStart;
 	thread->resetCallback = _coreReset;
 	thread->cleanCallback = _coreClean;
 	thread->frameCallback = _coreFrame;
 	thread->userData = core;
 	mCoreThreadContinue(thread);
-	core->hasControl = hasControl;
 	core->coreId = coreId;
 	TableInsert(&context->cores, coreId, core);
 }
@@ -93,34 +126,21 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 void mNPContextPushInput(struct mNPContext* context, uint32_t coreId, uint32_t input) {
 	struct mNPCore* core = TableLookup(&context->cores, coreId);
 	mLOG(NP, DEBUG, "Recieved input for coreId %" PRIi32 ": %" PRIx32, coreId, input);
-	if (!core || core->nPendingInputs) {
-		return;
-	}
-	MutexLock(&core->mutex);
-	if (core->nClients == core->nPendingInputs) {
-		core->pendingInput = 0;
-	}
-	core->pendingInput |= input;
-	input = core->pendingInput;
-	--core->nPendingInputs;
-	if (!core->nPendingInputs) {
-		TableRemove(&core->p->coresWaiting, coreId);
-		_updateInput(core);
-	}
-	MutexUnlock(&core->mutex);
-	if (core->hasControl) {
-		struct mNPPacketHeader header = {
-			.packetType = mNP_PKT_DATA,
-			.size = sizeof(struct mNPPacketSmallData),
-			.flags = 0
-		};
-		struct mNPPacketSmallData data = {
-			.type = mNP_DATA_KEY_INPUT,
+
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_EVENT,
+		.size = sizeof(struct mNPPacketEvent),
+		.flags = 0
+	};
+	struct mNPPacketEvent data = {
+		.event = {
+			.eventType = mNP_EVENT_KEY_INPUT,
 			.coreId = coreId,
-			.datum = input
-		};
-		mNPContextSend(context, &header, &data);
-	}
+			.eventDatum = input,
+			.frameId = core->thread->core->frameCounter(core->thread->core) - core->frameOffset
+		}
+	};
+	mNPContextSend(context, &header, &data);
 }
 
 bool mNPContextConnect(struct mNPContext* context, const struct mNPServerOptions* opts) {
@@ -129,13 +149,16 @@ bool mNPContextConnect(struct mNPContext* context, const struct mNPServerOptions
 		mLOG(NP, ERROR, "Failed to connect to server");
 		return false;
 	}
+	SocketSetTCPPush(serverSocket, 1);
 
 	struct mNPPacketHeader header = {
 		.packetType = mNP_PKT_CONNECT,
 		.size = sizeof(struct mNPPacketConnect),
 		.flags = 0
 	};
-	struct mNPPacketConnect data = { .protocolVersion = mNP_PROTOCOL_VERSION };
+	struct mNPPacketConnect data = {
+		.protocolVersion = mNP_PROTOCOL_VERSION
+	};
 	const char* ptr = gitCommit;
 	size_t i;
 	for (i = 0; i < 20; ++i) {
@@ -167,27 +190,41 @@ void mNPContextDisconnect(struct mNPContext* context) {
 	mLOG(NP, INFO, "Disconnected from server");
 }
 
-static void _pollInput(struct mNPCore* core) {
+static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
+	switch (event->eventType) {
+	case mNP_EVENT_NONE:
+	case mNP_EVENT_FRAME:
+		return;
+	case mNP_EVENT_RESET:
+		mCoreThreadReset(core->thread);
+		break;
+	case mNP_EVENT_KEY_INPUT:
+		core->thread->core->setKeys(core->thread->core, event->eventDatum);
+		break;
+	}
+}
+
+static void _pollEvent(struct mNPCore* core) {
 	// TODO: Implement rollback
+	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
+	bool needsToWait = true;
 	MutexLock(&core->mutex);
-	if (core->nPendingInputs) {
-		mCoreThreadWaitFromThread(core->thread);
+	while (needsToWait && mNPEventQueueSize(&core->queue)) {
+		// Copy event so we don't have to hold onto the mutex
+		struct mNPEvent event = *mNPEventQueueGetPointer(&core->queue, 0);
+		MutexUnlock(&core->mutex);
+		if (event.frameId > currentFrame) {
+			needsToWait = false;
+			MutexLock(&core->mutex);
+		} else {
+			_handleEvent(core, &event);
+			MutexLock(&core->mutex);
+			mNPEventQueueShift(&core->queue, 0, 1);
+		}
 	}
 	MutexUnlock(&core->mutex);
-}
-
-static void _wakeupCores(uint32_t coreId, void* value, void* user) {
-	UNUSED(user);
-	struct mNPCore* core = value;
-	TableInsert(&core->p->cores, coreId, core);
-	core->nClients = core->nPendingInputs;
-	mCoreThreadStopWaiting(core->thread);
-}
-
-static void _updateInput(struct mNPCore* core) {
-	core->thread->core->setKeys(core->thread->core, core->pendingInput);
-	if (!TableSize(&core->p->coresWaiting)) {
-		TableEnumerate(&core->p->coresWaiting, _wakeupCores, NULL);
+	if (needsToWait) {
+		mCoreThreadWaitFromThread(core->thread);
 	}
 }
 
@@ -196,7 +233,7 @@ static void _coreStart(struct mCoreThread* threadContext) {
 	threadContext->userData = core->threadData;
 	core->startCallback(threadContext);
 	threadContext->userData = core;
-	_pollInput(core);
+	_pollEvent(core);
 }
 
 static void _coreReset(struct mCoreThread* threadContext) {
@@ -204,7 +241,7 @@ static void _coreReset(struct mCoreThread* threadContext) {
 	threadContext->userData = core->threadData;
 	core->resetCallback(threadContext);
 	threadContext->userData = core;
-	_pollInput(core);
+	_pollEvent(core);
 }
 
 static void _coreClean(struct mCoreThread* threadContext) {
@@ -212,6 +249,7 @@ static void _coreClean(struct mCoreThread* threadContext) {
 	threadContext->userData = core->threadData;
 	core->cleanCallback(threadContext);
 	threadContext->userData = core;
+	// TODO: Send PKT_LEAVE
 }
 
 static void _coreFrame(struct mCoreThread* threadContext) {
@@ -219,7 +257,7 @@ static void _coreFrame(struct mCoreThread* threadContext) {
 	threadContext->userData = core->threadData;
 	core->frameCallback(threadContext);
 	threadContext->userData = core;
-	_pollInput(core);
+	_pollEvent(core);
 }
 
 static bool _commRecv(struct mNPContext* context) {
@@ -364,6 +402,40 @@ void mNPContextSend(struct mNPContext* context, const struct mNPPacketHeader* he
 	}
 }
 
+static void _parseSync(struct mNPContext* context, const struct mNPPacketSync* sync, size_t size) {
+	uint32_t nEvents = sync->nEvents;
+	size -= sizeof(nEvents);
+	if (nEvents * sizeof(struct mNPEvent) > size) {
+		mLOG(NP, WARN, "Received improperly sized Sync packet");
+		nEvents = size / sizeof(struct mNPEvent);
+	}
+	uint32_t i;
+	for (i = 0; i < nEvents; ++i) {
+		const struct mNPEvent* event = &sync->events[i];
+		struct mNPCore* core = TableLookup(&context->cores, event->coreId);
+		if (!core) {
+			continue;
+		}
+		MutexLock(&core->mutex);
+		*mNPEventQueueAppend(&core->queue) = *event;
+		MutexUnlock(&core->mutex);
+	}
+}
+
+static void _parseJoin(struct mNPContext* context, const struct mNPPacketJoin* join, size_t size) {
+	if (sizeof(*join) != size) {
+		return;
+	}
+	context->callbacks.roomJoined(context, join->roomId, join->coreId, context->userContext);
+}
+
+static void _parseRegisterCore(struct mNPContext* context, const struct mNPPacketRegisterCore* reg, size_t size) {
+	if (sizeof(*reg) != size) {
+		return;
+	}
+	context->callbacks.coreRegistered(context, &reg->info, reg->nonce, context->userContext);
+}
+
 bool mNPContextRecv(struct mNPContext* context, const struct mNPPacketHeader* header, const void* body) {
 	switch (header->packetType) {
 	case mNP_PKT_SHUTDOWN:
@@ -372,6 +444,15 @@ bool mNPContextRecv(struct mNPContext* context, const struct mNPPacketHeader* he
 			context->callbacks.serverShutdown(context, context->userContext);
 		}
 		return false;
+	case mNP_PKT_SYNC:
+		_parseSync(context, body, header->size);
+		return true;
+	case mNP_PKT_JOIN:
+		_parseJoin(context, body, header->size);
+		return true;
+	case mNP_PKT_REGISTER_CORE:
+		_parseRegisterCore(context, body, header->size);
+		return true;
 	default:
 		return true;
 	}

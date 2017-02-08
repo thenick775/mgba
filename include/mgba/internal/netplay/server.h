@@ -29,12 +29,14 @@ enum mNPPacketType {
 	mNP_PKT_LIST,
 	mNP_PKT_DATA,
 	mNP_PKT_REQUEST,
+	mNP_PKT_SYNC,
+	mNP_PKT_EVENT,
+	mNP_PKT_REGISTER_CORE,
 	mNP_PKT_MAX
 };
 
 enum mNPDataType {
 	mNP_DATA_GENERIC,
-	mNP_DATA_KEY_INPUT,
 	mNP_DATA_CORE_CUSTOM,
 	mNP_DATA_SAVESTATE,
 	mNP_DATA_SCREENSHOT,
@@ -101,15 +103,23 @@ struct mNPPacketData {
 	uint8_t data[];
 };
 
-struct mNPPacketSmallData {
-	uint32_t type;
-	uint32_t coreId;
-	uint32_t datum;
-};
-
 struct mNPPacketRequest {
 	uint32_t coreId;
 	uint32_t type;
+};
+
+struct mNPPacketSync {
+	uint32_t nEvents;
+	struct mNPEvent events[];
+};
+
+struct mNPPacketEvent {
+	struct mNPEvent event;
+};
+
+struct mNPPacketRegisterCore {
+	struct mNPCoreInfo info;
+	uint32_t nonce;
 };
 
 struct mNPServer;

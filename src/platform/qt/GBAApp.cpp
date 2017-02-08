@@ -265,6 +265,10 @@ void GBAApp::disconnectServer() {
 	m_netplay.disconnectFromServer();
 }
 
+void GBAApp::attachToNetplay(GameController* controller) {
+	m_netplay.addGameController(controller);
+}
+
 GBAApp::FileDialog::FileDialog(GBAApp* app, QWidget* parent, const QString& caption, const QString& filter)
 	: QFileDialog(parent, caption, app->m_configController.getOption("lastDirectory"), filter)
 	, m_app(app)

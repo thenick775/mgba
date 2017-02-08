@@ -67,6 +67,7 @@ public slots:
 	void stopServer();
 	void connectServer();
 	void disconnectServer();
+	void attachToNetplay(GameController*);
 
 protected:
 	bool event(QEvent*);

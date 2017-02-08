@@ -30,7 +30,6 @@ struct mNPContext {
 	Condition commFifoEmpty;
 
 	struct Table cores;
-	struct Table coresWaiting;
 };
 
 bool mNPContextRecv(struct mNPContext*, const struct mNPPacketHeader* header, const void* body);

@@ -467,6 +467,14 @@ void GBReset(struct LR35902Core* cpu) {
 	GBSIOReset(&gb->sio);
 
 	GBSavedataUnmask(gb);
+
+	size_t c;
+	for (c = 0; c < mCoreCallbacksListSize(&gb->coreCallbacks); ++c) {
+		struct mCoreCallbacks* callbacks = mCoreCallbacksListGetPointer(&gb->coreCallbacks, c);
+		if (callbacks->coreReset) {
+			callbacks->coreReset(callbacks->context);
+		}
+	}
 }
 
 void GBDetectModel(struct GB* gb) {

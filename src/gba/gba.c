@@ -203,6 +203,14 @@ void GBAReset(struct ARMCore* cpu) {
 
 	gba->debug = false;
 	memset(gba->debugString, 0, sizeof(gba->debugString));
+
+	size_t c;
+	for (c = 0; c < mCoreCallbacksListSize(&gba->coreCallbacks); ++c) {
+		struct mCoreCallbacks* callbacks = mCoreCallbacksListGetPointer(&gba->coreCallbacks, c);
+		if (callbacks->coreReset) {
+			callbacks->coreReset(callbacks->context);
+		}
+	}
 }
 
 void GBASkipBIOS(struct GBA* gba) {

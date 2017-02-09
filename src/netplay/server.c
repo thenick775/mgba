@@ -66,7 +66,7 @@ struct mNPServer* mNPServerStart(const struct mNPServerOptions* opts) {
 		mLOG(NP_SERVER, ERROR, "Failed to start server on port %u", opts->port);
 		return NULL;
 	}
-	if (SOCKET_FAILED(SocketListen(serverSocket, 0))) {
+	if (SOCKET_FAILED(SocketListen(serverSocket, 10))) {
 		mLOG(NP_SERVER, ERROR, "Failed to listen on port %u", opts->port);
 		return NULL;
 	}
@@ -129,7 +129,6 @@ static void _shutdownClients(uint32_t id, void* value, void* user) {
 THREAD_ENTRY _listenThread(void* context) {
 	mLOG(NP_SERVER, INFO, "Server started");
 	struct mNPServer* serv = context;
-	SocketSetBlocking(serv->serverSocket, false);
 	while (true) {
 		MutexLock(&serv->mutex);
 		if (!serv->running) {
@@ -139,11 +138,11 @@ THREAD_ENTRY _listenThread(void* context) {
 		MutexUnlock(&serv->mutex);
 
 		Socket reads[1] = { serv->serverSocket };
-		SocketPoll(1, reads, NULL, NULL, 50);
-		Socket newClient = SocketAccept(serv->serverSocket, NULL);
-		if (SOCKET_FAILED(newClient)) {
+		SocketPoll(1, reads, NULL, NULL, 200);
+		if (SOCKET_FAILED(reads[0])) {
 			continue;
 		}
+		Socket newClient = SocketAccept(serv->serverSocket, NULL);
 		SocketSetTCPPush(newClient, 1);
 		MutexLock(&serv->mutex);
 		if (TableSize(&serv->clients) >= serv->capacity) {

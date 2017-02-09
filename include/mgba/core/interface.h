@@ -37,6 +37,7 @@ struct mCoreCallbacks {
 	void (*videoFrameStarted)(void* context);
 	void (*videoFrameEnded)(void* context);
 	void (*coreCrashed)(void* context);
+	void (*coreReset)(void* context);
 };
 
 DECLARE_VECTOR(mCoreCallbacksList, struct mCoreCallbacks);

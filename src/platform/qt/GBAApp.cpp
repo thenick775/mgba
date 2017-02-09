@@ -258,7 +258,7 @@ void GBAApp::connectServer() {
 	Address address;
 	address.version = IPV4;
 	address.ipv4 = 0x7F000001;
-	m_netplay.connectToServer({ address, 4278 });
+	m_netplay.connectToServer({ address, 4267 });
 }
 
 void GBAApp::disconnectServer() {

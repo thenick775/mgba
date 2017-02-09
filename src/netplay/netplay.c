@@ -31,6 +31,7 @@ struct mNPContext {
 	struct mNPCallbacks callbacks;
 	void* userContext;
 	Socket server;
+	bool connected;
 
 	Thread commThread;
 	Mutex commMutex;
@@ -71,6 +72,7 @@ void mNPContextAttachCallbacks(struct mNPContext* context, const struct mNPCallb
 
 void mNPContextDestroy(struct mNPContext* context) {
 	TableDeinit(&context->cores);
+	TableDeinit(&context->pending);
 	free(context);
 }
 
@@ -166,6 +168,34 @@ void mNPContextPushInput(struct mNPContext* context, uint32_t coreId, uint32_t i
 	mNPContextSend(context, &header, &data);
 }
 
+void mNPContextListRooms(struct mNPContext* context) {
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_LIST,
+		.size = sizeof(struct mNPPacketList),
+		.flags = 0
+	};
+	struct mNPPacketList data = {
+		.type = mNP_LIST_ROOMS,
+		.parent = 0,
+		.padding = 0
+	};
+	mNPContextSend(context, &header, &data);
+}
+
+void mNPContextListCores(struct mNPContext* context, uint32_t roomId) {
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_LIST,
+		.size = sizeof(struct mNPPacketList),
+		.flags = 0
+	};
+	struct mNPPacketList data = {
+		.type = mNP_LIST_CORES,
+		.parent = roomId,
+		.padding = 0
+	};
+	mNPContextSend(context, &header, &data);
+}
+
 bool mNPContextConnect(struct mNPContext* context, const struct mNPServerOptions* opts) {
 	Socket serverSocket = SocketConnectTCP(opts->port, &opts->address);
 	if (SOCKET_FAILED(serverSocket)) {
@@ -211,6 +241,9 @@ void mNPContextDisconnect(struct mNPContext* context) {
 	mNPContextSend(context, &header, NULL);
 	ThreadJoin(context->commThread);
 	mLOG(NP, INFO, "Disconnected from server");
+	context->connected = false;
+	TableClear(&context->cores);
+	TableClear(&context->pending);
 }
 
 static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
@@ -406,6 +439,20 @@ void mNPContextSend(struct mNPContext* context, const struct mNPPacketHeader* he
 	}
 }
 
+static bool _parseConnect(struct mNPContext* context, const struct mNPPacketAck* reply, size_t size) {
+	if (sizeof(*reply) != size || !reply) {
+		return false;
+	}
+	if (reply->reply < 0) {
+		return false;
+	}
+	context->connected = true;
+	if (context->callbacks.serverConnected) {
+		context->callbacks.serverConnected(context, context->userContext);
+	}
+	return true;
+}
+
 static void _parseSync(struct mNPContext* context, const struct mNPPacketSync* sync, size_t size) {
 	uint32_t nEvents = sync->nEvents;
 	size -= sizeof(nEvents);
@@ -427,18 +474,51 @@ static void _parseSync(struct mNPContext* context, const struct mNPPacketSync* s
 }
 
 static void _parseJoin(struct mNPContext* context, const struct mNPPacketJoin* join, size_t size) {
-	if (sizeof(*join) != size) {
+	if (sizeof(*join) != size || !join) {
 		return;
 	}
 	struct mNPCore* core = TableLookup(&context->cores, join->coreId);
 	if (core) {
 		core->roomId = join->roomId;
 	}
-	context->callbacks.roomJoined(context, join->roomId, join->coreId, context->userContext);
+	if (context->callbacks.roomJoined) {
+		context->callbacks.roomJoined(context, join->roomId, join->coreId, context->userContext);
+	}
+}
+
+static void _parseListCores(struct mNPContext* context, const struct mNPPacketListCores* list, size_t size) {
+	if (size != sizeof(struct mNPPacketListCores) + list->nCores * sizeof(struct mNPCoreInfo)) {
+		return;
+	}
+	if (context->callbacks.listCores) {
+		context->callbacks.listCores(context, list->cores, list->nCores, list->parent, context->userContext);
+	}
+}
+
+static void _parseListRooms(struct mNPContext* context, const struct mNPPacketListRooms* list, size_t size) {
+	if (size != sizeof(struct mNPPacketListRooms) + list->nRooms * sizeof(struct mNPRoomInfo)) {
+		return;
+	}
+	if (context->callbacks.listRooms) {
+		context->callbacks.listRooms(context, list->rooms, list->nRooms, context->userContext);
+	}
+}
+
+static void _parseList(struct mNPContext* context, const struct mNPPacketList* list, size_t size) {
+	if (sizeof(*list) > size || !list) {
+		return;
+	}
+
+	switch (list->type) {
+	case mNP_LIST_CORES:
+		_parseListCores(context, (const struct mNPPacketListCores*) list, size);
+	case mNP_LIST_ROOMS:
+		_parseListRooms(context, (const struct mNPPacketListRooms*) list, size);
+	}
 }
 
 static void _parseRegisterCore(struct mNPContext* context, const struct mNPPacketRegisterCore* reg, size_t size) {
-	if (sizeof(*reg) != size) {
+	if (sizeof(*reg) != size || !reg) {
 		return;
 	}
 	struct mNPPacketRegisterCore* pending = TableLookup(&context->pending, reg->nonce);
@@ -449,6 +529,11 @@ static void _parseRegisterCore(struct mNPContext* context, const struct mNPPacke
 
 bool mNPContextRecv(struct mNPContext* context, const struct mNPPacketHeader* header, const void* body) {
 	switch (header->packetType) {
+	case mNP_PKT_ACK:
+		if (!context->connected) {
+			return _parseConnect(context, body, header->size);
+		}
+		break;
 	case mNP_PKT_SHUTDOWN:
 		mLOG(NP, INFO, "Server shut down");
 		if (context->callbacks.serverShutdown) {
@@ -457,15 +542,19 @@ bool mNPContextRecv(struct mNPContext* context, const struct mNPPacketHeader* he
 		return false;
 	case mNP_PKT_SYNC:
 		_parseSync(context, body, header->size);
-		return true;
+		break;
 	case mNP_PKT_JOIN:
 		_parseJoin(context, body, header->size);
-		return true;
+		break;
+	case mNP_PKT_LIST:
+		_parseList(context, body, header->size);
+		break;
 	case mNP_PKT_REGISTER_CORE:
 		_parseRegisterCore(context, body, header->size);
-		return true;
+		break;
 	default:
-		return true;
+		break;
 	}
 	// TODO
+	return true;
 }

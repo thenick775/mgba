@@ -12,9 +12,12 @@
 using namespace QGBA;
 
 const mNPCallbacks NetplayController::s_callbacks = {
+	NetplayController::cbServerConnected,
 	NetplayController::cbServerShutdown,
 	NetplayController::cbCoreRegistered,
-	NetplayController::cbRoomJoined
+	NetplayController::cbRoomJoined,
+	NetplayController::cbListRooms,
+	NetplayController::cbListCores,
 };
 
 NetplayController::NetplayController(MultiplayerController* mp, QObject* parent)
@@ -23,6 +26,10 @@ NetplayController::NetplayController(MultiplayerController* mp, QObject* parent)
 	, m_np(nullptr)
 	, m_server(nullptr)
 {
+	qRegisterMetaType<QList<mNPRoomInfo>>("QList<mNPRoomInfo>");
+	qRegisterMetaType<QList<mNPCoreInfo>>("QList<mNPCoreInfo>");
+	connect(this, SIGNAL(connected()), this, SLOT(updateRooms()));
+	connect(this, SIGNAL(connected()), this, SLOT(updateCores()));
 }
 
 NetplayController::~NetplayController() {
@@ -76,6 +83,23 @@ void NetplayController::disconnectFromServer() {
 	m_cores.clear();
 	m_pendingCores.clear();
 	m_np = nullptr;
+	emit disconnected();
+}
+
+void NetplayController::listRooms(std::function<void (const QList<mNPRoomInfo>&)> callback) {
+	if (!m_np) {
+		return;
+	}
+	m_listRoomsCallbacks.append(callback);
+	mNPContextListRooms(m_np);
+}
+
+void NetplayController::listCores(std::function<void (const QList<mNPCoreInfo>&)> callback, uint32_t roomId) {
+	if (!m_np) {
+		return;
+	}
+	m_listCoresCallbacks[roomId].append(callback);
+	mNPContextListCores(m_np, roomId);
 }
 
 void NetplayController::addGameController(GameController* controller) {
@@ -96,12 +120,52 @@ void NetplayController::addGameController(uint32_t nonce, uint32_t id) {
 	}
 	GameController* controller = m_pendingCores.take(nonce);
 	mNPContextAttachCore(m_np, controller->thread(), nonce);
-	connect(controller, &GameController::keysUpdated, [this, id](quint32 keys) {
+	auto connection = connect(controller, &GameController::keysUpdated, [this, id](quint32 keys) {
 		mNPContextPushInput(m_np, id, keys);
+	});
+	connect(this, &NetplayController::disconnected, [this, connection]() {
+		disconnect(connection);
 	});
 }
 
+void NetplayController::cbListRooms(QList<mNPRoomInfo> list) {
+	if (m_listRoomsCallbacks.empty()) {
+		return;
+	}
+	auto cb = m_listRoomsCallbacks.takeFirst();
+	cb(list);
+}
+
+void NetplayController::cbListCores(QList<mNPCoreInfo> list, quint32 roomId) {
+	QList<std::function<void (const QList<mNPCoreInfo>&)>>& cbList = m_listCoresCallbacks[roomId];
+	if (cbList.empty()) {
+		return;
+	}
+	auto cb = cbList.takeFirst();
+	cb(list);
+	if (cbList.empty()) {
+		m_listCoresCallbacks.take(roomId);
+	}
+}
+
+void NetplayController::updateRooms() {
+	listRooms([this](const QList<mNPRoomInfo>& rooms) {
+		m_roomInfo = rooms;
+	});
+}
+
+void NetplayController::updateCores() {
+	listCores([this](const QList<mNPCoreInfo>& cores) {
+		m_coreInfo = cores;
+	});
+}
+
+void NetplayController::cbServerConnected(mNPContext* context, void* user) {
+	static_cast<NetplayController*>(user)->connected();
+}
+
 void NetplayController::cbServerShutdown(mNPContext* context, void* user) {
+	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "disconnectFromServer");
 	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "stopServer");
 }
 
@@ -111,4 +175,22 @@ void NetplayController::cbCoreRegistered(mNPContext* context, const mNPCoreInfo*
 
 void NetplayController::cbRoomJoined(mNPContext* context, uint32_t roomId, uint32_t coreId, void* user) {
 
+}
+
+void NetplayController::cbListRooms(mNPContext* context, const struct mNPRoomInfo* rooms, uint32_t nRooms, void* user) {
+	QList<mNPRoomInfo> list;
+	if (nRooms) {
+		list.reserve(nRooms);
+		std::copy(&rooms[0], &rooms[nRooms], std::back_inserter(list));
+	}
+	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "cbListRooms", Q_ARG(QList<mNPRoomInfo>, list));
+}
+
+void NetplayController::cbListCores(mNPContext* context, const struct mNPCoreInfo* cores, uint32_t nCores, uint32_t roomId, void* user) {
+	QList<mNPCoreInfo> list;
+	if (nCores) {
+		list.reserve(nCores);
+		std::copy(&cores[0], &cores[nCores], std::back_inserter(list));
+	}
+	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "cbListCores", Q_ARG(QList<mNPCoreInfo>, list), Q_ARG(quint32, roomId));
 }

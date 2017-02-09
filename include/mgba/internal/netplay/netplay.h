@@ -20,11 +20,15 @@ mLOG_DECLARE_CATEGORY(NP);
 
 struct mNPContext;
 struct mNPCoreInfo;
+struct mNPRoomInfo;
 
 struct mNPCallbacks {
+	void (*serverConnected)(struct mNPContext*, void* user);
 	void (*serverShutdown)(struct mNPContext*, void* user);
 	void (*coreRegistered)(struct mNPContext*, const struct mNPCoreInfo*, uint32_t nonce, void* user);
 	void (*roomJoined)(struct mNPContext*, uint32_t roomId, uint32_t coreId, void* user);
+	void (*listRooms)(struct mNPContext*, const struct mNPRoomInfo* rooms, uint32_t nRooms, void* user);
+	void (*listCores)(struct mNPContext*, const struct mNPCoreInfo* cores, uint32_t nCores, uint32_t roomId, void* user);
 };
 
 enum mNPCoreFlags {
@@ -78,6 +82,9 @@ void mNPContextRegisterCore(struct mNPContext*, struct mCoreThread*, uint32_t no
 void mNPContextJoinRoom(struct mNPContext*, uint32_t roomId, uint32_t coreId);
 void mNPContextAttachCore(struct mNPContext*, struct mCoreThread*, uint32_t nonce);
 void mNPContextPushInput(struct mNPContext*, uint32_t coreId, uint32_t input);
+
+void mNPContextListRooms(struct mNPContext*);
+void mNPContextListCores(struct mNPContext*, uint32_t roomId);
 
 struct mNPServer;
 struct mNPServerOptions;

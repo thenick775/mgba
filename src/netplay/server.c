@@ -52,6 +52,12 @@ struct mNPClient {
 };
 
 struct mNPRoom {
+	struct Table cores;
+	Mutex mutex;
+	struct RingFIFO fifo;
+	Condition fifoFull;
+	Condition fifoEmpty;
+	Thread thread;
 };
 
 struct mNPServer* mNPServerStart(const struct mNPServerOptions* opts) {
@@ -191,6 +197,94 @@ static bool _processJoin(struct mNPClient* client, const struct mNPPacketJoin* j
 	return true;
 }
 
+static void _listCores(uint32_t id, void* value, void* user) {
+	UNUSED(id);
+	struct mNPPacketListCores* list = user;
+	memcpy(&list->cores[list->nCores], value, sizeof(struct mNPCoreInfo));
+	++list->nCores;
+}
+
+static void _processListCores(struct mNPClient* client, uint32_t roomId) {
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_LIST,
+		.flags = 0
+	};
+	size_t nCores;
+	struct mNPPacketListCores* list;
+	struct Table* set = &client->p->cores;
+	Mutex* mutex = &client->p->mutex;
+	if (roomId) {
+		struct mNPRoom* room = TableLookup(&client->p->rooms, roomId);
+		if (room) {
+			set = &room->cores;
+			mutex = &room->mutex;
+		} else {
+			set = NULL;
+		}
+	}
+	if (set) {
+		MutexLock(mutex);
+		nCores = TableSize(set);
+		header.size = sizeof(struct mNPPacketListCores) + nCores * sizeof(struct mNPCoreInfo);
+		list = malloc(header.size);
+		if (list) {
+			list->nCores = 0;
+			TableEnumerate(set, _listCores, list);
+		}
+		MutexUnlock(mutex);
+	} else {
+		header.size = sizeof(struct mNPPacketListCores);
+		list = malloc(header.size);
+		list->nCores = 0;
+	}
+	SocketSend(client->sock, &header, sizeof(header));
+	SocketSend(client->sock, list, header.size);
+}
+
+static void _listRooms(uint32_t id, void* value, void* user) {
+	UNUSED(id);
+	struct mNPPacketListRooms* list = user;
+	memcpy(&list->rooms[list->nRooms], value, sizeof(struct mNPRoomInfo));
+	++list->nRooms;
+}
+
+static void _processListRooms(struct mNPClient* client) {
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_LIST,
+		.flags = 0
+	};
+	size_t nRooms;
+	struct mNPPacketListRooms* list;
+	MutexLock(&client->p->mutex);
+	nRooms = TableSize(&client->p->rooms);
+	header.size = sizeof(struct mNPPacketListRooms) + nRooms * sizeof(struct mNPRoomInfo);
+	list = malloc(header.size);
+	if (list) {
+		list->nRooms = 0;
+		TableEnumerate(&client->p->rooms, _listRooms, list);
+	}
+	MutexUnlock(&client->p->mutex);
+	SocketSend(client->sock, &header, sizeof(header));
+	SocketSend(client->sock, list, header.size);
+}
+
+static bool _processList(struct mNPClient* client, const struct mNPPacketList* list, size_t size) {
+	if (sizeof(*list) != size || !list) {
+		return false;
+	}
+	switch (list->type) {
+	case mNP_LIST_CORES:
+		_processListCores(client, list->parent);
+		break;
+	case mNP_LIST_ROOMS:
+		_processListRooms(client);
+		break;
+	default:
+		return false;
+	}
+	return true;
+}
+
 static bool _processRegisterCore(struct mNPClient* client, const struct mNPPacketRegisterCore* reg, size_t size) {
 	if (sizeof(*reg) != size || !reg) {
 		return false;
@@ -224,6 +318,7 @@ static bool _clientWelcome(struct mNPClient* client) {
 	if (SOCKET_FAILED(*reads)) {
 		return true;
 	}
+
 	struct mNPPacketHeader header;
 	ssize_t len = SocketRecv(client->sock, &header, sizeof(header));
 	if (len < 0 && SocketWouldBlock()) {
@@ -258,6 +353,17 @@ static bool _clientWelcome(struct mNPClient* client) {
 		mLOG(NP_SERVER, WARN, "Malformed Connect packet on client %" PRIi32, client->clientId);
 		return false;
 	}
+
+	struct mNPPacketHeader ackHeader = {
+		.packetType = mNP_PKT_ACK,
+		.size = sizeof(struct mNPPacketAck),
+		.flags = 0
+	};
+	struct mNPPacketAck ack = {
+		.reply = mNP_REPLY_OK
+	};
+	SocketSend(client->sock, &ackHeader, sizeof(ackHeader));
+	SocketSend(client->sock, &ack, sizeof(ack));
 	return true;
 }
 
@@ -320,6 +426,9 @@ static int _clientRecv(struct mNPClient* client) {
 		break;
 	case mNP_PKT_JOIN:
 		result = _processJoin(client, data, header.size);
+		break;
+	case mNP_PKT_LIST:
+		result = _processList(client, data, header.size);
 		break;
 	case mNP_PKT_REGISTER_CORE:
 		result = _processRegisterCore(client, data, header.size);
@@ -397,5 +506,9 @@ static THREAD_ENTRY _clientThread(void* context) {
 	TableRemove(&server->clients, client->clientId);
 	MutexUnlock(&server->mutex);
 
+	return 0;
+}
+
+static THREAD_ENTRY _roomThread(void* context) {
 	return 0;
 }

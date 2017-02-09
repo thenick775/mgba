@@ -54,7 +54,8 @@ enum mNPReplyType {
 
 enum mNPListType {
 	mNP_LIST_CORES,
-	mNP_LIST_ROOMS
+	mNP_LIST_ROOMS,
+	mNP_LIST_MAX
 };
 
 struct mNPPacketHeader {
@@ -64,7 +65,7 @@ struct mNPPacketHeader {
 };
 
 struct mNPPacketAck {
-	uint32_t reply;
+	int32_t reply;
 };
 
 struct mNPPacketConnect {
@@ -86,14 +87,19 @@ struct mNPPacketLeave {
 struct mNPPacketList {
 	uint32_t type;
 	uint32_t parent;
+	uint32_t padding;
 };
 
 struct mNPPacketListCores {
+	uint32_t type;
+	uint32_t parent;
 	uint32_t nCores;
 	struct mNPCoreInfo cores[];
 };
 
 struct mNPPacketListRooms {
+	uint32_t type;
+	uint32_t parent;
 	uint32_t nRooms;
 	struct mNPRoomInfo rooms[];
 };

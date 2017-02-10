@@ -49,6 +49,8 @@ struct mNPCore {
 	int32_t frameOffset;
 	uint32_t flags;
 	struct mNPEventQueue queue;
+	uint32_t framesRemaining;
+	bool waitingForEvent;
 };
 
 struct mNPContext* mNPContextCreate(void) {
@@ -133,6 +135,7 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 	core->roomId = info->roomId;
 	core->coreId = info->coreId;
 	core->frameOffset = info->frameOffset - thread->core->frameCounter(thread->core),
+	core->waitingForEvent = false;
 	struct mCoreCallbacks callbacks = {
 		.context = core,
 		.videoFrameStarted = _coreFrame,
@@ -224,6 +227,7 @@ bool mNPContextConnect(struct mNPContext* context, const struct mNPServerOptions
 		}
 	}
 
+	SocketSetBlocking(serverSocket, false);
 	context->server = serverSocket;
 	mNPCommFIFOInit(&context->commFifo);
 
@@ -268,7 +272,7 @@ static void _pollEvent(struct mNPCore* core) {
 	if (!core->roomId) {
 		return;
 	}
-	bool needsToWait = true;
+	bool needsToWait = core->framesRemaining == 0;
 	MutexLock(&core->mutex);
 	while (needsToWait && mNPEventQueueSize(&core->queue)) {
 		// Copy event so we don't have to hold onto the mutex
@@ -285,6 +289,7 @@ static void _pollEvent(struct mNPCore* core) {
 	}
 	MutexUnlock(&core->mutex);
 	if (needsToWait) {
+		core->waitingForEvent = true;
 		mCoreThreadWaitFromThread(core->thread);
 	}
 }
@@ -297,11 +302,11 @@ static void _coreReset(void* context) {
 static void _coreFrame(void* context) {
 	struct mNPCore* core = context;
 	_pollEvent(core);
+	--core->framesRemaining;
 }
 
 static bool _commRecv(struct mNPContext* context) {
 	struct mNPPacketHeader header;
-	SocketSetBlocking(context->server, false);
 	Socket reads[1] = { context->server };
 	Socket errors[1] = { context->server };
 	SocketPoll(1, reads, NULL, errors, 4);
@@ -320,7 +325,6 @@ static bool _commRecv(struct mNPContext* context) {
 	}
 	void* data = NULL;
 	if (header.size && header.size < PKT_MAX_SIZE) {
-		SocketSetBlocking(context->server, true);
 		data = malloc(header.size);
 		if (!data) {
 			return false;
@@ -428,6 +432,7 @@ static void _parseJoin(struct mNPContext* context, const struct mNPPacketJoin* j
 	struct mNPCore* core = TableLookup(&context->cores, join->coreId);
 	if (core) {
 		core->roomId = join->roomId;
+		core->framesRemaining = join->syncPeriod;
 	}
 	if (context->callbacks.roomJoined) {
 		context->callbacks.roomJoined(context, join->roomId, join->coreId, context->userContext);
@@ -571,7 +576,6 @@ bool mNPCommFIFOFlush(struct mNPCommFIFO* commFifo, Socket sock) {
 	struct mNPPacketHeader header;
 	uint8_t* chunkedData = commFifo->buffer;
 	while (mNPCommFIFOTryRead(commFifo, &header, sizeof(header))) {
-		SocketSetBlocking(sock, true);
 		SocketSend(sock, &header, sizeof(header));
 		while (header.size) {
 			size_t chunkSize = header.size;
@@ -587,4 +591,15 @@ bool mNPCommFIFOFlush(struct mNPCommFIFO* commFifo, Socket sock) {
 		}
 	}
 	return true;
+}
+
+bool mNPCommFIFOPoll(struct mNPCommFIFO* fifo, int32_t timeoutMs) {
+	bool empty = false;
+	MutexLock(&fifo->mutex);
+	empty = RingFIFOEmpty(&fifo->fifo);
+	if (empty && timeoutMs) {
+		empty = ConditionWaitTimed(&fifo->fifoEmpty, &fifo->mutex, timeoutMs);
+	}
+	MutexUnlock(&fifo->mutex);
+	return !empty;
 }

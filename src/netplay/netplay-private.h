@@ -37,5 +37,6 @@ void mNPCommFIFOWrite(struct mNPCommFIFO*, const void*, size_t);
 void mNPCommFIFORead(struct mNPCommFIFO*, void*, size_t);
 bool mNPCommFIFOTryRead(struct mNPCommFIFO*, void*, size_t);
 bool mNPCommFIFOFlush(struct mNPCommFIFO*, Socket);
+bool mNPCommFIFOPoll(struct mNPCommFIFO*, int32_t timeoutMs);
 
 #endif

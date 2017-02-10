@@ -22,6 +22,13 @@ size_t RingFIFOCapacity(const struct RingFIFO* buffer) {
 	return buffer->capacity;
 }
 
+bool RingFIFOEmpty(const struct RingFIFO* buffer) {
+	void* data = buffer->readPtr;
+	void* end;
+	ATOMIC_LOAD(end, buffer->writePtr);
+	return data == end;
+}
+
 void RingFIFOClear(struct RingFIFO* buffer) {
 	ATOMIC_STORE(buffer->readPtr, buffer->data);
 	ATOMIC_STORE(buffer->writePtr, buffer->data);

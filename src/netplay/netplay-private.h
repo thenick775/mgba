@@ -28,6 +28,7 @@ struct mNPCommFIFO {
 	struct RingFIFO fifo;
 	Condition fifoFull;
 	Condition fifoEmpty;
+	void* buffer;
 };
 
 void mNPCommFIFOInit(struct mNPCommFIFO*);
@@ -35,5 +36,6 @@ void mNPCommFIFODeinit(struct mNPCommFIFO*);
 void mNPCommFIFOWrite(struct mNPCommFIFO*, const void*, size_t);
 void mNPCommFIFORead(struct mNPCommFIFO*, void*, size_t);
 bool mNPCommFIFOTryRead(struct mNPCommFIFO*, void*, size_t);
+bool mNPCommFIFOFlush(struct mNPCommFIFO*, Socket);
 
 #endif

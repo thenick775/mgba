@@ -45,11 +45,8 @@ struct mNPClient {
 	struct mNPPacketConnect clientInfo;
 	struct Table cores;
 	Mutex mutex;
-	struct RingFIFO fifo;
-	Condition fifoFull;
-	Condition fifoEmpty;
+	struct mNPCommFIFO fifo;
 	Thread thread;
-	bool running;
 };
 
 struct mNPRoom {
@@ -57,9 +54,7 @@ struct mNPRoom {
 	struct mNPRoomInfo info;
 	struct Table cores;
 	Mutex mutex;
-	struct RingFIFO fifo;
-	Condition fifoFull;
-	Condition fifoEmpty;
+	struct mNPCommFIFO fifo;
 	Thread thread;
 };
 
@@ -128,9 +123,12 @@ static void _shutdownClients(uint32_t id, void* value, void* user) {
 	UNUSED(id);
 	UNUSED(user);
 	struct mNPClient* client = value;
-	MutexLock(&client->mutex);
-	client->running = false;
-	MutexUnlock(&client->mutex);
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_SHUTDOWN,
+		.size = 0,
+		.flags = 0
+	};
+	mNPCommFIFOWrite(&client->fifo, &header, sizeof(header));
 	ThreadJoin(client->thread);
 }
 
@@ -167,11 +165,8 @@ THREAD_ENTRY _listenThread(void* context) {
 		client->sock = newClient;
 		TableInit(&client->cores, 8, NULL);
 		MutexInit(&client->mutex);
-		RingFIFOInit(&client->fifo, COMM_FIFO_SIZE);
-		ConditionInit(&client->fifoFull);
-		ConditionInit(&client->fifoEmpty);
+		mNPCommFIFOInit(&client->fifo);
 		memset(&client->clientInfo, 0, sizeof(client->clientInfo));
-		client->running = true;
 
 		MutexLock(&serv->mutex);
 		while (!serv->clientCounter || TableLookup(&serv->clients, serv->clientCounter)) {
@@ -221,9 +216,7 @@ static bool _createRoom(struct mNPClient* client, const struct mNPPacketJoin* jo
 	room->info.capacity = join->capacity;
 	room->info.flags = join->flags;
 	MutexInit(&room->mutex);
-	RingFIFOInit(&room->fifo, COMM_FIFO_SIZE);
-	ConditionInit(&room->fifoFull);
-	ConditionInit(&room->fifoEmpty);
+	mNPCommFIFOInit(&room->fifo);
 	TableInsert(&client->p->rooms, room->info.roomId, room);
 	while (TableLookup(&client->p->rooms, client->p->roomCounter)) {
 		++client->p->roomCounter;
@@ -514,11 +507,6 @@ static int _clientRecv(struct mNPClient* client) {
 	return result;
 }
 
-static bool _clientSend(struct mNPClient* client) {
-	// TODO
-	return true;
-}
-
 static void _cleanCores(uint32_t coreId, void* value, void* user) {
 	UNUSED(value);
 	struct Table* cores = user;
@@ -529,13 +517,6 @@ static THREAD_ENTRY _clientThread(void* context) {
 	struct mNPClient* client = context;
 	mLOG(NP_SERVER, DEBUG, "Client %i thread started", client->clientId);
 	while (true) {
-		MutexLock(&client->mutex);
-		if (!client->running) {
-			MutexUnlock(&client->mutex);
-			break;
-		}
-		MutexUnlock(&client->mutex);
-
 		int status = _clientRecv(client);
 		if (!status) {
 			mNPAck(client->sock, mNP_REPLY_MALFORMED);
@@ -544,23 +525,16 @@ static THREAD_ENTRY _clientThread(void* context) {
 			break;
 		}
 
-		if (!_clientSend(client)) {
+		if (!mNPCommFIFOFlush(&client->fifo, client->sock)) {
+			// We got a SHUTDOWN packet
 			break;
 		}
 	}
 	mLOG(NP_SERVER, DEBUG, "Client %i thread exited", client->clientId);
-	struct mNPPacketHeader header = {
-		.packetType = mNP_PKT_SHUTDOWN,
-		.size = 0,
-		.flags = 0
-	};
-	SocketSend(client->sock, &header, sizeof(header));
 	SocketClose(client->sock);
 
 	MutexDeinit(&client->mutex);
-	RingFIFODeinit(&client->fifo);
-	ConditionDeinit(&client->fifoFull);
-	ConditionDeinit(&client->fifoEmpty);
+	mNPCommFIFODeinit(&client->fifo);
 
 	// The client is deleted here so we have to grab the server pointer first
 	struct mNPServer* server = client->p;

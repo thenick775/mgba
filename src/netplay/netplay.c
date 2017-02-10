@@ -352,47 +352,18 @@ static bool _commRecv(struct mNPContext* context) {
 	return result;
 }
 
-static bool _commSend(struct mNPContext* context) {
-	struct mNPPacketHeader header;
-	uint8_t* chunkedData = malloc(PKT_CHUNK_SIZE);
-	if (!chunkedData) {
-		mLOG(NP, ERROR, "Out of memory");
-		return false;
-	}
-	while (mNPCommFIFOTryRead(&context->commFifo, &header, sizeof(header))) {
-		SocketSetBlocking(context->server, true);
-		SocketSend(context->server, &header, sizeof(header));
-		while (header.size) {
-			size_t chunkSize = header.size;
-			if (chunkSize > PKT_CHUNK_SIZE) {
-				chunkSize = PKT_CHUNK_SIZE;
-			}
-			mNPCommFIFORead(&context->commFifo, chunkedData, chunkSize);
-			header.size -= chunkSize;
-			SocketSend(context->server, chunkedData, chunkSize);
-		}
-		if (header.packetType == mNP_PKT_SHUTDOWN) {
-			free(chunkedData);
-			return false;
-		}
-	}
-	free(chunkedData);
-	return true;
-}
-
 static THREAD_ENTRY _commThread(void* user) {
 	ThreadSetName("Netplay Client Thread");
 	mLOG(NP, INFO, "Client thread started");
 	struct mNPContext* context = user;
-	bool running = true;
-	while (running) {
-		// Receive
+	while (true) {
 		if (!_commRecv(context)) {
 			break;
 		}
-
-		// Send
-		running = _commSend(context);
+		if (!mNPCommFIFOFlush(&context->commFifo, context->server)) {
+			// We got a SHUTDOWN packet
+			break;
+		}
 	}
 	mLOG(NP, INFO, "Client thread exited");
 
@@ -555,6 +526,7 @@ void mNPCommFIFOInit(struct mNPCommFIFO* fifo) {
 	MutexInit(&fifo->mutex);
 	ConditionInit(&fifo->fifoFull);
 	ConditionInit(&fifo->fifoEmpty);
+	fifo->buffer = malloc(PKT_CHUNK_SIZE);
 }
 
 void mNPCommFIFODeinit(struct mNPCommFIFO* fifo) {
@@ -562,6 +534,7 @@ void mNPCommFIFODeinit(struct mNPCommFIFO* fifo) {
 	MutexDeinit(&fifo->mutex);
 	ConditionDeinit(&fifo->fifoFull);
 	ConditionDeinit(&fifo->fifoEmpty);
+	free(fifo->buffer);
 }
 
 void mNPCommFIFOWrite(struct mNPCommFIFO* fifo, const void* data, size_t size) {
@@ -592,4 +565,26 @@ bool mNPCommFIFOTryRead(struct mNPCommFIFO* fifo, void* data, size_t size) {
 	}
 	MutexUnlock(&fifo->mutex);
 	return success;
+}
+
+bool mNPCommFIFOFlush(struct mNPCommFIFO* commFifo, Socket sock) {
+	struct mNPPacketHeader header;
+	uint8_t* chunkedData = commFifo->buffer;
+	while (mNPCommFIFOTryRead(commFifo, &header, sizeof(header))) {
+		SocketSetBlocking(sock, true);
+		SocketSend(sock, &header, sizeof(header));
+		while (header.size) {
+			size_t chunkSize = header.size;
+			if (chunkSize > PKT_CHUNK_SIZE) {
+				chunkSize = PKT_CHUNK_SIZE;
+			}
+			mNPCommFIFORead(commFifo, chunkedData, chunkSize);
+			header.size -= chunkSize;
+			SocketSend(sock, chunkedData, chunkSize);
+		}
+		if (header.packetType == mNP_PKT_SHUTDOWN) {
+			return false;
+		}
+	}
+	return true;
 }

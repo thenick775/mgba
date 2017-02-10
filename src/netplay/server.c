@@ -14,6 +14,7 @@ mLOG_DEFINE_CATEGORY(NP_SERVER, "Netplay Server")
 
 static THREAD_ENTRY _listenThread(void* context);
 static THREAD_ENTRY _clientThread(void* context);
+static THREAD_ENTRY _roomThread(void* context);
 
 #define CLIENT_POLL_TIMEOUT 500
 
@@ -52,6 +53,8 @@ struct mNPClient {
 };
 
 struct mNPRoom {
+	struct mNPServer* p;
+	struct mNPRoomInfo info;
 	struct Table cores;
 	Mutex mutex;
 	struct RingFIFO fifo;
@@ -106,14 +109,19 @@ void mNPServerStop(struct mNPServer* serv) {
 	free(serv);
 }
 
-static void _registerCore(struct mNPServer* serv, struct mNPCoreInfo* info) {
+static bool _registerCore(struct mNPServer* serv, struct mNPCoreInfo* info) {
 	MutexLock(&serv->mutex);
+	if (TableSize(&serv->cores) >= serv->maxCores) {
+		MutexUnlock(&serv->mutex);
+		return false;
+	}
 	info->coreId = serv->coreCounter;
 	TableInsert(&serv->cores, info->coreId, info);
 	while (TableLookup(&serv->cores, serv->coreCounter)) {
 		++serv->coreCounter;
 	}
 	MutexUnlock(&serv->mutex);
+	return true;
 }
 
 static void _shutdownClients(uint32_t id, void* value, void* user) {
@@ -147,16 +155,7 @@ THREAD_ENTRY _listenThread(void* context) {
 		MutexLock(&serv->mutex);
 		if (TableSize(&serv->clients) >= serv->capacity) {
 			MutexUnlock(&serv->mutex);
-			struct mNPPacketHeader header = {
-				.packetType = mNP_PKT_ACK,
-				.size = sizeof(struct mNPPacketAck),
-				.flags = 0
-			};
-			struct mNPPacketAck ack = {
-				.reply = mNP_REPLY_FULL
-			};
-			SocketSend(newClient, &header, sizeof(header));
-			SocketSend(newClient, &ack, sizeof(ack));
+			mNPAck(newClient, mNP_REPLY_FULL);
 			SocketClose(newClient);
 			continue;
 		}
@@ -183,15 +182,79 @@ THREAD_ENTRY _listenThread(void* context) {
 		MutexUnlock(&serv->mutex);
 		ThreadCreate(&client->thread, _clientThread, client);
 	}
+	// TODO shutdown rooms
 	TableEnumerate(&serv->clients, _shutdownClients, NULL);
 	mLOG(NP_SERVER, INFO, "Server shut down");
 	return 0;
+}
+
+static bool _createRoom(struct mNPClient* client, const struct mNPPacketJoin* join) {
+	MutexLock(&client->p->mutex);
+	struct mNPCoreInfo* core = TableLookup(&client->p->cores, join->coreId);
+	if (!join->capacity) {
+		return false;
+	}
+	if (!core) {
+		MutexUnlock(&client->p->mutex);
+		mNPAck(client->sock, mNP_REPLY_NO_SUCH_CORE);
+		return true;
+	}
+	if (core->roomId) {
+		MutexUnlock(&client->p->mutex);
+		mNPAck(client->sock, mNP_REPLY_BUSY);
+		return true;
+	}
+	if (TableSize(&client->p->rooms) >= client->p->maxRooms) {
+		MutexUnlock(&client->p->mutex);
+		mNPAck(client->sock, mNP_REPLY_FULL);
+		return true;
+	}
+	struct mNPRoom* room = malloc(sizeof(*room));
+	room->p = client->p;
+	TableInit(&room->cores, 8, NULL);
+	TableInsert(&room->cores, core->coreId, core);
+	room->info.roomId = client->p->roomCounter;
+	core->roomId = room->info.roomId;
+	room->info.nCores = 1;
+	memcpy(room->info.requiredCommitHash, client->clientInfo.commitHash, sizeof(room->info.requiredCommitHash));
+	room->info.syncPeriod = join->syncPeriod;
+	room->info.capacity = join->capacity;
+	room->info.flags = join->flags;
+	MutexInit(&room->mutex);
+	RingFIFOInit(&room->fifo, COMM_FIFO_SIZE);
+	ConditionInit(&room->fifoFull);
+	ConditionInit(&room->fifoEmpty);
+	TableInsert(&client->p->rooms, room->info.roomId, room);
+	while (TableLookup(&client->p->rooms, client->p->roomCounter)) {
+		++client->p->roomCounter;
+	}
+	ThreadCreate(&room->thread, _roomThread, room);
+	MutexUnlock(&client->p->mutex);
+
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_JOIN,
+		.size = sizeof(struct mNPPacketJoin),
+		.flags = 0
+	};
+	struct mNPPacketJoin data = *join;
+	data.roomId = room->info.roomId;
+	SocketSend(client->sock, &header, sizeof(header));
+	SocketSend(client->sock, &data, sizeof(data));
+	return true;
 }
 
 static bool _processJoin(struct mNPClient* client, const struct mNPPacketJoin* join, size_t size) {
 	if (sizeof(*join) != size || !join) {
 		return false;
 	}
+	if (!join->coreId) {
+		return false;
+	}
+	if (!join->roomId) {
+		mLOG(NP_SERVER, INFO, "Client %i core %i creating room", client->clientId, join->coreId);
+		return _createRoom(client, join);
+	}
+	mLOG(NP_SERVER, INFO, "Client %i core %i joining room %i", client->clientId, join->coreId, join->roomId);
 	// TODO
 	return true;
 }
@@ -290,7 +353,10 @@ static bool _processRegisterCore(struct mNPClient* client, const struct mNPPacke
 	}
 	struct mNPCoreInfo* info = malloc(sizeof(*info));
 	memcpy(info, &reg->info, sizeof(*info));
-	_registerCore(client->p, info);
+	if (!_registerCore(client->p, info)) {
+		mNPAck(client->sock, mNP_REPLY_FULL);
+		return true;
+	}
 	TableInsert(&client->cores, info->coreId, info);
 	struct mNPPacketHeader header = {
 		.packetType = mNP_PKT_REGISTER_CORE,
@@ -353,16 +419,7 @@ static bool _clientWelcome(struct mNPClient* client) {
 		return false;
 	}
 
-	struct mNPPacketHeader ackHeader = {
-		.packetType = mNP_PKT_ACK,
-		.size = sizeof(struct mNPPacketAck),
-		.flags = 0
-	};
-	struct mNPPacketAck ack = {
-		.reply = mNP_REPLY_OK
-	};
-	SocketSend(client->sock, &ackHeader, sizeof(ackHeader));
-	SocketSend(client->sock, &ack, sizeof(ack));
+	mNPAck(client->sock, mNP_REPLY_OK);
 	return true;
 }
 
@@ -433,14 +490,26 @@ static int _clientRecv(struct mNPClient* client) {
 		result = _processRegisterCore(client, data, header.size);
 		break;
 	default:
-		mLOG(NP_SERVER, DEBUG, "Unknown packet type %" PRIi32, header.packetType);
 		result = 0;
+		mLOG(NP_SERVER, DEBUG, "Unknown packet type %" PRIi32, header.packetType);
 		break;
 	}
 	if (data) {
 		free(data);
 	} else if (header.size) {
-		// TODO: skip data
+		size_t size = header.size;
+		uint8_t buffer[4096];
+		while (size) {
+			size_t toRead = size;
+			if (toRead > sizeof(buffer)) {
+				toRead = sizeof(buffer);
+			}
+			ssize_t len = SocketRecv(client->sock, buffer, toRead);
+			if (len <= 0) {
+				return -1;
+			}
+			size -= len;
+		}
 	}
 	return result;
 }
@@ -450,9 +519,15 @@ static bool _clientSend(struct mNPClient* client) {
 	return true;
 }
 
+static void _cleanCores(uint32_t coreId, void* value, void* user) {
+	UNUSED(value);
+	struct Table* cores = user;
+	TableRemove(cores, coreId);
+}
+
 static THREAD_ENTRY _clientThread(void* context) {
-	mLOG(NP_SERVER, DEBUG, "Client thread started");
 	struct mNPClient* client = context;
+	mLOG(NP_SERVER, DEBUG, "Client %i thread started", client->clientId);
 	while (true) {
 		MutexLock(&client->mutex);
 		if (!client->running) {
@@ -463,19 +538,8 @@ static THREAD_ENTRY _clientThread(void* context) {
 
 		int status = _clientRecv(client);
 		if (!status) {
-			struct mNPPacketHeader header = {
-				.packetType = mNP_PKT_ACK,
-				.size = sizeof(struct mNPPacketAck),
-				.flags = 0
-			};
-			struct mNPPacketAck ack = {
-				.reply = mNP_REPLY_MALFORMED
-			};
-			SocketSend(client->sock, &header, sizeof(header));
-			SocketSend(client->sock, &ack, sizeof(ack));
-			break;
-		}
-		if (status < 0) {
+			mNPAck(client->sock, mNP_REPLY_MALFORMED);
+		} else if (status < 0) {
 			// Received shutdown packet or a critical error
 			break;
 		}
@@ -484,7 +548,7 @@ static THREAD_ENTRY _clientThread(void* context) {
 			break;
 		}
 	}
-	mLOG(NP_SERVER, DEBUG, "Client thread exited");
+	mLOG(NP_SERVER, DEBUG, "Client %i thread exited", client->clientId);
 	struct mNPPacketHeader header = {
 		.packetType = mNP_PKT_SHUTDOWN,
 		.size = 0,
@@ -493,7 +557,6 @@ static THREAD_ENTRY _clientThread(void* context) {
 	SocketSend(client->sock, &header, sizeof(header));
 	SocketClose(client->sock);
 
-	TableDeinit(&client->cores);
 	MutexDeinit(&client->mutex);
 	RingFIFODeinit(&client->fifo);
 	ConditionDeinit(&client->fifoFull);
@@ -502,6 +565,8 @@ static THREAD_ENTRY _clientThread(void* context) {
 	// The client is deleted here so we have to grab the server pointer first
 	struct mNPServer* server = client->p;
 	MutexLock(&server->mutex);
+	TableEnumerate(&client->cores, _cleanCores, &server->cores);
+	TableDeinit(&client->cores);
 	TableRemove(&server->clients, client->clientId);
 	MutexUnlock(&server->mutex);
 
@@ -509,5 +574,10 @@ static THREAD_ENTRY _clientThread(void* context) {
 }
 
 static THREAD_ENTRY _roomThread(void* context) {
+	struct mNPRoom* room = context;
+	mLOG(NP_SERVER, DEBUG, "Room %i thread started", room->info.roomId);
+	// TODO
+	mLOG(NP_SERVER, DEBUG, "Room %i thread exited", room->info.roomId);
+
 	return 0;
 }

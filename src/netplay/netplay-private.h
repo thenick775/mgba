@@ -21,4 +21,6 @@
 bool mNPContextRecv(struct mNPContext*, const struct mNPPacketHeader* header, const void* body);
 void mNPContextSend(struct mNPContext*, const struct mNPPacketHeader* header, const void* body);
 
+void mNPAck(Socket sock, enum mNPReplyType reply);
+
 #endif

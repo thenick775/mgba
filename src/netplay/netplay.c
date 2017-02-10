@@ -86,7 +86,7 @@ void mNPContextRegisterCore(struct mNPContext* context, struct mCoreThread* thre
 	struct mNPPacketRegisterCore data = {
 		.info = {
 			.platform = thread->core->platform(thread->core),
-			.frameOffset = thread->core->frameCounter(thread->core),
+			.frameOffset = 0,
 			.flags = 0
 		},
 		.nonce = nonce
@@ -109,7 +109,9 @@ void mNPContextJoinRoom(struct mNPContext* context, uint32_t roomId, uint32_t co
 	};
 	struct mNPPacketJoin data = {
 		.roomId = roomId,
-		.coreId = coreId
+		.coreId = coreId,
+		.syncPeriod = 6,
+		.capacity = 4
 	};
 	mNPContextSend(context, &header, &data);
 }
@@ -129,10 +131,11 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 	core->thread = thread;
 	MutexInit(&core->mutex);
 	mCoreThreadInterrupt(thread);
+	mNPEventQueueInit(&core->queue, 0);
 	core->flags = info->flags;
 	core->roomId = info->roomId;
 	core->coreId = info->coreId;
-	core->frameOffset = info->frameOffset;
+	core->frameOffset = info->frameOffset - thread->core->frameCounter(thread->core),
 	struct mCoreCallbacks callbacks = {
 		.context = core,
 		.videoFrameStarted = _coreFrame,
@@ -162,7 +165,7 @@ void mNPContextPushInput(struct mNPContext* context, uint32_t coreId, uint32_t i
 			.eventType = mNP_EVENT_KEY_INPUT,
 			.coreId = coreId,
 			.eventDatum = input,
-			.frameId = core->thread->core->frameCounter(core->thread->core) - core->frameOffset
+			.frameId = core->thread->core->frameCounter(core->thread->core) + core->frameOffset
 		}
 	};
 	mNPContextSend(context, &header, &data);
@@ -197,6 +200,9 @@ void mNPContextListCores(struct mNPContext* context, uint32_t roomId) {
 }
 
 bool mNPContextConnect(struct mNPContext* context, const struct mNPServerOptions* opts) {
+	if (context->connected) {
+		return false;
+	}
 	Socket serverSocket = SocketConnectTCP(opts->port, &opts->address);
 	if (SOCKET_FAILED(serverSocket)) {
 		mLOG(NP, ERROR, "Failed to connect to server");
@@ -244,6 +250,11 @@ void mNPContextDisconnect(struct mNPContext* context) {
 	context->connected = false;
 	TableClear(&context->cores);
 	TableClear(&context->pending);
+	SocketClose(context->server);
+	RingFIFOInit(&context->commFifo, COMM_FIFO_SIZE);
+	ConditionDeinit(&context->commFifoFull);
+	ConditionDeinit(&context->commFifoEmpty);
+	MutexDeinit(&context->commMutex);
 }
 
 static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
@@ -396,18 +407,14 @@ static THREAD_ENTRY _commThread(void* user) {
 	bool running = true;
 	while (running) {
 		// Receive
-		if (!_commRecv(user)) {
+		if (!_commRecv(context)) {
 			break;
 		}
 
 		// Send
-		running = _commSend(user);
+		running = _commSend(context);
 	}
 	mLOG(NP, INFO, "Client thread exited");
-	SocketClose(context->server);
-	ConditionDeinit(&context->commFifoFull);
-	ConditionDeinit(&context->commFifoEmpty);
-	MutexDeinit(&context->commMutex);
 
 	return 0;
 }
@@ -533,6 +540,7 @@ bool mNPContextRecv(struct mNPContext* context, const struct mNPPacketHeader* he
 		if (!context->connected) {
 			return _parseConnect(context, body, header->size);
 		}
+		// TODO
 		break;
 	case mNP_PKT_SHUTDOWN:
 		mLOG(NP, INFO, "Server shut down");
@@ -557,4 +565,17 @@ bool mNPContextRecv(struct mNPContext* context, const struct mNPPacketHeader* he
 	}
 	// TODO
 	return true;
+}
+
+void mNPAck(Socket sock, enum mNPReplyType reply) {
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_ACK,
+		.size = sizeof(struct mNPPacketAck),
+		.flags = 0
+	};
+	struct mNPPacketAck ack = {
+		.reply = reply
+	};
+	SocketSend(sock, &header, sizeof(header));
+	SocketSend(sock, &ack, sizeof(ack));
 }

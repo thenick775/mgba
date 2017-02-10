@@ -25,11 +25,14 @@ NetplayController::NetplayController(MultiplayerController* mp, QObject* parent)
 	, m_multiplayer(mp)
 	, m_np(nullptr)
 	, m_server(nullptr)
+	, m_connected(false)
 {
 	qRegisterMetaType<QList<mNPRoomInfo>>("QList<mNPRoomInfo>");
 	qRegisterMetaType<QList<mNPCoreInfo>>("QList<mNPCoreInfo>");
 	connect(this, SIGNAL(connected()), this, SLOT(updateRooms()));
 	connect(this, SIGNAL(connected()), this, SLOT(updateCores()));
+	connect(this, SIGNAL(roomJoined(quint32, quint32)), this, SLOT(updateRooms()));
+	connect(this, SIGNAL(roomJoined(quint32, quint32)), this, SLOT(updateCores()));
 }
 
 NetplayController::~NetplayController() {
@@ -120,12 +123,26 @@ void NetplayController::addGameController(uint32_t nonce, uint32_t id) {
 	}
 	GameController* controller = m_pendingCores.take(nonce);
 	mNPContextAttachCore(m_np, controller->thread(), nonce);
+	m_cores[id] = controller;
 	auto connection = connect(controller, &GameController::keysUpdated, [this, id](quint32 keys) {
 		mNPContextPushInput(m_np, id, keys);
 	});
 	connect(this, &NetplayController::disconnected, [this, connection]() {
 		disconnect(connection);
 	});
+	emit coreRegistered(id);
+}
+
+void NetplayController::joinRoom(GameController* controller, quint32 roomId) {
+	if (!m_np) {
+		return;
+	}
+	// TODO: Add reverse mapping?
+	QList<uint32_t> keys = m_cores.keys(controller);
+	if (keys.empty()) {
+		return;
+	}
+	mNPContextJoinRoom(m_np, roomId, keys[0]);
 }
 
 void NetplayController::cbListRooms(QList<mNPRoomInfo> list) {
@@ -161,12 +178,16 @@ void NetplayController::updateCores() {
 }
 
 void NetplayController::cbServerConnected(mNPContext* context, void* user) {
-	static_cast<NetplayController*>(user)->connected();
+	NetplayController* controller = static_cast<NetplayController*>(user);
+	controller->m_connected = true;
+	controller->connected();
 }
 
 void NetplayController::cbServerShutdown(mNPContext* context, void* user) {
-	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "disconnectFromServer");
-	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "stopServer");
+	NetplayController* controller = static_cast<NetplayController*>(user);
+	controller->m_connected = true;
+	QMetaObject::invokeMethod(controller, "disconnectFromServer");
+	QMetaObject::invokeMethod(controller, "stopServer");
 }
 
 void NetplayController::cbCoreRegistered(mNPContext* context, const mNPCoreInfo* info, uint32_t nonce, void* user) {

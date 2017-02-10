@@ -32,6 +32,7 @@ enum mNPPacketType {
 	mNP_PKT_SYNC,
 	mNP_PKT_EVENT,
 	mNP_PKT_REGISTER_CORE,
+	mNP_PKT_CLONE_CORE,
 	mNP_PKT_MAX
 };
 
@@ -49,7 +50,9 @@ enum mNPReplyType {
 	mNP_REPLY_FULL = -2,
 	mNP_REPLY_PROTO_TOO_OLD = -3,
 	mNP_REPLY_MALFORMED = -4,
-	mNP_REPLY_DOES_NOT_EXIST = -5
+	mNP_REPLY_DOES_NOT_EXIST = -5,
+	mNP_REPLY_DISALLOWED = -6,
+	mNP_REPLY_BUSY = -7
 };
 
 enum mNPListType {
@@ -76,7 +79,9 @@ struct mNPPacketConnect {
 struct mNPPacketJoin {
 	uint32_t roomId;
 	uint32_t coreId;
-	uint32_t syncDuration;
+	uint32_t syncPeriod;
+	uint32_t capacity;
+	uint32_t flags;
 };
 
 struct mNPPacketLeave {

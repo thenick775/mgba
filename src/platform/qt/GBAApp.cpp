@@ -266,6 +266,15 @@ void GBAApp::disconnectServer() {
 }
 
 void GBAApp::attachToNetplay(GameController* controller) {
+	if (m_netplay.serverRunning()) {
+		// TODO clean up
+		connect(&m_netplay, &NetplayController::coreRegistered, [this, controller](quint32 c2) {
+			if (controller != m_netplay.controllerForId(c2)) {
+				return;
+			}
+			m_netplay.joinRoom(controller);
+		});
+	}
 	m_netplay.addGameController(controller);
 }
 

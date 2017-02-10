@@ -54,7 +54,9 @@ enum mNPRoomFlags {
 struct mNPRoomInfo {
 	uint8_t requiredCommitHash[20];
 	uint32_t nCores;
-	uint32_t syncDuration;
+	uint32_t roomId;
+	uint32_t syncPeriod;
+	uint32_t capacity;
 	uint32_t flags;
 };
 

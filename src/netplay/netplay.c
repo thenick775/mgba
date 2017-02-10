@@ -10,7 +10,6 @@
 #include <mgba/core/version.h>
 #include <mgba/internal/netplay/server.h>
 #include <mgba-util/string.h>
-#include <mgba-util/vector.h>
 #include "netplay-private.h"
 
 mLOG_DEFINE_CATEGORY(NP, "Netplay")
@@ -24,7 +23,6 @@ struct mNPCore;
 
 static THREAD_ENTRY _commThread(void* context);
 
-DECLARE_VECTOR(mNPEventQueue, struct mNPEvent);
 DEFINE_VECTOR(mNPEventQueue, struct mNPEvent);
 
 struct mNPContext {
@@ -51,6 +49,7 @@ struct mNPCore {
 	struct mNPEventQueue queue;
 	uint32_t framesRemaining;
 	bool waitingForEvent;
+	uint32_t lastInput;
 };
 
 struct mNPContext* mNPContextCreate(void) {
@@ -149,11 +148,15 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 
 void mNPContextPushInput(struct mNPContext* context, uint32_t coreId, uint32_t input) {
 	struct mNPCore* core = TableLookup(&context->cores, coreId);
-	if (!(core->flags & mNP_CORE_ALLOW_CONTROL) || !core->roomId) {
+	if (!core || !(core->flags & mNP_CORE_ALLOW_CONTROL) || !core->roomId) {
 		return;
 	}
 
 	mLOG(NP, DEBUG, "Recieved input for coreId %" PRIi32 ": %" PRIx32, coreId, input);
+	if (core->lastInput == input) {
+		return;
+	}
+	core->lastInput = input;
 
 	struct mNPPacketHeader header = {
 		.packetType = mNP_PKT_EVENT,
@@ -268,7 +271,7 @@ static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
 
 static void _pollEvent(struct mNPCore* core) {
 	// TODO: Implement rollback
-	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
+	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) + core->frameOffset;
 	if (!core->roomId) {
 		return;
 	}
@@ -302,6 +305,23 @@ static void _coreReset(void* context) {
 static void _coreFrame(void* context) {
 	struct mNPCore* core = context;
 	_pollEvent(core);
+
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_EVENT,
+		.size = sizeof(struct mNPPacketEvent),
+		.flags = 0
+	};
+	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) + core->frameOffset;
+	struct mNPPacketEvent data = {
+		.event = {
+			.eventType = mNP_EVENT_FRAME,
+			.coreId = core->coreId,
+			.eventDatum = currentFrame,
+			.frameId = currentFrame
+		}
+	};
+	mNPContextSend(core->p, &header, &data);
+
 	--core->framesRemaining;
 }
 
@@ -432,7 +452,7 @@ static void _parseJoin(struct mNPContext* context, const struct mNPPacketJoin* j
 	struct mNPCore* core = TableLookup(&context->cores, join->coreId);
 	if (core) {
 		core->roomId = join->roomId;
-		core->framesRemaining = join->syncPeriod;
+		core->framesRemaining = join->syncPeriod * 2;
 	}
 	if (context->callbacks.roomJoined) {
 		context->callbacks.roomJoined(context, join->roomId, join->coreId, context->userContext);

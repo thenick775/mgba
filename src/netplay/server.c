@@ -49,6 +49,12 @@ struct mNPClient {
 	Thread thread;
 };
 
+struct mNPServerCoreInfo {
+	struct mNPCoreInfo info;
+	struct Table clients;
+	int32_t framesRemaining;
+};
+
 struct mNPRoom {
 	struct mNPServer* p;
 	struct mNPRoomInfo info;
@@ -56,6 +62,9 @@ struct mNPRoom {
 	Mutex mutex;
 	struct mNPCommFIFO fifo;
 	Thread thread;
+	struct mNPEventQueue queue;
+	struct mNPEventQueue auxQueue;
+	uint32_t coresUntilSync;
 };
 
 struct mNPForwardedPacket {
@@ -110,14 +119,18 @@ void mNPServerStop(struct mNPServer* serv) {
 	free(serv);
 }
 
-static bool _registerCore(struct mNPServer* serv, struct mNPCoreInfo* info) {
+static bool _registerCore(struct mNPClient* client, struct mNPServerCoreInfo* core) {
+	struct mNPServer* serv = client->p;
 	MutexLock(&serv->mutex);
 	if (TableSize(&serv->cores) >= serv->maxCores) {
 		MutexUnlock(&serv->mutex);
 		return false;
 	}
-	info->coreId = serv->coreCounter;
-	TableInsert(&serv->cores, info->coreId, info);
+	TableInit(&core->clients, 0, NULL);
+	TableInsert(&core->clients, client->clientId, client);
+	core->info.coreId = serv->coreCounter;
+	core->framesRemaining = 0;
+	TableInsert(&serv->cores, core->info.coreId, core);
 	while (TableLookup(&serv->cores, serv->coreCounter)) {
 		++serv->coreCounter;
 	}
@@ -192,12 +205,12 @@ THREAD_ENTRY _listenThread(void* context) {
 
 static bool _forwardPacket(struct mNPClient* client, uint32_t coreId, const struct mNPPacketHeader* header, void* data) {
 	MutexLock(&client->p->mutex);
-	struct mNPCoreInfo* core = TableLookup(&client->p->cores, coreId);
-	if (!core || !core->roomId) {
+	struct mNPServerCoreInfo* core = TableLookup(&client->p->cores, coreId);
+	if (!core || !core->info.roomId) {
 		MutexUnlock(&client->p->mutex);
 		return false;
 	}
-	struct mNPRoom* room = TableLookup(&client->p->rooms, core->roomId);
+	struct mNPRoom* room = TableLookup(&client->p->rooms, core->info.roomId);
 	MutexUnlock(&client->p->mutex);
 	if (!room) {
 		return false;
@@ -216,13 +229,13 @@ static bool _createRoom(struct mNPClient* client, const struct mNPPacketJoin* jo
 		return false;
 	}
 	MutexLock(&client->p->mutex);
-	struct mNPCoreInfo* core = TableLookup(&client->p->cores, join->coreId);
+	struct mNPServerCoreInfo* core = TableLookup(&client->p->cores, join->coreId);
 	if (!core) {
 		MutexUnlock(&client->p->mutex);
 		mNPAck(client->sock, mNP_REPLY_NO_SUCH_CORE);
 		return true;
 	}
-	if (core->roomId) {
+	if (core->info.roomId) {
 		MutexUnlock(&client->p->mutex);
 		mNPAck(client->sock, mNP_REPLY_BUSY);
 		return true;
@@ -235,9 +248,10 @@ static bool _createRoom(struct mNPClient* client, const struct mNPPacketJoin* jo
 	struct mNPRoom* room = malloc(sizeof(*room));
 	room->p = client->p;
 	TableInit(&room->cores, 8, NULL);
-	TableInsert(&room->cores, core->coreId, core);
+	core->framesRemaining = join->syncPeriod;
+	TableInsert(&room->cores, core->info.coreId, core);
 	room->info.roomId = client->p->roomCounter;
-	core->roomId = room->info.roomId;
+	core->info.roomId = room->info.roomId;
 	room->info.nCores = 1;
 	memcpy(room->info.requiredCommitHash, client->clientInfo.commitHash, sizeof(room->info.requiredCommitHash));
 	room->info.syncPeriod = join->syncPeriod;
@@ -245,6 +259,9 @@ static bool _createRoom(struct mNPClient* client, const struct mNPPacketJoin* jo
 	room->info.flags = join->flags;
 	MutexInit(&room->mutex);
 	mNPCommFIFOInit(&room->fifo);
+	mNPEventQueueInit(&room->queue, 0);
+	mNPEventQueueInit(&room->auxQueue, 0);
+	room->coresUntilSync = 1;
 	TableInsert(&client->p->rooms, room->info.roomId, room);
 	while (TableLookup(&client->p->rooms, client->p->roomCounter)) {
 		++client->p->roomCounter;
@@ -264,8 +281,9 @@ static bool _createRoom(struct mNPClient* client, const struct mNPPacketJoin* jo
 	return true;
 }
 
-static bool _processJoin(struct mNPClient* client, const struct mNPPacketJoin* join, size_t size) {
-	if (sizeof(*join) != size || !join) {
+static bool _processJoin(struct mNPClient* client, const struct mNPPacketHeader* header, struct mNPPacketJoin* join, bool* forwarded
+	) {
+	if (sizeof(*join) != header->size || !join) {
 		return false;
 	}
 	if (!join->coreId) {
@@ -276,7 +294,8 @@ static bool _processJoin(struct mNPClient* client, const struct mNPPacketJoin* j
 		return _createRoom(client, join);
 	}
 	mLOG(NP_SERVER, INFO, "Client %i core %i joining room %i", client->clientId, join->coreId, join->roomId);
-	// TODO
+	_forwardPacket(client, join->coreId, header, join);
+	*forwarded = true;
 	return true;
 }
 
@@ -292,8 +311,9 @@ static bool _forwardEvent(struct mNPClient* client, const struct mNPPacketHeader
 
 static void _listCores(uint32_t id, void* value, void* user) {
 	UNUSED(id);
+	struct mNPServerCoreInfo* core = value;
 	struct mNPPacketListCores* list = user;
-	memcpy(&list->cores[list->nCores], value, sizeof(struct mNPCoreInfo));
+	memcpy(&list->cores[list->nCores], &core->info, sizeof(struct mNPCoreInfo));
 	++list->nCores;
 }
 
@@ -306,17 +326,18 @@ static void _processListCores(struct mNPClient* client, uint32_t roomId) {
 	struct mNPPacketListCores* list;
 	struct Table* set = &client->p->cores;
 	Mutex* mutex = &client->p->mutex;
+	MutexLock(mutex);
 	if (roomId) {
 		struct mNPRoom* room = TableLookup(&client->p->rooms, roomId);
 		if (room) {
 			set = &room->cores;
 			mutex = &room->mutex;
 		} else {
+			MutexUnlock(mutex);
 			set = NULL;
 		}
 	}
 	if (set) {
-		MutexLock(mutex);
 		nCores = TableSize(set);
 		header.size = sizeof(struct mNPPacketListCores) + nCores * sizeof(struct mNPCoreInfo);
 		list = malloc(header.size);
@@ -382,20 +403,20 @@ static bool _processRegisterCore(struct mNPClient* client, const struct mNPPacke
 	if (sizeof(*reg) != size || !reg) {
 		return false;
 	}
-	struct mNPCoreInfo* info = malloc(sizeof(*info));
-	memcpy(info, &reg->info, sizeof(*info));
-	if (!_registerCore(client->p, info)) {
+	struct mNPServerCoreInfo* core = malloc(sizeof(*core));
+	memcpy(&core->info, &reg->info, sizeof(core->info));
+	if (!_registerCore(client, core)) {
 		mNPAck(client->sock, mNP_REPLY_FULL);
 		return true;
 	}
-	TableInsert(&client->cores, info->coreId, info);
+	TableInsert(&client->cores, core->info.coreId, core);
 	struct mNPPacketHeader header = {
 		.packetType = mNP_PKT_REGISTER_CORE,
 		.size = sizeof(struct mNPPacketRegisterCore),
 		.flags = 0
 	};
 	struct mNPPacketRegisterCore data = {
-		.info = *info,
+		.info = core->info,
 		.nonce = reg->nonce
 	};
 	SocketSend(client->sock, &header, sizeof(header));
@@ -512,7 +533,7 @@ static int _clientRecv(struct mNPClient* client) {
 		result = -1;
 		break;
 	case mNP_PKT_JOIN:
-		result = _processJoin(client, data, header.size);
+		result = _processJoin(client, &header, data, &forwarded);
 		break;
 	case mNP_PKT_LIST:
 		result = _processList(client, data, header.size);
@@ -553,14 +574,14 @@ static int _clientRecv(struct mNPClient* client) {
 
 static void _cleanCores(uint32_t coreId, void* value, void* user) {
 	struct mNPServer* server = user;
-	struct mNPCoreInfo* info = value;
-	if (info->roomId) {
+	struct mNPServerCoreInfo* core = value;
+	if (core->info.roomId) {
 		MutexLock(&server->mutex);
-		struct mNPRoom* room = TableLookup(&server->rooms, info->roomId);
+		struct mNPRoom* room = TableLookup(&server->rooms, core->info.roomId);
 		MutexUnlock(&server->mutex);
 		if (room) {
 			MutexLock(&room->mutex);
-			TableRemove(&room->cores, info->coreId);
+			TableRemove(&room->cores, core->info.coreId);
 			MutexUnlock(&room->mutex);
 		}
 	}
@@ -602,7 +623,25 @@ static THREAD_ENTRY _clientThread(void* context) {
 }
 
 static void _processEvent(struct mNPRoom* room, const struct mNPForwardedPacket* packet) {
-
+	const struct mNPPacketEvent* eventPacket = packet->data;
+	const struct mNPEvent* event = &eventPacket->event;
+	MutexLock(&room->mutex);
+	struct mNPServerCoreInfo* info = TableLookup(&room->cores, event->coreId);
+	if (info->framesRemaining) {
+		*mNPEventQueueAppend(&room->queue) = *event;
+		if (event->eventType == mNP_EVENT_FRAME) {
+			--info->framesRemaining;
+			if (!info->framesRemaining) {
+				--room->coresUntilSync;
+				if (!room->coresUntilSync) {
+					// TODO
+				}
+			}
+		}
+	} else {
+		*mNPEventQueueAppend(&room->auxQueue) = *event;
+	}
+	MutexUnlock(&room->mutex);
 }
 
 static THREAD_ENTRY _roomThread(void* context) {

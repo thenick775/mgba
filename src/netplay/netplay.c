@@ -47,6 +47,7 @@ struct mNPCore {
 	int32_t frameOffset;
 	uint32_t flags;
 	struct mNPEventQueue queue;
+	struct mNPEventQueue sentQueue;
 	uint32_t framesRemaining;
 	bool waitingForEvent;
 	uint32_t lastInput;
@@ -130,6 +131,7 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 	MutexInit(&core->mutex);
 	mCoreThreadInterrupt(thread);
 	mNPEventQueueInit(&core->queue, 0);
+	mNPEventQueueInit(&core->sentQueue, 0);
 	core->flags = info->flags;
 	core->roomId = info->roomId;
 	core->coreId = info->coreId;
@@ -146,6 +148,25 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 	TableRemove(&context->pending, nonce);
 }
 
+static void _sendEvent(struct mNPCore* core, enum mNPEventType type, uint32_t datum) {
+	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) + core->frameOffset;
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_EVENT,
+		.size = sizeof(struct mNPPacketEvent),
+		.flags = 0
+	};
+	struct mNPPacketEvent data = {
+		.event = {
+			.eventType = type,
+			.coreId = core->coreId,
+			.eventDatum = datum,
+			.frameId = currentFrame
+		}
+	};
+	*mNPEventQueueAppend(&core->sentQueue) = data.event;
+	mNPContextSend(core->p, &header, &data);
+}
+
 void mNPContextPushInput(struct mNPContext* context, uint32_t coreId, uint32_t input) {
 	struct mNPCore* core = TableLookup(&context->cores, coreId);
 	if (!core || !(core->flags & mNP_CORE_ALLOW_CONTROL) || !core->roomId) {
@@ -157,21 +178,7 @@ void mNPContextPushInput(struct mNPContext* context, uint32_t coreId, uint32_t i
 		return;
 	}
 	core->lastInput = input;
-
-	struct mNPPacketHeader header = {
-		.packetType = mNP_PKT_EVENT,
-		.size = sizeof(struct mNPPacketEvent),
-		.flags = 0
-	};
-	struct mNPPacketEvent data = {
-		.event = {
-			.eventType = mNP_EVENT_KEY_INPUT,
-			.coreId = coreId,
-			.eventDatum = input,
-			.frameId = core->thread->core->frameCounter(core->thread->core) + core->frameOffset
-		}
-	};
-	mNPContextSend(context, &header, &data);
+	_sendEvent(core, mNP_EVENT_KEY_INPUT, input);
 }
 
 void mNPContextListRooms(struct mNPContext* context) {
@@ -258,8 +265,18 @@ void mNPContextDisconnect(struct mNPContext* context) {
 static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
 	switch (event->eventType) {
 	case mNP_EVENT_NONE:
-	case mNP_EVENT_FRAME:
 		return;
+	case mNP_EVENT_FRAME:
+		MutexLock(&core->mutex);
+		while (mNPEventQueueSize(&core->sentQueue)) {
+			struct mNPEvent* sentEvent = mNPEventQueueGetPointer(&core->sentQueue, 0);
+			if (sentEvent->frameId > event->frameId) {
+				break;
+			}
+			mNPEventQueueShift(&core->sentQueue, 0, 1);
+		}
+		MutexUnlock(&core->mutex);
+		break;
 	case mNP_EVENT_RESET:
 		mCoreThreadReset(core->thread);
 		break;
@@ -270,7 +287,6 @@ static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
 }
 
 static void _pollEvent(struct mNPCore* core) {
-	// TODO: Implement rollback
 	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) + core->frameOffset;
 	if (!core->roomId) {
 		return;
@@ -306,21 +322,8 @@ static void _coreFrame(void* context) {
 	struct mNPCore* core = context;
 	_pollEvent(core);
 
-	struct mNPPacketHeader header = {
-		.packetType = mNP_PKT_EVENT,
-		.size = sizeof(struct mNPPacketEvent),
-		.flags = 0
-	};
 	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) + core->frameOffset;
-	struct mNPPacketEvent data = {
-		.event = {
-			.eventType = mNP_EVENT_FRAME,
-			.coreId = core->coreId,
-			.eventDatum = currentFrame,
-			.frameId = currentFrame
-		}
-	};
-	mNPContextSend(core->p, &header, &data);
+	_sendEvent(core, mNP_EVENT_FRAME, currentFrame);
 
 	--core->framesRemaining;
 }

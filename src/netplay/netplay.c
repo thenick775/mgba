@@ -34,10 +34,7 @@ struct mNPContext {
 	bool connected;
 
 	Thread commThread;
-	Mutex commMutex;
-	struct RingFIFO commFifo;
-	Condition commFifoFull;
-	Condition commFifoEmpty;
+	struct mNPCommFIFO commFifo;
 
 	struct Table cores;
 	struct Table pending;
@@ -228,10 +225,7 @@ bool mNPContextConnect(struct mNPContext* context, const struct mNPServerOptions
 	}
 
 	context->server = serverSocket;
-	RingFIFOInit(&context->commFifo, COMM_FIFO_SIZE);
-	MutexInit(&context->commMutex);
-	ConditionInit(&context->commFifoFull);
-	ConditionInit(&context->commFifoEmpty);
+	mNPCommFIFOInit(&context->commFifo);
 
 	mNPContextSend(context, &header, &data);
 	ThreadCreate(&context->commThread, _commThread, context);
@@ -251,10 +245,7 @@ void mNPContextDisconnect(struct mNPContext* context) {
 	TableClear(&context->cores);
 	TableClear(&context->pending);
 	SocketClose(context->server);
-	RingFIFOInit(&context->commFifo, COMM_FIFO_SIZE);
-	ConditionDeinit(&context->commFifoFull);
-	ConditionDeinit(&context->commFifoEmpty);
-	MutexDeinit(&context->commMutex);
+	mNPCommFIFODeinit(&context->commFifo);
 }
 
 static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
@@ -368,24 +359,15 @@ static bool _commSend(struct mNPContext* context) {
 		mLOG(NP, ERROR, "Out of memory");
 		return false;
 	}
-	MutexLock(&context->commMutex);
-	while (RingFIFORead(&context->commFifo, &header, sizeof(header))) {
+	while (mNPCommFIFOTryRead(&context->commFifo, &header, sizeof(header))) {
 		SocketSetBlocking(context->server, true);
-		ConditionWake(&context->commFifoFull);
-		MutexUnlock(&context->commMutex);
 		SocketSend(context->server, &header, sizeof(header));
 		while (header.size) {
 			size_t chunkSize = header.size;
 			if (chunkSize > PKT_CHUNK_SIZE) {
 				chunkSize = PKT_CHUNK_SIZE;
 			}
-			MutexLock(&context->commMutex);
-			while (!RingFIFORead(&context->commFifo, chunkedData, chunkSize)) {
-				ConditionWake(&context->commFifoFull);
-				ConditionWait(&context->commFifoEmpty, &context->commMutex);
-			}
-			ConditionWake(&context->commFifoFull);
-			MutexUnlock(&context->commMutex);
+			mNPCommFIFORead(&context->commFifo, chunkedData, chunkSize);
 			header.size -= chunkSize;
 			SocketSend(context->server, chunkedData, chunkSize);
 		}
@@ -393,9 +375,7 @@ static bool _commSend(struct mNPContext* context) {
 			free(chunkedData);
 			return false;
 		}
-		MutexLock(&context->commMutex);
 	}
-	MutexUnlock(&context->commMutex);
 	free(chunkedData);
 	return true;
 }
@@ -420,12 +400,7 @@ static THREAD_ENTRY _commThread(void* user) {
 }
 
 void mNPContextSend(struct mNPContext* context, const struct mNPPacketHeader* header, const void* body) {
-	MutexLock(&context->commMutex);
-	while (!RingFIFOWrite(&context->commFifo, header, sizeof(*header))) {
-		ConditionWake(&context->commFifoEmpty);
-		ConditionWait(&context->commFifoFull, &context->commMutex);
-	}
-	MutexUnlock(&context->commMutex);
+	mNPCommFIFOWrite(&context->commFifo, header, sizeof(*header));
 	size_t size = header->size;
 	if (size && body) {
 		const uint8_t* ptr = body;
@@ -434,12 +409,7 @@ void mNPContextSend(struct mNPContext* context, const struct mNPPacketHeader* he
 			if (chunkSize > PKT_CHUNK_SIZE) {
 				chunkSize = PKT_CHUNK_SIZE;
 			}
-			MutexLock(&context->commMutex);
-			while (!RingFIFOWrite(&context->commFifo, ptr, chunkSize)) {
-				ConditionWake(&context->commFifoEmpty);
-				ConditionWait(&context->commFifoFull, &context->commMutex);
-			}
-			MutexUnlock(&context->commMutex);
+			mNPCommFIFOWrite(&context->commFifo, ptr, chunkSize);
 			size -= chunkSize;
 			ptr += chunkSize;
 		}
@@ -578,4 +548,48 @@ void mNPAck(Socket sock, enum mNPReplyType reply) {
 	};
 	SocketSend(sock, &header, sizeof(header));
 	SocketSend(sock, &ack, sizeof(ack));
+}
+
+void mNPCommFIFOInit(struct mNPCommFIFO* fifo) {
+	RingFIFOInit(&fifo->fifo, COMM_FIFO_SIZE);
+	MutexInit(&fifo->mutex);
+	ConditionInit(&fifo->fifoFull);
+	ConditionInit(&fifo->fifoEmpty);
+}
+
+void mNPCommFIFODeinit(struct mNPCommFIFO* fifo) {
+	RingFIFODeinit(&fifo->fifo);
+	MutexDeinit(&fifo->mutex);
+	ConditionDeinit(&fifo->fifoFull);
+	ConditionDeinit(&fifo->fifoEmpty);
+}
+
+void mNPCommFIFOWrite(struct mNPCommFIFO* fifo, const void* data, size_t size) {
+	MutexLock(&fifo->mutex);
+	while (!RingFIFOWrite(&fifo->fifo, data, size)) {
+		ConditionWake(&fifo->fifoEmpty);
+		ConditionWait(&fifo->fifoFull, &fifo->mutex);
+	}
+	ConditionWake(&fifo->fifoEmpty);
+	MutexUnlock(&fifo->mutex);
+}
+
+void mNPCommFIFORead(struct mNPCommFIFO* fifo, void* data, size_t size) {
+	MutexLock(&fifo->mutex);
+	while (!RingFIFORead(&fifo->fifo, data, size)) {
+		ConditionWake(&fifo->fifoFull);
+		ConditionWait(&fifo->fifoEmpty, &fifo->mutex);
+	}
+	ConditionWake(&fifo->fifoFull);
+	MutexUnlock(&fifo->mutex);
+}
+
+bool mNPCommFIFOTryRead(struct mNPCommFIFO* fifo, void* data, size_t size) {
+	MutexLock(&fifo->mutex);
+	bool success = RingFIFORead(&fifo->fifo, data, size);
+	if (success) {
+		ConditionWake(&fifo->fifoFull);
+	}
+	MutexUnlock(&fifo->mutex);
+	return success;
 }

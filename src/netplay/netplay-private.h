@@ -23,4 +23,17 @@ void mNPContextSend(struct mNPContext*, const struct mNPPacketHeader* header, co
 
 void mNPAck(Socket sock, enum mNPReplyType reply);
 
+struct mNPCommFIFO {
+	Mutex mutex;
+	struct RingFIFO fifo;
+	Condition fifoFull;
+	Condition fifoEmpty;
+};
+
+void mNPCommFIFOInit(struct mNPCommFIFO*);
+void mNPCommFIFODeinit(struct mNPCommFIFO*);
+void mNPCommFIFOWrite(struct mNPCommFIFO*, const void*, size_t);
+void mNPCommFIFORead(struct mNPCommFIFO*, void*, size_t);
+bool mNPCommFIFOTryRead(struct mNPCommFIFO*, void*, size_t);
+
 #endif

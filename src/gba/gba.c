@@ -88,6 +88,7 @@ static void GBAInit(void* cpu, struct mCPUComponent* component) {
 	gba->biosVf = 0;
 
 	gba->stream = NULL;
+	gba->avBlocked = false;
 	gba->keyCallback = NULL;
 	gba->stopCallback = NULL;
 	gba->stopCallback = NULL;

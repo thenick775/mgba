@@ -85,6 +85,7 @@ static void GBInit(void* cpu, struct mCPUComponent* component) {
 
 	mCoreCallbacksListInit(&gb->coreCallbacks, 0);
 	gb->stream = NULL;
+	gb->avBlocked = false;
 
 	mTimingInit(&gb->timing, &gb->cpu->cycles, &gb->cpu->nextEvent);
 	gb->audio.timing = &gb->timing;

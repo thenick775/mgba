@@ -98,6 +98,7 @@ struct GBA {
 	struct VFile* biosVf;
 
 	struct mAVStream* stream;
+	bool avBlocked;
 	struct mKeyCallback* keyCallback;
 	struct mStopCallback* stopCallback;
 	struct mCoreCallbacksList coreCallbacks;

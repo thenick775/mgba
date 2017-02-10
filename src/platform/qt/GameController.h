@@ -154,6 +154,8 @@ public slots:
 	void reloadAudioDriver();
 	void setSaveStateExtdata(int flags);
 	void setLoadStateExtdata(int flags);
+	void setKeyInputBlocked(bool blocked);
+	void setOutputBlocked(bool blocked);
 
 #ifdef USE_PNG
 	void screenshot();
@@ -220,6 +222,8 @@ private:
 	bool m_turboForced;
 	float m_turboSpeed;
 	bool m_wasPaused;
+	bool m_inputBlocked;
+	bool m_outputBlocked;
 
 	std::shared_ptr<mTileCache> m_tileCache;
 

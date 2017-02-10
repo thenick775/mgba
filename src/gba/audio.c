@@ -258,6 +258,10 @@ static int _applyBias(struct GBAAudio* audio, int sample) {
 
 static void _sample(struct mTiming* timing, void* user, uint32_t cyclesLate) {
 	struct GBAAudio* audio = user;
+	mTimingSchedule(timing, &audio->sampleEvent, audio->sampleInterval - cyclesLate);
+	if (audio->p->avBlocked) {
+		return;
+	}
 	int16_t sampleLeft = 0;
 	int16_t sampleRight = 0;
 	int psgShift = 5 - audio->volume;
@@ -312,8 +316,6 @@ static void _sample(struct mTiming* timing, void* user, uint32_t cyclesLate) {
 	if (wait && audio->p->stream && audio->p->stream->postAudioBuffer) {
 		audio->p->stream->postAudioBuffer(audio->p->stream, audio->psg.left, audio->psg.right);
 	}
-
-	mTimingSchedule(timing, &audio->sampleEvent, audio->sampleInterval - cyclesLate);
 }
 
 void GBAAudioSerialize(const struct GBAAudio* audio, struct GBASerializedState* state) {

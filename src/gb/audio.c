@@ -625,6 +625,10 @@ void GBAudioSamplePSG(struct GBAudio* audio, int16_t* left, int16_t* right) {
 
 static void _sample(struct mTiming* timing, void* user, uint32_t cyclesLate) {
 	struct GBAudio* audio = user;
+	mTimingSchedule(timing, &audio->sampleEvent, audio->sampleInterval * audio->timingFactor - cyclesLate);
+	if (audio->p->avBlocked) {
+		return;
+	}
 	int16_t sampleLeft = 0;
 	int16_t sampleRight = 0;
 	GBAudioSamplePSG(audio, &sampleLeft, &sampleRight);
@@ -655,7 +659,6 @@ static void _sample(struct mTiming* timing, void* user, uint32_t cyclesLate) {
 	if (wait && audio->p->stream && audio->p->stream->postAudioBuffer) {
 		audio->p->stream->postAudioBuffer(audio->p->stream, audio->left, audio->right);
 	}
-	mTimingSchedule(timing, &audio->sampleEvent, audio->sampleInterval * audio->timingFactor - cyclesLate);
 }
 
 bool _resetEnvelope(struct GBAudioEnvelope* envelope) {

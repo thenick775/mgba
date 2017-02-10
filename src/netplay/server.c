@@ -52,18 +52,20 @@ struct mNPClient {
 struct mNPServerCoreInfo {
 	struct mNPCoreInfo info;
 	struct Table clients;
-	int32_t framesRemaining;
 };
 
 struct mNPRoom {
 	struct mNPServer* p;
 	struct mNPRoomInfo info;
 	struct Table cores;
+	struct Table clients;
 	Mutex mutex;
 	struct mNPCommFIFO fifo;
 	Thread thread;
 	struct mNPEventQueue queue;
 	struct mNPEventQueue auxQueue;
+	uint32_t currentFrame;
+	uint32_t nextSync;
 	uint32_t coresUntilSync;
 };
 
@@ -129,7 +131,6 @@ static bool _registerCore(struct mNPClient* client, struct mNPServerCoreInfo* co
 	TableInit(&core->clients, 0, NULL);
 	TableInsert(&core->clients, client->clientId, client);
 	core->info.coreId = serv->coreCounter;
-	core->framesRemaining = 0;
 	TableInsert(&serv->cores, core->info.coreId, core);
 	while (TableLookup(&serv->cores, serv->coreCounter)) {
 		++serv->coreCounter;
@@ -248,8 +249,11 @@ static bool _createRoom(struct mNPClient* client, const struct mNPPacketJoin* jo
 	struct mNPRoom* room = malloc(sizeof(*room));
 	room->p = client->p;
 	TableInit(&room->cores, 8, NULL);
-	core->framesRemaining = join->syncPeriod;
+	TableInit(&room->clients, 8, NULL);
+	room->currentFrame = 0;
+	room->nextSync = join->syncPeriod;
 	TableInsert(&room->cores, core->info.coreId, core);
+	TableInsert(&room->clients, client->clientId, client);
 	room->info.roomId = client->p->roomCounter;
 	core->info.roomId = room->info.roomId;
 	room->info.nCores = 1;
@@ -275,6 +279,7 @@ static bool _createRoom(struct mNPClient* client, const struct mNPPacketJoin* jo
 		.flags = 0
 	};
 	struct mNPPacketJoin data = *join;
+	core->info.frameOffset = room->currentFrame;
 	data.roomId = room->info.roomId;
 	SocketSend(client->sock, &header, sizeof(header));
 	SocketSend(client->sock, &data, sizeof(data));
@@ -622,26 +627,102 @@ static THREAD_ENTRY _clientThread(void* context) {
 	return 0;
 }
 
+struct mNPServerEnumerateData {
+	void* data;
+	size_t size;
+};
+
+static void _sendToClients(uint32_t clientId, void* value, void* user) {
+	UNUSED(clientId);
+	struct mNPServerEnumerateData* packet = user;
+	struct mNPClient* client = value;
+	mNPCommFIFOWrite(&client->fifo, packet->data, packet->size);
+}
+
+static void _processAuxQueue(struct mNPRoom* room) {
+	size_t i = 0;
+	while (mNPEventQueueSize(&room->queue) > i) {
+		struct mNPEvent* event = mNPEventQueueGetPointer(&room->queue, i);
+		int32_t cond = room->nextSync - event->frameId;
+		if (cond >= 0) {
+			*mNPEventQueueAppend(&room->queue) = *event;
+			if (event->eventType == mNP_EVENT_FRAME) {
+				if (room->currentFrame + 1 == event->frameId) {
+					room->currentFrame = event->frameId;
+				}
+				if (room->nextSync == event->frameId) {
+					--room->coresUntilSync;
+				}
+			}
+			mNPEventQueueShift(&room->queue, i, 1);
+		} else {
+			++i;
+		}
+	}
+}
+
+static void _sendSync(struct mNPRoom* room) {
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_SYNC,
+		.flags = 0
+	};
+	size_t nEvents = mNPEventQueueSize(&room->queue);
+	header.size = sizeof(struct mNPPacketSync) + nEvents * sizeof(struct mNPEvent);
+	struct mNPServerEnumerateData packet = {
+		.data = &header,
+		.size = sizeof(header)
+	};
+	TableEnumerate(&room->clients, _sendToClients, &packet);
+
+	struct mNPPacketSync sync = {
+		.nEvents = nEvents,
+	};
+	packet.data = &sync;
+	packet.size = sizeof(sync);
+	TableEnumerate(&room->clients, _sendToClients, &packet);
+
+	size_t i;
+	for (i = 0; i < nEvents; ++i) {
+		struct mNPEvent* event = mNPEventQueueGetPointer(&room->queue, i);
+		struct mNPServerEnumerateData eventDatum = {
+			.data = event,
+			.size = sizeof(*event)
+		};
+		TableEnumerate(&room->clients, _sendToClients, &eventDatum);
+	}
+	mNPEventQueueClear(&room->queue);
+	MutexLock(&room->mutex);
+	room->coresUntilSync = TableSize(&room->cores);
+	MutexUnlock(&room->mutex);
+	room->nextSync += room->info.syncPeriod;
+	_processAuxQueue(room);
+}
+
 static void _processEvent(struct mNPRoom* room, const struct mNPForwardedPacket* packet) {
 	const struct mNPPacketEvent* eventPacket = packet->data;
 	const struct mNPEvent* event = &eventPacket->event;
-	MutexLock(&room->mutex);
-	struct mNPServerCoreInfo* info = TableLookup(&room->cores, event->coreId);
-	if (info->framesRemaining) {
+	// Check if we're past the sync point safely taking into account integer overflow
+	// E.g, if nextSync == 1 and currentFrame = 2, this amounts to UINT32_MAX,
+	// which gets coerced to -1. If nextSync == 2 and currentFrame == 1, this equals
+	// 1, which is >= 0. This relies on the target architecture being two's-complement.
+	int32_t cond = room->nextSync - room->currentFrame;
+	if (cond >= 0) {
 		*mNPEventQueueAppend(&room->queue) = *event;
 		if (event->eventType == mNP_EVENT_FRAME) {
-			--info->framesRemaining;
-			if (!info->framesRemaining) {
+			if (room->currentFrame + 1 == event->frameId) {
+				room->currentFrame = event->frameId;
+			}
+			if (room->nextSync == event->frameId) {
 				--room->coresUntilSync;
-				if (!room->coresUntilSync) {
-					// TODO
-				}
 			}
 		}
 	} else {
 		*mNPEventQueueAppend(&room->auxQueue) = *event;
 	}
-	MutexUnlock(&room->mutex);
+
+	if (!room->coresUntilSync) {
+		_sendSync(room);
+	}
 }
 
 static THREAD_ENTRY _roomThread(void* context) {
@@ -656,6 +737,8 @@ static THREAD_ENTRY _roomThread(void* context) {
 			case mNP_PKT_EVENT:
 				_processEvent(room, &packet);
 				break;
+			default:
+				mLOG(NP_SERVER, WARN, "Room %i received unknown packet type %" PRIi32, room->info.roomId, packet.header.packetType);
 			}
 			if (packet.data) {
 				free(packet.data);

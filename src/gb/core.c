@@ -174,6 +174,11 @@ static void _GBCoreSetAVStream(struct mCore* core, struct mAVStream* stream) {
 	}
 }
 
+static void _GBCoreSetAVBlocked(struct mCore* core, bool blocked) {
+	struct GB* gb = core->board;
+	gb->avBlocked = blocked;
+}
+
 static bool _GBCoreLoadROM(struct mCore* core, struct VFile* vf) {
 	return GBLoadROM(core->board, vf);
 }
@@ -581,6 +586,7 @@ struct mCore* GBCoreCreate(void) {
 	core->setAudioBufferSize = _GBCoreSetAudioBufferSize;
 	core->getAudioBufferSize = _GBCoreGetAudioBufferSize;
 	core->setAVStream = _GBCoreSetAVStream;
+	core->setAVBlocked = _GBCoreSetAVBlocked;
 	core->addCoreCallbacks = _GBCoreAddCoreCallbacks;
 	core->clearCoreCallbacks = _GBCoreClearCoreCallbacks;
 	core->isROM = GBIsROM;

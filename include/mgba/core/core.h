@@ -76,6 +76,7 @@ struct mCore {
 	void (*addCoreCallbacks)(struct mCore*, struct mCoreCallbacks*);
 	void (*clearCoreCallbacks)(struct mCore*);
 	void (*setAVStream)(struct mCore*, struct mAVStream*);
+	void (*setAVBlocked)(struct mCore*, bool);
 
 	bool (*isROM)(struct VFile* vf);
 	bool (*loadROM)(struct mCore*, struct VFile* vf);

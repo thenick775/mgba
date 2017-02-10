@@ -49,6 +49,7 @@ struct mNPCore {
 	struct mNPEventQueue queue;
 	struct mNPEventQueue sentQueue;
 	uint32_t framesRemaining;
+	uint32_t syncPeriod;
 	bool waitingForEvent;
 	uint32_t lastInput;
 };
@@ -354,6 +355,7 @@ static bool _commRecv(struct mNPContext* context) {
 		}
 		uint8_t* ptr = data;
 		size_t size = header.size;
+		SocketSetBlocking(context->server, true);
 		while (size) {
 			size_t chunkSize = size;
 			if (chunkSize > PKT_CHUNK_SIZE) {
@@ -362,11 +364,13 @@ static bool _commRecv(struct mNPContext* context) {
 			ssize_t received = SocketRecv(context->server, ptr, chunkSize);
 			if (received < 0 || (size_t) received != chunkSize) {
 				free(data);
+				SocketSetBlocking(context->server, false);
 				return false;
 			}
 			size -= chunkSize;
 			ptr += chunkSize;
 		}
+		SocketSetBlocking(context->server, false);
 		if (size > 0) {
 			free(data);
 			data = NULL;
@@ -430,7 +434,7 @@ static bool _parseConnect(struct mNPContext* context, const struct mNPPacketAck*
 
 static void _parseSync(struct mNPContext* context, const struct mNPPacketSync* sync, size_t size) {
 	uint32_t nEvents = sync->nEvents;
-	size -= sizeof(nEvents);
+	size -= sizeof(*sync);
 	if (nEvents * sizeof(struct mNPEvent) > size) {
 		mLOG(NP, WARN, "Received improperly sized Sync packet");
 		nEvents = size / sizeof(struct mNPEvent);
@@ -443,7 +447,13 @@ static void _parseSync(struct mNPContext* context, const struct mNPPacketSync* s
 			continue;
 		}
 		MutexLock(&core->mutex);
-		*mNPEventQueueAppend(&core->queue) = *event;
+		if (mNPEventQueueSize(&core->sentQueue) && memcmp(event, mNPEventQueueGetPointer(&core->sentQueue, 0), sizeof(*event)) == 0) {
+			mNPEventQueueShift(&core->sentQueue, 0, 1);
+		} else {
+			// TODO: Rollback
+			*mNPEventQueueAppend(&core->queue) = *event;
+		}
+		core->framesRemaining = event->frameId + core->syncPeriod * 2;
 		MutexUnlock(&core->mutex);
 	}
 }
@@ -456,6 +466,7 @@ static void _parseJoin(struct mNPContext* context, const struct mNPPacketJoin* j
 	if (core) {
 		core->roomId = join->roomId;
 		core->framesRemaining = join->syncPeriod * 2;
+		core->syncPeriod = join->syncPeriod;
 	}
 	if (context->callbacks.roomJoined) {
 		context->callbacks.roomJoined(context, join->roomId, join->coreId, context->userContext);

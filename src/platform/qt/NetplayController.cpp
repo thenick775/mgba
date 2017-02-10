@@ -18,6 +18,8 @@ const mNPCallbacks NetplayController::s_callbacks = {
 	NetplayController::cbRoomJoined,
 	NetplayController::cbListRooms,
 	NetplayController::cbListCores,
+	NetplayController::cbRollbackStart,
+	NetplayController::cbRollbackEnd,
 };
 
 NetplayController::NetplayController(MultiplayerController* mp, QObject* parent)
@@ -153,6 +155,26 @@ void NetplayController::cbListRooms(QList<mNPRoomInfo> list) {
 	cb(list);
 }
 
+void NetplayController::cbRollbackStart(QList<mNPCoreInfo> list) {
+	for (const auto& core : list) {
+		GameController* controller = m_cores[core.coreId];
+		if (controller) {
+			controller->setKeyInputBlocked(true);
+			controller->setOutputBlocked(true);
+		}
+	}
+}
+
+void NetplayController::cbRollbackEnd(QList<mNPCoreInfo> list) {
+	for (const auto& core : list) {
+		GameController* controller = m_cores[core.coreId];
+		if (controller) {
+			controller->setKeyInputBlocked(false);
+			controller->setOutputBlocked(false);
+		}
+	}
+}
+
 void NetplayController::cbListCores(QList<mNPCoreInfo> list, quint32 roomId) {
 	QList<std::function<void (const QList<mNPCoreInfo>&)>>& cbList = m_listCoresCallbacks[roomId];
 	if (cbList.empty()) {
@@ -214,4 +236,22 @@ void NetplayController::cbListCores(mNPContext* context, const struct mNPCoreInf
 		std::copy(&cores[0], &cores[nCores], std::back_inserter(list));
 	}
 	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "cbListCores", Q_ARG(QList<mNPCoreInfo>, list), Q_ARG(quint32, roomId));
+}
+
+void NetplayController::cbRollbackStart(mNPContext* context, const struct mNPCoreInfo* cores, uint32_t nCores, void* user) {
+	QList<mNPCoreInfo> list;
+	if (nCores) {
+		list.reserve(nCores);
+		std::copy(&cores[0], &cores[nCores], std::back_inserter(list));
+	}
+	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "cbRollbackStart", Q_ARG(QList<mNPCoreInfo>, list));
+}
+
+void NetplayController::cbRollbackEnd(mNPContext* context, const struct mNPCoreInfo* cores, uint32_t nCores, void* user) {
+	QList<mNPCoreInfo> list;
+	if (nCores) {
+		list.reserve(nCores);
+		std::copy(&cores[0], &cores[nCores], std::back_inserter(list));
+	}
+	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "cbRollbackEnd", Q_ARG(QList<mNPCoreInfo>, list));
 }

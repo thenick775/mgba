@@ -101,7 +101,7 @@ void GBVideoAssociateRenderer(struct GBVideo* video, struct GBVideoRenderer* ren
 
 void _endMode0(struct mTiming* timing, void* context, uint32_t cyclesLate) {
 	struct GBVideo* video = context;
-	if (video->frameskipCounter <= 0) {
+	if (video->frameskipCounter <= 0 && !video->p->avBlocked) {
 		video->renderer->finishScanline(video->renderer, video->ly);
 	}
 	int lyc = video->p->memory.io[REG_LYC];
@@ -232,10 +232,12 @@ void _updateFrameCount(struct mTiming* timing, void* context, uint32_t cyclesLat
 	}
 
 	GBFrameEnded(video->p);
-	--video->frameskipCounter;
-	if (video->frameskipCounter < 0) {
-		mCoreSyncPostFrame(video->p->sync);
-		video->frameskipCounter = video->frameskip;
+	if (!video->p->avBlocked) {
+		--video->frameskipCounter;
+		if (video->frameskipCounter < 0) {
+			mCoreSyncPostFrame(video->p->sync);
+			video->frameskipCounter = video->frameskip;
+		}
 	}
 	++video->frameCounter;
 
@@ -297,7 +299,7 @@ void GBVideoProcessDots(struct GBVideo* video) {
 		mLOG(GB, FATAL, "Video dot clock went negative!");
 		video->x = oldX;
 	}
-	if (video->frameskipCounter <= 0) {
+	if (video->frameskipCounter <= 0 && !video->p->avBlocked) {
 		video->renderer->drawRange(video->renderer, oldX, video->x, video->ly, video->objThisLine, video->objMax);
 	}
 }

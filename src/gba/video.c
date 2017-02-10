@@ -149,7 +149,7 @@ void _startHdraw(struct mTiming* timing, void* context, uint32_t cyclesLate) {
 		break;
 	case VIDEO_VERTICAL_PIXELS:
 		video->p->memory.io[REG_DISPSTAT >> 1] = GBARegisterDISPSTATFillInVblank(dispstat);
-		if (video->frameskipCounter <= 0) {
+		if (video->frameskipCounter <= 0 && !video->p->avBlocked) {
 			video->renderer->finishFrame(video->renderer);
 		}
 		GBADMARunVblank(video->p, -cyclesLate);
@@ -157,10 +157,12 @@ void _startHdraw(struct mTiming* timing, void* context, uint32_t cyclesLate) {
 			GBARaiseIRQ(video->p, IRQ_VBLANK);
 		}
 		GBAFrameEnded(video->p);
-		--video->frameskipCounter;
-		if (video->frameskipCounter < 0) {
-			mCoreSyncPostFrame(video->p->sync);
-			video->frameskipCounter = video->frameskip;
+		if (!video->p->avBlocked) {
+			--video->frameskipCounter;
+			if (video->frameskipCounter < 0) {
+				mCoreSyncPostFrame(video->p->sync);
+				video->frameskipCounter = video->frameskip;
+			}
 		}
 		++video->frameCounter;
 		break;
@@ -179,7 +181,7 @@ void _startHblank(struct mTiming* timing, void* context, uint32_t cyclesLate) {
 
 	// Begin Hblank
 	dispstat = GBARegisterDISPSTATFillInHblank(dispstat);
-	if (video->vcount < VIDEO_VERTICAL_PIXELS && video->frameskipCounter <= 0) {
+	if (video->vcount < VIDEO_VERTICAL_PIXELS && video->frameskipCounter <= 0 && !video->p->avBlocked) {
 		video->renderer->drawScanline(video->renderer, video->vcount);
 	}
 

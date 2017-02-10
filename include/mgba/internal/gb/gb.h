@@ -78,6 +78,7 @@ struct GB {
 
 	struct mCoreCallbacksList coreCallbacks;
 	struct mAVStream* stream;
+	bool avBlocked;
 
 	bool cpuBlocked;
 	bool earlyExit;

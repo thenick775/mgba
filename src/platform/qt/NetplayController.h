@@ -49,6 +49,8 @@ private slots:
 	void addGameController(quint32 nonce, quint32 id);
 	void cbListRooms(QList<mNPRoomInfo> list);
 	void cbListCores(QList<mNPCoreInfo> list, quint32 roomId);
+	void cbRollbackStart(QList<mNPCoreInfo> list);
+	void cbRollbackEnd(QList<mNPCoreInfo> list);
 	void updateRooms();
 	void updateCores();
 
@@ -79,6 +81,8 @@ private:
 	static void cbRoomJoined(mNPContext*, uint32_t roomId, uint32_t coreId, void* user);
 	static void cbListRooms(mNPContext*, const struct mNPRoomInfo* rooms, uint32_t nRooms, void* user);
 	static void cbListCores(mNPContext*, const struct mNPCoreInfo* cores, uint32_t nCores, uint32_t roomId, void* user);
+	static void cbRollbackStart(mNPContext*, const struct mNPCoreInfo* cores, uint32_t nCores, void* user);
+	static void cbRollbackEnd(mNPContext*, const struct mNPCoreInfo* cores, uint32_t nCores, void* user);
 };
 
 }

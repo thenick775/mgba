@@ -60,6 +60,8 @@ GameController::GameController(QObject* parent)
 	, m_turboForced(false)
 	, m_turboSpeed(-1)
 	, m_wasPaused(false)
+	, m_inputBlocked(false)
+	, m_outputBlocked(false)
 	, m_audioChannels{ true, true, true, true, true, true }
 	, m_videoLayers{ true, true, true, true, true }
 	, m_autofire{}
@@ -802,7 +804,6 @@ void GameController::keyPressed(int key) {
 			m_activeKeys ^= mappedKey ^ 0xC0;
 		}
 	}
-	updateKeys();
 }
 
 void GameController::keyReleased(int key) {
@@ -818,13 +819,11 @@ void GameController::keyReleased(int key) {
 			m_inactiveKeys &= ~0xC0;
 		}
 	}
-	updateKeys();
 }
 
 void GameController::clearKeys() {
 	m_activeKeys = 0;
 	m_inactiveKeys = 0;
-	updateKeys();
 }
 
 void GameController::setAutofire(int key, bool enable) {
@@ -1069,7 +1068,12 @@ void GameController::setTurboSpeed(float ratio) {
 void GameController::enableTurbo() {
 	Interrupter interrupter(this);
 	bool shouldRedoSamples = false;
-	if (!m_turbo) {
+	if (m_outputBlocked) {
+		shouldRedoSamples = m_threadContext.sync.fpsTarget != m_fpsTarget;
+		m_threadContext.sync.fpsTarget = m_fpsTarget;
+		m_threadContext.sync.audioWait = false;
+		m_threadContext.sync.videoFrameWait = false;
+	} else if (!m_turbo) {
 		shouldRedoSamples = m_threadContext.sync.fpsTarget != m_fpsTarget;
 		m_threadContext.sync.fpsTarget = m_fpsTarget;
 		m_threadContext.sync.audioWait = m_audioSync;
@@ -1159,6 +1163,19 @@ void GameController::setLoadStateExtdata(int flags) {
 	m_loadStateFlags = flags;
 }
 
+void GameController::setKeyInputBlocked(bool blocked) {
+	m_inputBlocked = blocked;
+}
+
+void GameController::setOutputBlocked(bool blocked) {
+	m_outputBlocked = blocked;
+	Interrupter interrupter(this);
+	enableTurbo();
+	if (isLoaded()) {
+		m_threadContext.core->setAVBlocked(m_threadContext.core, blocked);
+	}
+}
+
 void GameController::setLuminanceValue(uint8_t value) {
 	m_luxValue = value;
 	value = std::max<int>(value - 0x16, 0);
@@ -1199,7 +1216,7 @@ void GameController::updateKeys() {
 	quint32 activeKeys = m_activeKeys;
 	activeKeys |= m_activeButtons;
 	activeKeys &= ~m_inactiveKeys;
-	if (isLoaded()) {
+	if (isLoaded() && !m_inputBlocked) {
 		m_threadContext.core->setKeys(m_threadContext.core, activeKeys);
 	}
 	emit keysUpdated(activeKeys);

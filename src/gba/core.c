@@ -204,6 +204,11 @@ static void _GBACoreSetAVStream(struct mCore* core, struct mAVStream* stream) {
 	}
 }
 
+static void _GBACoreSetAVBlocked(struct mCore* core, bool blocked) {
+	struct GBA* gba = core->board;
+	gba->avBlocked = blocked;
+}
+
 static bool _GBACoreLoadROM(struct mCore* core, struct VFile* vf) {
 	if (GBAIsMB(vf)) {
 		return GBALoadMB(core->board, vf);
@@ -597,6 +602,7 @@ struct mCore* GBACoreCreate(void) {
 	core->addCoreCallbacks = _GBACoreAddCoreCallbacks;
 	core->clearCoreCallbacks = _GBACoreClearCoreCallbacks;
 	core->setAVStream = _GBACoreSetAVStream;
+	core->setAVBlocked = _GBACoreSetAVBlocked;
 	core->isROM = GBAIsROM;
 	core->loadROM = _GBACoreLoadROM;
 	core->loadBIOS = _GBACoreLoadBIOS;

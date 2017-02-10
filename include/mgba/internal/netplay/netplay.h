@@ -29,6 +29,8 @@ struct mNPCallbacks {
 	void (*roomJoined)(struct mNPContext*, uint32_t roomId, uint32_t coreId, void* user);
 	void (*listRooms)(struct mNPContext*, const struct mNPRoomInfo* rooms, uint32_t nRooms, void* user);
 	void (*listCores)(struct mNPContext*, const struct mNPCoreInfo* cores, uint32_t nCores, uint32_t roomId, void* user);
+	void (*rollbackStart)(struct mNPContext*, const struct mNPCoreInfo* cores, uint32_t nCores, void* user);
+	void (*rollbackEnd)(struct mNPContext*, const struct mNPCoreInfo* cores, uint32_t nCores, void* user);
 };
 
 enum mNPCoreFlags {

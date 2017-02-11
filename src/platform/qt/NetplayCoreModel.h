@@ -24,7 +24,7 @@ public:
 	virtual QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
 	virtual QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
 
-	virtual QModelIndex index(int row, int column, const QModelIndex& parent) const override;
+	virtual QModelIndex index(int row, int column, const QModelIndex& parent = QModelIndex()) const override;
 	virtual QModelIndex parent(const QModelIndex& index) const override;
 
 	virtual int columnCount(const QModelIndex& parent = QModelIndex()) const override;
@@ -32,6 +32,7 @@ public:
 
 public slots:
 	void refresh();
+	void setRoom(quint32 = 0);
 
 private slots:
 	void setCores(const QList<mNPCoreInfo>& cores);
@@ -43,6 +44,7 @@ private:
 	};
 
 	NetplayController* m_controller;
+	uint32_t m_room;
 
 	QMultiMap<uint32_t, mNPCoreInfo> m_coreInfo;
 	QList<NetplayCoreColumn> m_columns;

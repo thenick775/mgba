@@ -9,7 +9,6 @@
 #include "ui_NetplayView.h"
 
 #include "NetplayCoreModel.h"
-#include "NetplayRoomModel.h"
 
 namespace QGBA {
 
@@ -27,12 +26,14 @@ public:
 public slots:
 	void updateStatus();
 
+private slots:
+	void updateItems();
+
 private:
 	Ui::NetplayView m_ui;
 
 	NetplayController* m_netplay;
 	NetplayCoreModel m_coreModel;
-	NetplayRoomModel m_roomModel;
 
 	GameController* m_activeController;
 };

@@ -13,49 +13,21 @@ NetplayView::NetplayView(NetplayController* controller, QWidget* parent)
 	: QWidget(parent)
 	, m_netplay(controller)
 	, m_coreModel(controller)
-	, m_roomModel(controller)
 {
 	m_ui.setupUi(this);
 
 	m_ui.coreView->setModel(&m_coreModel);
-	m_ui.roomView->setModel(&m_roomModel);
 
 	updateStatus();
 
 	connect(m_ui.refresh, SIGNAL(clicked()), &m_coreModel, SLOT(refresh()));
-	connect(m_ui.refresh, SIGNAL(clicked()), &m_roomModel, SLOT(refresh()));
 
-	connect(m_ui.create, &QAbstractButton::clicked, [this]() {
-		if (!m_activeController) {
-			return;
-		}
-		m_netplay->joinRoom(m_activeController);
-	});
+	const QList<mNPRoomInfo>& rooms = controller->rooms();
+	if (rooms.count()) {
+		m_coreModel.setRoom(rooms[0].roomId);
+	}
 
-	connect(m_ui.join, &QAbstractButton::clicked, [this]() {
-		if (!m_activeController) {
-			return;
-		}
-		QModelIndex index = m_ui.roomView->selectionModel()->currentIndex();
-		if (!index.isValid()) {
-			return;
-		}
-		uint32_t id = m_roomModel.data(index, Qt::DisplayRole).toUInt();
-		m_netplay->joinRoom(m_activeController, id);
-	});
-
-	connect(m_ui.roomView, &QAbstractItemView::clicked, [this](const QModelIndex& index) {
-		m_ui.join->setEnabled(true);
-		m_ui.leave->setEnabled(true);
-		uint32_t id = m_roomModel.data(index, Qt::DisplayRole).toUInt();
-		QModelIndex newRoot = m_coreModel.index(id, 0, QModelIndex());
-		m_ui.coreView->setRootIndex(newRoot);
-	});
-
-	connect(m_ui.coreView, &QAbstractItemView::clicked, [this](const QModelIndex& index) {
-		uint32_t id = m_coreModel.data(index, Qt::DisplayRole).toUInt();
-		// TODO
-	});
+	connect(&m_coreModel, SIGNAL(modelReset()), this, SLOT(updateItems()));
 }
 
 void NetplayView::setActiveController(GameController* controller) {
@@ -68,15 +40,22 @@ void NetplayView::updateStatus() {
 		m_ui.hostname->setText(m_netplay->connectedHost());
 		m_ui.connectButton->setText(tr("Disconnect"));
 		m_ui.refresh->setEnabled(true);
-		m_ui.create->setEnabled(true);
 	} else {
 		m_ui.hostname->setEnabled(true);
 		m_ui.connectButton->setText(tr("Connect"));
 		m_ui.refresh->setEnabled(false);
-		m_ui.create->setEnabled(false);
-		m_ui.join->setEnabled(false);
-		m_ui.leave->setEnabled(false);
-		m_ui.observe->setEnabled(false);
-		m_ui.control->setEnabled(false);
+	}
+}
+
+void NetplayView::updateItems() {
+	for (int row = 0; row < m_coreModel.rowCount(); ++row) {
+		QPushButton* observe = new QPushButton(tr("Observe"));
+		QPushButton* control = new QPushButton(tr("Control"));
+		QVariant o = m_coreModel.data(m_coreModel.index(row, 1));
+		QVariant c = m_coreModel.data(m_coreModel.index(row, 2));
+		observe->setEnabled(o.toBool());
+		control->setEnabled(c.toBool());
+		m_ui.coreView->setIndexWidget(m_coreModel.index(row, 1), observe);
+		m_ui.coreView->setIndexWidget(m_coreModel.index(row, 2), control);
 	}
 }

@@ -160,6 +160,7 @@ void NetplayController::addGameController(uint32_t nonce, uint32_t id) {
 	GameController* controller = m_pendingCores.take(nonce);
 	mNPContextAttachCore(m_np, controller->thread(), nonce);
 	m_cores[id] = controller;
+	joinFirstRoom(controller);
 	auto connection = connect(controller, &GameController::keysUpdated, [this, id](quint32 keys) {
 		mNPContextPushInput(m_np, id, keys);
 	});
@@ -181,19 +182,25 @@ void NetplayController::joinRoom(GameController* controller, quint32 roomId) {
 	mNPContextJoinRoom(m_np, roomId, keys[0]);
 }
 
-void NetplayController::joinRoom(quint32 roomId) {
+void NetplayController::joinFirstRoom(GameController* controller) {
 	if (!m_np) {
 		return;
 	}
 	// TODO: Add reverse mapping?
-	for (const auto& controller : m_cores) {
-		QList<uint32_t> keys = m_cores.keys(controller);
-		if (keys.empty()) {
-			continue;
-		}
-		// TODO: Make them all join the same room
-		mNPContextJoinRoom(m_np, roomId, keys[0]);
+	QList<uint32_t> keys = m_cores.keys(controller);
+	if (keys.empty()) {
+		return;
 	}
+	uint32_t coreId = keys[0];
+	listRooms([this, coreId](const QList<mNPRoomInfo>& rooms) {
+		for (const auto& room : rooms) {
+			if (room.nCores < room.capacity) {
+				mNPContextJoinRoom(m_np, room.roomId, coreId);
+				return;
+			}
+		}
+		mNPContextJoinRoom(m_np, 0, coreId);
+	});
 }
 
 void NetplayController::cbListRooms(QList<mNPRoomInfo> list) {
@@ -266,7 +273,8 @@ void NetplayController::cbCoreRegistered(mNPContext* context, const mNPCoreInfo*
 }
 
 void NetplayController::cbRoomJoined(mNPContext* context, uint32_t roomId, uint32_t coreId, void* user) {
-
+	NetplayController* controller = static_cast<NetplayController*>(user);
+	QMetaObject::invokeMethod(controller, "roomJoined", Q_ARG(quint32, roomId), Q_ARG(quint32, coreId));
 }
 
 void NetplayController::cbListRooms(mNPContext* context, const struct mNPRoomInfo* rooms, uint32_t nRooms, void* user) {

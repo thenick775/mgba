@@ -14,9 +14,21 @@ NetplayCoreModel::NetplayCoreModel(NetplayController* controller, QObject* paren
 	, m_controller(controller)
 {
 	m_columns.append({
-		tr("ID"),
+		tr("Game"),
 		[](const mNPCoreInfo& info) -> QVariant {
-			return info.coreId;
+			return QString(info.gameTitle);
+		}
+	});
+	m_columns.append({
+		tr(""),
+		[](const mNPCoreInfo& info) -> QVariant {
+			return (info.flags & mNP_CORE_ALLOW_OBSERVE) == mNP_CORE_ALLOW_OBSERVE;
+		}
+	});
+	m_columns.append({
+		tr(""),
+		[](const mNPCoreInfo& info) -> QVariant {
+			return (info.flags & mNP_CORE_ALLOW_CONTROL) == mNP_CORE_ALLOW_CONTROL;
 		}
 	});
 
@@ -33,7 +45,7 @@ QVariant NetplayCoreModel::data(const QModelIndex& index, int role) const {
 	if (index.column() >= m_columns.count()) {
 		return QVariant();
 	}
-	const QList<mNPCoreInfo>& cores = m_coreInfo.values(index.parent().row());
+	const QList<mNPCoreInfo>& cores = m_coreInfo.values(m_room);
 
 	switch (role) {
 	case Qt::DisplayRole:
@@ -58,31 +70,24 @@ QVariant NetplayCoreModel::headerData(int section, Qt::Orientation orientation, 
 
 QModelIndex NetplayCoreModel::index(int row, int column, const QModelIndex& parent) const {
 	if (parent.isValid()) {
-		return createIndex(row, column, parent.row());
-	} else {
-		return createIndex(row, column, 0ULL);
+		return QModelIndex();
 	}
+	return createIndex(row, column, nullptr);
 }
 
 QModelIndex NetplayCoreModel::parent(const QModelIndex& index) const {
-	if (!index.isValid() || !index.internalId()) {
-		return QModelIndex();
-	}
-	return createIndex(index.internalId(), 0, 0ULL);
+	return QModelIndex();
 }
 
 int NetplayCoreModel::columnCount(const QModelIndex& parent) const {
-	if (!parent.isValid()) {
-		return 1;
-	}
 	return m_columns.count();
 }
 
 int NetplayCoreModel::rowCount(const QModelIndex& parent) const {
-	if (!parent.isValid()) {
-		return 0;
- 	}
- 	return m_coreInfo.count(parent.row());
+	if (m_room) {
+		return m_coreInfo.count(m_room);
+	}
+	return m_coreInfo.count();
 }
 
 void NetplayCoreModel::refresh() {
@@ -91,13 +96,17 @@ void NetplayCoreModel::refresh() {
 	});
 }
 
+void NetplayCoreModel::setRoom(quint32 roomId) {
+	beginResetModel();
+	m_room = roomId;
+	endResetModel();
+}
+
 void NetplayCoreModel::setCores(const QList<mNPCoreInfo>& cores) {
 	beginResetModel();
 	m_coreInfo.clear();
 	for (const auto& info : cores) {
-		if (info.roomId) {
-			m_coreInfo.insert(info.roomId, info);
-		}
+		m_coreInfo.insert(info.roomId, info);
 	}
 	endResetModel();
 }

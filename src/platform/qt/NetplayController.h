@@ -35,6 +35,9 @@ public:
 	void listRooms(std::function<void (const QList<mNPRoomInfo>&)> callback);
 	void listCores(std::function<void (const QList<mNPCoreInfo>&)> callback, uint32_t roomId = 0);
 
+	const QList<mNPCoreInfo>& cores() const { return m_coreInfo; }
+	const QList<mNPRoomInfo>& rooms() const { return m_roomInfo; }
+
 	bool serverRunning() const { return m_server; }
 	bool connectedToServer() const { return m_connected; }
 
@@ -48,7 +51,7 @@ public slots:
 	void addGameController(GameController*);
 
 	void joinRoom(GameController*, quint32 roomId = 0);
-	void joinRoom(quint32 roomId = 0);
+	void joinFirstRoom(GameController*);
 
 private slots:
 	void addGameController(quint32 nonce, quint32 id);

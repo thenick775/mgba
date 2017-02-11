@@ -15,6 +15,9 @@
 struct mNPServer;
 struct mNPServerOptions;
 
+Q_DECLARE_METATYPE(mNPRoomInfo);
+Q_DECLARE_METATYPE(mNPCoreInfo);
+
 namespace QGBA {
 
 class GameController;
@@ -49,6 +52,7 @@ public slots:
 	void stopServer();
 	void disconnectFromServer();
 	void addGameController(GameController*);
+	void clone(GameController*, quint32 coreId, quint32 flags);
 
 	void joinRoom(GameController*, quint32 roomId = 0);
 	void joinFirstRoom(GameController*);

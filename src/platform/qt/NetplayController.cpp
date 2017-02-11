@@ -35,6 +35,7 @@ NetplayController::NetplayController(MultiplayerController* mp, QObject* parent)
 {
 	qRegisterMetaType<QList<mNPRoomInfo>>("QList<mNPRoomInfo>");
 	qRegisterMetaType<QList<mNPCoreInfo>>("QList<mNPCoreInfo>");
+
 	connect(this, &NetplayController::connected, [this]() {
 		for (auto iter = m_pendingCores.begin(); iter != m_pendingCores.end(); ++iter) {
 			mNPContextRegisterCore(m_np, iter.value()->thread(), iter.key());
@@ -153,11 +154,30 @@ void NetplayController::addGameController(GameController* controller) {
 	}
 }
 
+void NetplayController::clone(GameController* controller, quint32 coreId, quint32 flags) {
+	if (!m_np) {
+		return;
+	}
+	if (!controller->isLoaded()) {
+		// TODO
+		return;
+	}
+	uint32_t nonce = qHash(QUuid::createUuid());
+	while (m_pendingCores.contains(nonce)) {
+		nonce = qHash(QUuid::createUuid());
+	}
+	m_pendingCores[nonce] = controller;
+	mNPContextCloneCore(m_np, coreId, flags, nonce);
+}
+
 void NetplayController::addGameController(uint32_t nonce, uint32_t id) {
 	if (!m_np) {
 		return;
 	}
 	GameController* controller = m_pendingCores.take(nonce);
+	if (m_cores.key(controller)) {
+		// TODO
+	}
 	mNPContextAttachCore(m_np, controller->thread(), nonce);
 	m_cores[id] = controller;
 	joinFirstRoom(controller);

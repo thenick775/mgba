@@ -32,6 +32,7 @@ enum mNPPacketType {
 	mNP_PKT_SYNC,
 	mNP_PKT_EVENT,
 	mNP_PKT_REGISTER_CORE,
+	mNP_PKT_DELETE_CORE,
 	mNP_PKT_CLONE_CORE,
 	mNP_PKT_MAX
 };
@@ -129,15 +130,25 @@ struct mNPPacketEvent {
 	struct mNPEvent event;
 };
 
+// TODO: Remove nonces from protocol
 struct mNPPacketRegisterCore {
 	struct mNPCoreInfo info;
+	uint32_t nonce;
+};
+
+struct mNPPacketDeleteCore {
+	uint32_t coreId;
+};
+
+struct mNPPacketCloneCore {
+	uint32_t coreId;
+	uint32_t flags;
 	uint32_t nonce;
 };
 
 struct mNPServer;
 struct mNPServer* mNPServerStart(const struct mNPServerOptions*);
 void mNPServerStop(struct mNPServer*);
-void mNPServerRunOnce(struct mNPServer*);
 
 CXX_GUARD_END
 

@@ -86,7 +86,7 @@ void mNPContextRegisterCore(struct mNPContext* context, struct mCoreThread* thre
 	struct mNPPacketRegisterCore data = {
 		.info = {
 			.platform = thread->core->platform(thread->core),
-			.flags = 0
+			.flags = mNP_CORE_ALLOW_OBSERVE | mNP_CORE_ALLOW_CONTROL
 		},
 		.nonce = nonce
 	};
@@ -94,8 +94,37 @@ void mNPContextRegisterCore(struct mNPContext* context, struct mCoreThread* thre
 	thread->core->getGameCode(thread->core, data.info.gameCode);
 	thread->core->checksum(thread->core, &data.info.crc32, CHECKSUM_CRC32);
 	mCoreThreadContinue(thread);
-	struct mNPPacketRegisterCore* pending = malloc(sizeof(*pending));
-	memcpy(pending, &data, sizeof(data));
+	struct mNPCoreInfo* pending = malloc(sizeof(*pending));
+	memcpy(pending, &data.info, sizeof(*pending));
+	TableInsert(&context->pending, nonce, pending);
+	mNPContextSend(context, &header, &data);
+}
+
+void mNPContextDeleteCore(struct mNPContext* context, uint32_t coreId) {
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_DELETE_CORE,
+		.size = sizeof(struct mNPPacketDeleteCore),
+		.flags = 0
+	};
+	struct mNPPacketDeleteCore data = {
+		.coreId = coreId
+	};
+	mNPContextSend(context, &header, &data);
+}
+
+void mNPContextCloneCore(struct mNPContext* context, uint32_t coreId, uint32_t flags, uint32_t nonce) {
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_CLONE_CORE,
+		.size = sizeof(struct mNPPacketCloneCore),
+		.flags = 0
+	};
+	struct mNPPacketCloneCore data = {
+		.coreId = coreId,
+		.flags = flags,
+		.nonce = nonce
+	};
+	struct mNPCoreInfo* pending = malloc(sizeof(*pending));
+	memset(pending, 0, sizeof(*pending));
 	TableInsert(&context->pending, nonce, pending);
 	mNPContextSend(context, &header, &data);
 }
@@ -322,8 +351,10 @@ static void _coreFrame(void* context) {
 	struct mNPCore* core = context;
 	_pollEvent(core);
 
-	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
-	_sendEvent(core, mNP_EVENT_FRAME, currentFrame);
+	if ((core->flags & mNP_CORE_ALLOW_CONTROL) && core->roomId) {
+		uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
+		_sendEvent(core, mNP_EVENT_FRAME, currentFrame);
+	}
 
 	--core->framesRemaining;
 }
@@ -510,9 +541,8 @@ static void _parseRegisterCore(struct mNPContext* context, const struct mNPPacke
 	if (sizeof(*reg) != size || !reg) {
 		return;
 	}
-	struct mNPPacketRegisterCore* pending = TableLookup(&context->pending, reg->nonce);
-	pending->info.coreId = reg->info.coreId;
-	pending->info.flags |= mNP_CORE_ALLOW_CONTROL | mNP_CORE_ALLOW_OBSERVE;
+	struct mNPCoreInfo* pending = TableLookup(&context->pending, reg->nonce);
+	memcpy(pending, &reg->info, sizeof(*pending));
 	context->callbacks.coreRegistered(context, &reg->info, reg->nonce, context->userContext);
 }
 

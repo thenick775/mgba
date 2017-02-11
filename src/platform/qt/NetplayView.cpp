@@ -13,6 +13,7 @@ NetplayView::NetplayView(NetplayController* controller, QWidget* parent)
 	: QWidget(parent)
 	, m_netplay(controller)
 	, m_coreModel(controller)
+	, m_activeController(nullptr)
 {
 	m_ui.setupUi(this);
 
@@ -21,6 +22,9 @@ NetplayView::NetplayView(NetplayController* controller, QWidget* parent)
 	updateStatus();
 
 	connect(m_ui.refresh, SIGNAL(clicked()), &m_coreModel, SLOT(refresh()));
+	connect(m_ui.connectButton, SIGNAL(clicked()), this, SLOT(connectToServer()));
+	connect(m_netplay, SIGNAL(connected()), &m_coreModel, SLOT(refresh()));
+	connect(m_netplay, SIGNAL(connected()), this, SLOT(updateStatus()));
 
 	const QList<mNPRoomInfo>& rooms = controller->rooms();
 	if (rooms.count()) {
@@ -57,5 +61,22 @@ void NetplayView::updateItems() {
 		control->setEnabled(c.toBool());
 		m_ui.coreView->setIndexWidget(m_coreModel.index(row, 1), observe);
 		m_ui.coreView->setIndexWidget(m_coreModel.index(row, 2), control);
+
+		mNPCoreInfo info = m_coreModel.data(m_coreModel.index(row, 0), Qt::UserRole).value<mNPCoreInfo>();
+		uint32_t coreId = info.coreId;
+		connect(observe, &QAbstractButton::clicked, [this, coreId]() {
+			if (m_activeController) {
+				m_netplay->clone(m_activeController, coreId, mNP_CORE_ALLOW_OBSERVE);
+			}
+		});
+		connect(control, &QAbstractButton::clicked, [this, coreId]() {
+			if (m_activeController) {
+				m_netplay->clone(m_activeController, coreId, mNP_CORE_ALLOW_OBSERVE | mNP_CORE_ALLOW_CONTROL);
+			}
+		});
 	}
+}
+
+void NetplayView::connectToServer() {
+	m_netplay->connectToServer(m_ui.hostname->text());
 }

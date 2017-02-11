@@ -45,11 +45,13 @@ QVariant NetplayCoreModel::data(const QModelIndex& index, int role) const {
 	if (index.column() >= m_columns.count()) {
 		return QVariant();
 	}
-	const QList<mNPCoreInfo>& cores = m_coreInfo.values(m_room);
+	const QList<mNPCoreInfo>& cores = m_room ? m_coreInfo.values(m_room) : m_coreInfo.values();
 
 	switch (role) {
 	case Qt::DisplayRole:
 		return m_columns[index.column()].value(cores[index.row()]);
+	case Qt::UserRole:
+		return QVariant::fromValue(cores[index.row()]);
 	default:
 		return QVariant();
 	}

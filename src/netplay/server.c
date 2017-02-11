@@ -52,6 +52,7 @@ struct mNPClient {
 struct mNPServerCoreInfo {
 	struct mNPCoreInfo info;
 	struct Table clients;
+	uint32_t currentFrame;
 };
 
 struct mNPRoom {
@@ -131,6 +132,7 @@ static bool _registerCore(struct mNPClient* client, struct mNPServerCoreInfo* co
 	TableInit(&core->clients, 0, NULL);
 	TableInsert(&core->clients, client->clientId, client);
 	core->info.coreId = serv->coreCounter;
+	core->currentFrame = 0;
 	TableInsert(&serv->cores, core->info.coreId, core);
 	while (TableLookup(&serv->cores, serv->coreCounter)) {
 		++serv->coreCounter;
@@ -335,7 +337,9 @@ static void _processListCores(struct mNPClient* client, uint32_t roomId) {
 		struct mNPRoom* room = TableLookup(&client->p->rooms, roomId);
 		if (room) {
 			set = &room->cores;
+			MutexUnlock(mutex);
 			mutex = &room->mutex;
+			MutexLock(mutex);
 		} else {
 			MutexUnlock(mutex);
 			set = NULL;
@@ -426,6 +430,59 @@ static bool _processRegisterCore(struct mNPClient* client, const struct mNPPacke
 		.info = core->info,
 		.nonce = reg->nonce
 	};
+	mLOG(NP_SERVER, INFO, "Client %" PRIi32 " registering core %" PRIi32, client->clientId, core->info.coreId);
+	SocketSend(client->sock, &header, sizeof(header));
+	SocketSend(client->sock, &data, sizeof(data));
+	return true;
+}
+
+static bool _processCloneCore(struct mNPClient* client, const struct mNPPacketCloneCore* clone, size_t size) {
+	if (sizeof(*clone) != size || !clone) {
+		return false;
+	}
+
+	mLOG(NP_SERVER, INFO, "Client %" PRIi32 " cloning core %" PRIi32, client->clientId, clone->coreId);
+	MutexLock(&client->p->mutex);
+	struct mNPCoreInfo* info = TableLookup(&client->p->cores, clone->coreId);
+	if (!info) {
+		MutexUnlock(&client->p->mutex);
+		mNPAck(client->sock, mNP_REPLY_NO_SUCH_CORE);
+		return true;
+	}
+	if ((info->flags & clone->flags) != clone->flags) {
+		MutexUnlock(&client->p->mutex);
+		mNPAck(client->sock, mNP_REPLY_DISALLOWED);
+		return true;
+	}
+	uint32_t roomId = info->roomId;
+	struct mNPRoom* room = TableLookup(&client->p->rooms, roomId);
+	if (!roomId || !room) {
+		MutexUnlock(&client->p->mutex);
+		mNPAck(client->sock, mNP_REPLY_DOES_NOT_EXIST);
+		return true;
+	}
+	MutexLock(&room->mutex);
+	if (TableLookup(&room->clients, client->clientId)) {
+		MutexUnlock(&room->mutex);
+		MutexUnlock(&client->p->mutex);
+		mNPAck(client->sock, mNP_REPLY_BUSY);
+		return true;
+	}
+	TableInsert(&room->clients, client->clientId, client);
+	MutexUnlock(&room->mutex);
+	MutexUnlock(&client->p->mutex);
+
+	struct mNPPacketHeader header = {
+		.packetType = mNP_PKT_REGISTER_CORE,
+		.size = sizeof(struct mNPPacketRegisterCore),
+		.flags = 0
+	};
+	struct mNPPacketRegisterCore data = {
+		.info = *info,
+		.nonce = clone->nonce
+	};
+	data.info.flags &= clone->flags;
+
 	SocketSend(client->sock, &header, sizeof(header));
 	SocketSend(client->sock, &data, sizeof(data));
 	return true;
@@ -552,6 +609,9 @@ static int _clientRecv(struct mNPClient* client) {
 	case mNP_PKT_REGISTER_CORE:
 		result = _processRegisterCore(client, data, header.size);
 		break;
+	case mNP_PKT_CLONE_CORE:
+		result = _processCloneCore(client, data, header.size);
+		break;
 	default:
 		result = 0;
 		mLOG(NP_SERVER, DEBUG, "Unknown packet type %" PRIi32, header.packetType);
@@ -585,12 +645,12 @@ static void _cleanCores(uint32_t coreId, void* value, void* user) {
 	if (core->info.roomId) {
 		MutexLock(&server->mutex);
 		struct mNPRoom* room = TableLookup(&server->rooms, core->info.roomId);
-		MutexUnlock(&server->mutex);
 		if (room) {
 			MutexLock(&room->mutex);
 			TableRemove(&room->cores, core->info.coreId);
 			MutexUnlock(&room->mutex);
 		}
+		MutexUnlock(&server->mutex);
 	}
 	TableRemove(&server->cores, coreId);
 }

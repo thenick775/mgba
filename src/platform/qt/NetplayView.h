@@ -28,6 +28,7 @@ public slots:
 
 private slots:
 	void updateItems();
+	void connectToServer();
 
 private:
 	Ui::NetplayView m_ui;

@@ -45,7 +45,6 @@ struct mNPCoreInfo {
 	uint32_t crc32;
 	uint32_t coreId;
 	uint32_t roomId;
-	int32_t frameOffset;
 	uint32_t flags;
 };
 

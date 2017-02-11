@@ -44,7 +44,7 @@ struct mNPCore {
 	Mutex mutex;
 	uint32_t coreId;
 	uint32_t roomId;
-	int32_t frameOffset;
+	uint32_t frameOffset;
 	uint32_t flags;
 	struct mNPEventQueue queue;
 	struct mNPEventQueue sentQueue;
@@ -86,7 +86,6 @@ void mNPContextRegisterCore(struct mNPContext* context, struct mCoreThread* thre
 	struct mNPPacketRegisterCore data = {
 		.info = {
 			.platform = thread->core->platform(thread->core),
-			.frameOffset = 0,
 			.flags = 0
 		},
 		.nonce = nonce
@@ -136,7 +135,7 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 	core->flags = info->flags;
 	core->roomId = info->roomId;
 	core->coreId = info->coreId;
-	core->frameOffset = info->frameOffset - thread->core->frameCounter(thread->core),
+	core->frameOffset = thread->core->frameCounter(thread->core),
 	core->waitingForEvent = false;
 	struct mCoreCallbacks callbacks = {
 		.context = core,
@@ -150,7 +149,7 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 }
 
 static void _sendEvent(struct mNPCore* core, enum mNPEventType type, uint32_t datum) {
-	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) + core->frameOffset;
+	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
 	struct mNPPacketHeader header = {
 		.packetType = mNP_PKT_EVENT,
 		.size = sizeof(struct mNPPacketEvent),
@@ -288,7 +287,7 @@ static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
 }
 
 static void _pollEvent(struct mNPCore* core) {
-	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) + core->frameOffset;
+	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
 	if (!core->roomId) {
 		return;
 	}
@@ -323,7 +322,7 @@ static void _coreFrame(void* context) {
 	struct mNPCore* core = context;
 	_pollEvent(core);
 
-	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) + core->frameOffset;
+	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
 	_sendEvent(core, mNP_EVENT_FRAME, currentFrame);
 
 	--core->framesRemaining;
@@ -466,6 +465,7 @@ static void _parseJoin(struct mNPContext* context, const struct mNPPacketJoin* j
 	if (core) {
 		core->roomId = join->roomId;
 		core->framesRemaining = join->syncPeriod * 2;
+		core->frameOffset = core->thread->core->frameCounter(core->thread->core);
 		core->syncPeriod = join->syncPeriod;
 	}
 	if (context->callbacks.roomJoined) {
@@ -499,8 +499,10 @@ static void _parseList(struct mNPContext* context, const struct mNPPacketList* l
 	switch (list->type) {
 	case mNP_LIST_CORES:
 		_parseListCores(context, (const struct mNPPacketListCores*) list, size);
+		break;
 	case mNP_LIST_ROOMS:
 		_parseListRooms(context, (const struct mNPPacketListRooms*) list, size);
+		break;
 	}
 }
 

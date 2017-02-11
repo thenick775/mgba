@@ -279,7 +279,6 @@ static bool _createRoom(struct mNPClient* client, const struct mNPPacketJoin* jo
 		.flags = 0
 	};
 	struct mNPPacketJoin data = *join;
-	core->info.frameOffset = room->currentFrame;
 	data.roomId = room->info.roomId;
 	SocketSend(client->sock, &header, sizeof(header));
 	SocketSend(client->sock, &data, sizeof(data));
@@ -354,6 +353,7 @@ static void _processListCores(struct mNPClient* client, uint32_t roomId) {
 	} else {
 		header.size = sizeof(struct mNPPacketListCores);
 		list = malloc(header.size);
+		list->type = mNP_LIST_CORES;
 		list->nCores = 0;
 	}
 	SocketSend(client->sock, &header, sizeof(header));
@@ -362,8 +362,9 @@ static void _processListCores(struct mNPClient* client, uint32_t roomId) {
 
 static void _listRooms(uint32_t id, void* value, void* user) {
 	UNUSED(id);
+	struct mNPRoom* room = value;
 	struct mNPPacketListRooms* list = user;
-	memcpy(&list->rooms[list->nRooms], value, sizeof(struct mNPRoomInfo));
+	memcpy(&list->rooms[list->nRooms], &room->info, sizeof(struct mNPRoomInfo));
 	++list->nRooms;
 }
 
@@ -380,6 +381,7 @@ static void _processListRooms(struct mNPClient* client) {
 	list = malloc(header.size);
 	if (list) {
 		list->nRooms = 0;
+		list->type = mNP_LIST_ROOMS;
 		TableEnumerate(&client->p->rooms, _listRooms, list);
 	}
 	MutexUnlock(&client->p->mutex);

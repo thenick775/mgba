@@ -9,6 +9,8 @@
 
 #include "GameController.h"
 
+#include <QUuid>
+
 using namespace QGBA;
 
 const mNPCallbacks NetplayController::s_callbacks = {
@@ -111,9 +113,9 @@ void NetplayController::addGameController(GameController* controller) {
 	if (!m_np || !controller->isLoaded()) {
 		return;
 	}
-	uint32_t nonce = qrand();
+	uint32_t nonce = qHash(QUuid::createUuid());
 	while (m_pendingCores.contains(nonce)) {
-		nonce = qrand();
+		nonce = qHash(QUuid::createUuid());
 	}
 	m_pendingCores[nonce] = controller;
 	mNPContextRegisterCore(m_np, controller->thread(), nonce);

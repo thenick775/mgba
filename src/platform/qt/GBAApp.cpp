@@ -245,8 +245,7 @@ bool GBAApp::reloadGameDB() {
 
 void GBAApp::startServer() {
 	Address address;
-	address.version = IPV4;
-	address.ipv4 = 0;
+	SocketResolveHostname("0.0.0.0", &address);
 	m_netplay.startServer({ address, 4267 });
 }
 
@@ -256,8 +255,7 @@ void GBAApp::stopServer() {
 
 void GBAApp::connectServer() {
 	Address address;
-	address.version = IPV4;
-	address.ipv4 = 0x7F000001;
+	SocketResolveHostname("127.0.0.1", &address);
 	m_netplay.connectToServer({ address, 4267 });
 }
 

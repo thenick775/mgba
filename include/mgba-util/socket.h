@@ -25,8 +25,10 @@ typedef SOCKET Socket;
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <netdb.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 
 #define INVALID_SOCKET (-1)
 #define SOCKET_FAILED(s) ((s) < 0)
@@ -317,6 +319,42 @@ static inline int SocketPoll(size_t nSockets, Socket* reads, Socket* writes, Soc
 		}
 	}
 	return result;
+}
+
+static inline bool SocketResolveHostname(const char* hostname, struct Address* out) {
+	struct addrinfo hints;
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+	struct addrinfo* results;
+	if (getaddrinfo(hostname, NULL, &hints, &results)) {
+		return false;
+	}
+	struct sockaddr_in* ipv4Info;
+	struct sockaddr_in6* ipv6Info;
+	struct addrinfo* ptr;
+	bool found = false;
+	for (ptr = results; ptr && !found; ptr = ptr->ai_next) {
+		switch (ptr->ai_family) {
+		case AF_INET:
+			out->version = IPV4;
+			ipv4Info = (struct sockaddr_in*) ptr->ai_addr;
+			out->ipv4 = ntohl(ipv4Info->sin_addr.s_addr);
+			found = true;
+			break;
+		case AF_INET6:
+			out->version = IPV6;
+			ipv6Info = (struct sockaddr_in6*) ptr->ai_addr;
+			memcpy(out->ipv6, ipv6Info->sin6_addr.s6_addr, sizeof(ipv6Info->sin6_addr.s6_addr));
+			found = true;
+			break;
+		default:
+			break;
+		}
+	}
+	freeaddrinfo(results);
+	return found;
 }
 
 CXX_GUARD_END

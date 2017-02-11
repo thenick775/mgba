@@ -24,17 +24,21 @@ class NetplayController : public QObject {
 Q_OBJECT
 
 public:
+	static const uint16_t DEFAULT_PORT;
+
 	NetplayController(MultiplayerController* mp, QObject* parent = NULL);
 	~NetplayController();
 
-	bool startServer(const mNPServerOptions& opts);
-	bool connectToServer(const mNPServerOptions& opts);
+	bool startServer(const QString& address, uint16_t port = DEFAULT_PORT);
+	bool connectToServer(const QString& address, uint16_t port = DEFAULT_PORT);
 
 	void listRooms(std::function<void (const QList<mNPRoomInfo>&)> callback);
 	void listCores(std::function<void (const QList<mNPCoreInfo>&)> callback, uint32_t roomId = 0);
 
 	bool serverRunning() const { return m_server; }
 	bool connectedToServer() const { return m_connected; }
+
+	QString connectedHost() const;
 
 	GameController* controllerForId(uint32_t coreId) { return m_cores[coreId]; }
 
@@ -44,6 +48,7 @@ public slots:
 	void addGameController(GameController*);
 
 	void joinRoom(GameController*, quint32 roomId = 0);
+	void joinRoom(quint32 roomId = 0);
 
 private slots:
 	void addGameController(quint32 nonce, quint32 id);
@@ -67,6 +72,8 @@ private:
 	mNPContext* m_np;
 	mNPServer* m_server;
 	bool m_connected;
+	QString m_connectedHost;
+	uint16_t m_connectedPort;
 
 	QList<mNPRoomInfo> m_roomInfo;
 	QList<mNPCoreInfo> m_coreInfo;

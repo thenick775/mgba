@@ -13,6 +13,8 @@
 
 using namespace QGBA;
 
+const uint16_t NetplayController::DEFAULT_PORT = 4267;
+
 const mNPCallbacks NetplayController::s_callbacks = {
 	NetplayController::cbServerConnected,
 	NetplayController::cbServerShutdown,
@@ -33,6 +35,11 @@ NetplayController::NetplayController(MultiplayerController* mp, QObject* parent)
 {
 	qRegisterMetaType<QList<mNPRoomInfo>>("QList<mNPRoomInfo>");
 	qRegisterMetaType<QList<mNPCoreInfo>>("QList<mNPCoreInfo>");
+	connect(this, &NetplayController::connected, [this]() {
+		for (auto iter = m_pendingCores.begin(); iter != m_pendingCores.end(); ++iter) {
+			mNPContextRegisterCore(m_np, iter.value()->thread(), iter.key());
+		}
+	});
 	connect(this, SIGNAL(connected()), this, SLOT(updateRooms()));
 	connect(this, SIGNAL(connected()), this, SLOT(updateCores()));
 	connect(this, SIGNAL(roomJoined(quint32, quint32)), this, SLOT(updateRooms()));
@@ -44,15 +51,20 @@ NetplayController::~NetplayController() {
 	stopServer();
 }
 
-bool NetplayController::startServer(const mNPServerOptions& opts) {
+bool NetplayController::startServer(const QString& address, uint16_t port) {
 	if (m_server) {
+		return false;
+	}
+	mNPServerOptions opts;
+	opts.port = port;
+	if (!SocketResolveHostname(address.toUtf8().constData(), &opts.address)) {
 		return false;
 	}
 	m_server = mNPServerStart(&opts);
 	if (!m_server) {
 		return false;
 	}
-	if (!connectToServer(opts)) {
+	if (!connectToServer(address, port)) {
 		stopServer();
 		return false;
 	}
@@ -67,10 +79,17 @@ void NetplayController::stopServer() {
 	m_server = nullptr;
 }
 
-bool NetplayController::connectToServer(const mNPServerOptions& opts) {
+bool NetplayController::connectToServer(const QString& address, uint16_t port) {
 	if (m_np) {
 		return false;
 	}
+	mNPServerOptions opts;
+	opts.port = port;
+	if (!SocketResolveHostname(address.toUtf8().constData(), &opts.address)) {
+		return false;
+	}
+	m_connectedHost = address;
+	m_connectedPort = port;
 	m_np = mNPContextCreate();
 	mNPContextAttachCallbacks(m_np, &s_callbacks, this);
 	if (!mNPContextConnect(m_np, &opts)) {
@@ -109,8 +128,19 @@ void NetplayController::listCores(std::function<void (const QList<mNPCoreInfo>&)
 	mNPContextListCores(m_np, roomId);
 }
 
+QString NetplayController::connectedHost() const {
+	if (m_np) {
+		return m_connectedHost;
+	}
+	return QString();
+}
+
 void NetplayController::addGameController(GameController* controller) {
-	if (!m_np || !controller->isLoaded()) {
+	if (!controller->isLoaded()) {
+		return;
+	}
+	QList<uint32_t> keys = m_cores.keys(controller);
+	if (!keys.empty()) {
 		return;
 	}
 	uint32_t nonce = qHash(QUuid::createUuid());
@@ -118,7 +148,9 @@ void NetplayController::addGameController(GameController* controller) {
 		nonce = qHash(QUuid::createUuid());
 	}
 	m_pendingCores[nonce] = controller;
-	mNPContextRegisterCore(m_np, controller->thread(), nonce);
+	if (m_np) {
+		mNPContextRegisterCore(m_np, controller->thread(), nonce);
+	}
 }
 
 void NetplayController::addGameController(uint32_t nonce, uint32_t id) {
@@ -147,6 +179,21 @@ void NetplayController::joinRoom(GameController* controller, quint32 roomId) {
 		return;
 	}
 	mNPContextJoinRoom(m_np, roomId, keys[0]);
+}
+
+void NetplayController::joinRoom(quint32 roomId) {
+	if (!m_np) {
+		return;
+	}
+	// TODO: Add reverse mapping?
+	for (const auto& controller : m_cores) {
+		QList<uint32_t> keys = m_cores.keys(controller);
+		if (keys.empty()) {
+			continue;
+		}
+		// TODO: Make them all join the same room
+		mNPContextJoinRoom(m_np, roomId, keys[0]);
+	}
 }
 
 void NetplayController::cbListRooms(QList<mNPRoomInfo> list) {

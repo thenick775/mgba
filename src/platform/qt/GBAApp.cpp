@@ -8,6 +8,7 @@
 #include "AudioProcessor.h"
 #include "Display.h"
 #include "GameController.h"
+#include "NetplayView.h"
 #include "Window.h"
 #include "VFileDevice.h"
 
@@ -36,8 +37,10 @@ GBAApp::GBAApp(int& argc, char* argv[])
 	: QApplication(argc, argv)
 	, m_db(nullptr)
 	, m_netplay(&m_multiplayer)
+	, m_npView(nullptr)
 {
 	g_app = this;
+	qsrand(time(nullptr));
 
 #ifdef BUILD_SDL
 	SDL_Init(SDL_INIT_NOPARACHUTE);
@@ -244,35 +247,25 @@ bool GBAApp::reloadGameDB() {
 #endif
 
 void GBAApp::startServer() {
-	Address address;
-	SocketResolveHostname("0.0.0.0", &address);
-	m_netplay.startServer({ address, 4267 });
+	m_netplay.startServer("0.0.0.0");
 }
 
 void GBAApp::stopServer() {
 	m_netplay.stopServer();
 }
 
-void GBAApp::connectServer() {
-	Address address;
-	SocketResolveHostname("127.0.0.1", &address);
-	m_netplay.connectToServer({ address, 4267 });
-}
-
-void GBAApp::disconnectServer() {
-	m_netplay.disconnectFromServer();
+void GBAApp::openNetplayView(GameController* activeController) {
+	if (!m_npView) {
+		m_npView = new NetplayView(&m_netplay);
+		connect(&m_netplay, SIGNAL(connected()), m_npView, SLOT(updateStatus()));
+	}
+	if (activeController) {
+		m_npView->setActiveController(activeController);
+	}
+	m_npView->show();
 }
 
 void GBAApp::attachToNetplay(GameController* controller) {
-	if (m_netplay.serverRunning()) {
-		// TODO clean up
-		connect(&m_netplay, &NetplayController::coreRegistered, [this, controller](quint32 c2) {
-			if (controller != m_netplay.controllerForId(c2)) {
-				return;
-			}
-			m_netplay.joinRoom(controller);
-		});
-	}
 	m_netplay.addGameController(controller);
 }
 

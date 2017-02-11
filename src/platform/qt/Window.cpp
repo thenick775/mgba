@@ -1193,10 +1193,15 @@ void Window::setupMenu(QMenuBar* menubar) {
 	addControlledAction(multiplayerMenu, multiWindow, "multiWindow");
 
 	multiplayerMenu->addSeparator();
+	QAction* netplayView = new QAction(tr("Open netplay view..."), multiplayerMenu);
+	connect(netplayView, &QAction::triggered, [this]() {
+		GBAApp::app()->openNetplayView(m_controller);
+	});
+	addControlledAction(multiplayerMenu, netplayView, "netplayView");
+
 	QAction* startServer = new QAction(tr("Start server"), multiplayerMenu);
 	connect(startServer, &QAction::triggered, [this]() {
 		GBAApp::app()->startServer();
-		GBAApp::app()->attachToNetplay(m_controller);
 	});
 	addControlledAction(multiplayerMenu, startServer, "netplayServerStart");
 
@@ -1205,19 +1210,6 @@ void Window::setupMenu(QMenuBar* menubar) {
 		GBAApp::app()->stopServer();
 	});
 	addControlledAction(multiplayerMenu, stopServer, "netplayServerStop");
-
-	QAction* connectServer = new QAction(tr("Connect to server"), multiplayerMenu);
-	connect(connectServer, &QAction::triggered, [this]() {
-		GBAApp::app()->connectServer();
-		GBAApp::app()->attachToNetplay(m_controller);
-	});
-	addControlledAction(multiplayerMenu, connectServer, "netplayServerConnect");
-
-	QAction* disconnectServer = new QAction(tr("Disconnect from server"), multiplayerMenu);
-	connect(disconnectServer, &QAction::triggered, [this]() {
-		GBAApp::app()->disconnectServer();
-	});
-	addControlledAction(multiplayerMenu, disconnectServer, "netplayServerDisconnect");
 
 	QMenu* avMenu = menubar->addMenu(tr("Audio/&Video"));
 	m_shortcutController->addMenu(avMenu);

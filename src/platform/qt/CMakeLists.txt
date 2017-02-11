@@ -96,6 +96,9 @@ set(SOURCE_FILES
 	MessagePainter.cpp
 	MultiplayerController.cpp
 	NetplayController.cpp
+	NetplayView.cpp
+	NetplayCoreModel.cpp
+	NetplayRoomModel.cpp
 	ObjView.cpp
 	OverrideView.cpp
 	PaletteView.cpp
@@ -125,6 +128,7 @@ set(UI_FILES
 	LoadSaveState.ui
 	LogView.ui
 	MemoryView.ui
+	NetplayView.ui
 	ObjView.ui
 	OverrideView.ui
 	PaletteView.ui

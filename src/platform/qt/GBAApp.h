@@ -23,6 +23,7 @@ mLOG_DECLARE_CATEGORY(QT);
 namespace QGBA {
 
 class GameController;
+class NetplayView;
 class Window;
 
 #ifdef USE_SQLITE3
@@ -65,8 +66,7 @@ public:
 public slots:
 	void startServer();
 	void stopServer();
-	void connectServer();
-	void disconnectServer();
+	void openNetplayView(GameController* = nullptr);
 	void attachToNetplay(GameController*);
 
 protected:
@@ -92,6 +92,7 @@ private:
 	QList<Window*> m_windows;
 	MultiplayerController m_multiplayer;
 	NetplayController m_netplay;
+	NetplayView* m_npView;
 
 	NoIntroDB* m_db;
 #ifdef USE_SQLITE3

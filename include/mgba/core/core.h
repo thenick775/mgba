@@ -74,6 +74,7 @@ struct mCore {
 	size_t (*getAudioBufferSize)(struct mCore*);
 
 	void (*addCoreCallbacks)(struct mCore*, struct mCoreCallbacks*);
+	void (*removeCoreCallbacks)(struct mCore*, struct mCoreCallbacks*);
 	void (*clearCoreCallbacks)(struct mCore*);
 	void (*setAVStream)(struct mCore*, struct mAVStream*);
 	void (*setAVBlocked)(struct mCore*, bool);

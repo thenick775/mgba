@@ -131,7 +131,7 @@ void _endMode0(struct mTiming* timing, void* context, uint32_t cyclesLate) {
 
 		size_t c;
 		for (c = 0; c < mCoreCallbacksListSize(&video->p->coreCallbacks); ++c) {
-			struct mCoreCallbacks* callbacks = mCoreCallbacksListGetPointer(&video->p->coreCallbacks, c);
+			struct mCoreCallbacks* callbacks = *mCoreCallbacksListGetPointer(&video->p->coreCallbacks, c);
 			if (callbacks->videoFrameEnded) {
 				callbacks->videoFrameEnded(callbacks->context);
 			}
@@ -251,7 +251,7 @@ void _updateFrameCount(struct mTiming* timing, void* context, uint32_t cyclesLat
 
 	size_t c;
 	for (c = 0; c < mCoreCallbacksListSize(&video->p->coreCallbacks); ++c) {
-		struct mCoreCallbacks* callbacks = mCoreCallbacksListGetPointer(&video->p->coreCallbacks, c);
+		struct mCoreCallbacks* callbacks = *mCoreCallbacksListGetPointer(&video->p->coreCallbacks, c);
 		if (callbacks->videoFrameStarted) {
 			callbacks->videoFrameStarted(callbacks->context);
 		}

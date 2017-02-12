@@ -471,7 +471,7 @@ void GBReset(struct LR35902Core* cpu) {
 
 	size_t c;
 	for (c = 0; c < mCoreCallbacksListSize(&gb->coreCallbacks); ++c) {
-		struct mCoreCallbacks* callbacks = mCoreCallbacksListGetPointer(&gb->coreCallbacks, c);
+		struct mCoreCallbacks* callbacks = *mCoreCallbacksListGetPointer(&gb->coreCallbacks, c);
 		if (callbacks->coreReset) {
 			callbacks->coreReset(callbacks->context);
 		}

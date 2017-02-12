@@ -40,7 +40,7 @@ struct mCoreCallbacks {
 	void (*coreReset)(void* context);
 };
 
-DECLARE_VECTOR(mCoreCallbacksList, struct mCoreCallbacks);
+DECLARE_VECTOR(mCoreCallbacksList, struct mCoreCallbacks*);
 
 struct mAVStream {
 	void (*videoDimensionsChanged)(struct mAVStream*, unsigned width, unsigned height);

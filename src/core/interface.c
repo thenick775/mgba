@@ -7,7 +7,7 @@
 
 #include <mgba/core/core.h>
 
-DEFINE_VECTOR(mCoreCallbacksList, struct mCoreCallbacks);
+DEFINE_VECTOR(mCoreCallbacksList, struct mCoreCallbacks*);
 
 static time_t _rtcGenericCallback(struct mRTCSource* source) {
 	struct mRTCGenericSource* rtc = (struct mRTCGenericSource*) source;

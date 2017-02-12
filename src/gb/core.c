@@ -158,7 +158,18 @@ static size_t _GBCoreGetAudioBufferSize(struct mCore* core) {
 
 static void _GBCoreAddCoreCallbacks(struct mCore* core, struct mCoreCallbacks* coreCallbacks) {
 	struct GB* gb = core->board;
-	*mCoreCallbacksListAppend(&gb->coreCallbacks) = *coreCallbacks;
+	*mCoreCallbacksListAppend(&gb->coreCallbacks) = coreCallbacks;
+}
+
+static void _GBCoreRemoveCoreCallbacks(struct mCore* core, struct mCoreCallbacks* coreCallbacks) {
+	struct GB* gb = core->board;
+	size_t i;
+	for (i = 0; i < mCoreCallbacksListSize(&gb->coreCallbacks); ++i) {
+		if (*mCoreCallbacksListGetPointer(&gb->coreCallbacks, i) == coreCallbacks) {
+			mCoreCallbacksListShift(&gb->coreCallbacks, i, 1);
+			--i;
+		}
+	}
 }
 
 static void _GBCoreClearCoreCallbacks(struct mCore* core) {
@@ -588,6 +599,7 @@ struct mCore* GBCoreCreate(void) {
 	core->setAVStream = _GBCoreSetAVStream;
 	core->setAVBlocked = _GBCoreSetAVBlocked;
 	core->addCoreCallbacks = _GBCoreAddCoreCallbacks;
+	core->removeCoreCallbacks = _GBCoreRemoveCoreCallbacks;
 	core->clearCoreCallbacks = _GBCoreClearCoreCallbacks;
 	core->isROM = GBIsROM;
 	core->loadROM = _GBCoreLoadROM;

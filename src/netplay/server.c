@@ -252,7 +252,7 @@ static bool _createRoom(struct mNPClient* client, const struct mNPPacketJoin* jo
 	room->p = client->p;
 	TableInit(&room->cores, 8, NULL);
 	TableInit(&room->clients, 8, NULL);
-	room->currentFrame = 0;
+	room->currentFrame = join->currentFrame;
 	room->nextSync = join->syncPeriod;
 	TableInsert(&room->cores, core->info.coreId, core);
 	TableInsert(&room->clients, client->clientId, client);
@@ -299,6 +299,33 @@ static bool _processJoin(struct mNPClient* client, const struct mNPPacketHeader*
 		mLOG(NP_SERVER, INFO, "Client %i core %i creating room", client->clientId, join->coreId);
 		return _createRoom(client, join);
 	}
+	MutexLock(&client->p->mutex);
+	struct mNPRoom* room = TableLookup(&client->p->rooms, join->roomId);
+	if (!room) {
+		MutexUnlock(&client->p->mutex);
+		mNPAck(client->sock, mNP_REPLY_DOES_NOT_EXIST);
+		return true;
+	}
+	struct mNPServerCoreInfo* core = TableLookup(&client->p->cores, join->coreId);
+	if (!core) {
+		MutexUnlock(&client->p->mutex);
+		mNPAck(client->sock, mNP_REPLY_NO_SUCH_CORE);
+		return true;
+	}
+	if (core->info.roomId) {
+		if (core->info.roomId == join->coreId) {
+			MutexUnlock(&client->p->mutex);
+			join->currentFrame = room->currentFrame;
+			SocketSend(client->sock, header, sizeof(*header));
+			SocketSend(client->sock, join, sizeof(*join));
+			return true;
+		} else {
+			MutexUnlock(&client->p->mutex);
+			mNPAck(client->sock, mNP_REPLY_BUSY);
+			return true;
+		}
+	}
+	MutexUnlock(&client->p->mutex);
 	mLOG(NP_SERVER, INFO, "Client %i core %i joining room %i", client->clientId, join->coreId, join->roomId);
 	_forwardPacket(client, join->coreId, header, join);
 	*forwarded = true;
@@ -443,18 +470,18 @@ static bool _processCloneCore(struct mNPClient* client, const struct mNPPacketCl
 
 	mLOG(NP_SERVER, INFO, "Client %" PRIi32 " cloning core %" PRIi32, client->clientId, clone->coreId);
 	MutexLock(&client->p->mutex);
-	struct mNPCoreInfo* info = TableLookup(&client->p->cores, clone->coreId);
-	if (!info) {
+	struct mNPServerCoreInfo* core = TableLookup(&client->p->cores, clone->coreId);
+	if (!core) {
 		MutexUnlock(&client->p->mutex);
 		mNPAck(client->sock, mNP_REPLY_NO_SUCH_CORE);
 		return true;
 	}
-	if ((info->flags & clone->flags) != clone->flags) {
+	if ((core->info.flags & clone->flags) != clone->flags) {
 		MutexUnlock(&client->p->mutex);
 		mNPAck(client->sock, mNP_REPLY_DISALLOWED);
 		return true;
 	}
-	uint32_t roomId = info->roomId;
+	uint32_t roomId = core->info.roomId;
 	struct mNPRoom* room = TableLookup(&client->p->rooms, roomId);
 	if (!roomId || !room) {
 		MutexUnlock(&client->p->mutex);
@@ -478,7 +505,7 @@ static bool _processCloneCore(struct mNPClient* client, const struct mNPPacketCl
 		.flags = 0
 	};
 	struct mNPPacketRegisterCore data = {
-		.info = *info,
+		.info = core->info,
 		.nonce = clone->nonce
 	};
 	data.info.flags &= clone->flags;
@@ -787,6 +814,11 @@ static void _processEvent(struct mNPRoom* room, const struct mNPForwardedPacket*
 	}
 }
 
+static void _processRoomJoin(struct mNPRoom* room, const struct mNPForwardedPacket* packet) {
+	const struct mNPPacketJoin* join = packet->data;
+	// TODO
+}
+
 static THREAD_ENTRY _roomThread(void* context) {
 	struct mNPRoom* room = context;
 	mLOG(NP_SERVER, DEBUG, "Room %i thread started", room->info.roomId);
@@ -798,6 +830,9 @@ static THREAD_ENTRY _roomThread(void* context) {
 			switch (packet.header.packetType) {
 			case mNP_PKT_EVENT:
 				_processEvent(room, &packet);
+				break;
+			case mNP_PKT_JOIN:
+				_processRoomJoin(room, &packet);
 				break;
 			default:
 				mLOG(NP_SERVER, WARN, "Room %i received unknown packet type %" PRIi32, room->info.roomId, packet.header.packetType);

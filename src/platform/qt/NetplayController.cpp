@@ -35,6 +35,7 @@ NetplayController::NetplayController(MultiplayerController* mp, QObject* parent)
 {
 	qRegisterMetaType<QList<mNPRoomInfo>>("QList<mNPRoomInfo>");
 	qRegisterMetaType<QList<mNPCoreInfo>>("QList<mNPCoreInfo>");
+	qRegisterMetaType<QList<quint32>>("QList<quint32>");
 
 	connect(this, &NetplayController::connected, [this]() {
 		for (auto iter = m_pendingCores.begin(); iter != m_pendingCores.end(); ++iter) {
@@ -176,11 +177,14 @@ void NetplayController::addGameController(uint32_t nonce, uint32_t id) {
 	}
 	GameController* controller = m_pendingCores.take(nonce);
 	if (m_cores.key(controller)) {
-		// TODO
+		mNPContextDeleteCore(m_np, m_cores.key(controller));
+		mNPContextAttachCore(m_np, controller->thread(), nonce);
+		m_cores[id] = controller;
+	} else {
+		mNPContextAttachCore(m_np, controller->thread(), nonce);
+		m_cores[id] = controller;
+		joinFirstRoom(controller);
 	}
-	mNPContextAttachCore(m_np, controller->thread(), nonce);
-	m_cores[id] = controller;
-	joinFirstRoom(controller);
 	auto connection = connect(controller, &GameController::keysUpdated, [this, id](quint32 keys) {
 		mNPContextPushInput(m_np, id, keys);
 	});
@@ -231,9 +235,9 @@ void NetplayController::cbListRooms(QList<mNPRoomInfo> list) {
 	cb(list);
 }
 
-void NetplayController::cbRollbackStart(QList<mNPCoreInfo> list) {
-	for (const auto& core : list) {
-		GameController* controller = m_cores[core.coreId];
+void NetplayController::cbRollbackStart(QList<quint32> list) {
+	for (const auto& coreId : list) {
+		GameController* controller = m_cores[coreId];
 		if (controller) {
 			controller->setKeyInputBlocked(true);
 			controller->setOutputBlocked(true);
@@ -241,9 +245,9 @@ void NetplayController::cbRollbackStart(QList<mNPCoreInfo> list) {
 	}
 }
 
-void NetplayController::cbRollbackEnd(QList<mNPCoreInfo> list) {
-	for (const auto& core : list) {
-		GameController* controller = m_cores[core.coreId];
+void NetplayController::cbRollbackEnd(QList<quint32> list) {
+	for (const auto& coreId : list) {
+		GameController* controller = m_cores[coreId];
 		if (controller) {
 			controller->setKeyInputBlocked(false);
 			controller->setOutputBlocked(false);
@@ -315,20 +319,20 @@ void NetplayController::cbListCores(mNPContext* context, const struct mNPCoreInf
 	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "cbListCores", Q_ARG(QList<mNPCoreInfo>, list), Q_ARG(quint32, roomId));
 }
 
-void NetplayController::cbRollbackStart(mNPContext* context, const struct mNPCoreInfo* cores, uint32_t nCores, void* user) {
-	QList<mNPCoreInfo> list;
+void NetplayController::cbRollbackStart(mNPContext* context, const uint32_t* cores, uint32_t nCores, void* user) {
+	QList<quint32> list;
 	if (nCores) {
 		list.reserve(nCores);
 		std::copy(&cores[0], &cores[nCores], std::back_inserter(list));
 	}
-	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "cbRollbackStart", Q_ARG(QList<mNPCoreInfo>, list));
+	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "cbRollbackStart", Q_ARG(QList<quint32>, list));
 }
 
-void NetplayController::cbRollbackEnd(mNPContext* context, const struct mNPCoreInfo* cores, uint32_t nCores, void* user) {
-	QList<mNPCoreInfo> list;
+void NetplayController::cbRollbackEnd(mNPContext* context, const uint32_t* cores, uint32_t nCores, void* user) {
+	QList<quint32> list;
 	if (nCores) {
 		list.reserve(nCores);
 		std::copy(&cores[0], &cores[nCores], std::back_inserter(list));
 	}
-	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "cbRollbackEnd", Q_ARG(QList<mNPCoreInfo>, list));
+	QMetaObject::invokeMethod(static_cast<NetplayController*>(user), "cbRollbackEnd", Q_ARG(QList<quint32>, list));
 }

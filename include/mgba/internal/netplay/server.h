@@ -80,6 +80,7 @@ struct mNPPacketConnect {
 struct mNPPacketJoin {
 	uint32_t roomId;
 	uint32_t coreId;
+	uint32_t currentFrame;
 	uint32_t syncPeriod;
 	uint32_t capacity;
 	uint32_t flags;

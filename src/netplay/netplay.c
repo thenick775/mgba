@@ -19,11 +19,16 @@ const uint32_t mNP_PROTOCOL_VERSION = 1;
 static void _coreReset(void* context);
 static void _coreFrame(void* context);
 
+static void _deleteCore(void* core);
+
 struct mNPCore;
 
 static THREAD_ENTRY _commThread(void* context);
 
 DEFINE_VECTOR(mNPEventQueue, struct mNPEvent);
+
+DECLARE_VECTOR(mNPCoreList, struct mNPCore*);
+DEFINE_VECTOR(mNPCoreList, struct mNPCore*);
 
 struct mNPContext {
 	struct mNPCallbacks callbacks;
@@ -41,6 +46,7 @@ struct mNPContext {
 struct mNPCore {
 	struct mNPContext* p;
 	struct mCoreThread* thread;
+	struct mCoreCallbacks callbacks;
 	Mutex mutex;
 	uint32_t coreId;
 	uint32_t roomId;
@@ -48,11 +54,46 @@ struct mNPCore {
 	uint32_t flags;
 	struct mNPEventQueue queue;
 	struct mNPEventQueue sentQueue;
-	uint32_t framesRemaining;
+	uint32_t currentFrame;
+	uint32_t nextSync;
 	uint32_t syncPeriod;
 	bool waitingForEvent;
 	uint32_t lastInput;
+	bool doingRollback;
+	uint32_t rollbackStart;
+	uint32_t rollbackEnd;
 };
+
+struct mNPRollback {
+	uint32_t startFrame;
+	uint32_t endFrame;
+	uint32_t roomId;
+};
+
+struct mNPCoreFilter {
+	struct mNPCoreList results;
+	uint32_t roomId;
+};
+
+static void _filterCores(uint32_t id, void* value, void* user) {
+	UNUSED(id);
+	struct mNPCoreFilter* filter = user;
+	struct mNPCore* core = value;
+	if (filter->roomId && core->roomId == filter->roomId) {
+		*mNPCoreListAppend(&filter->results) = core;
+	}
+}
+
+static void _deleteCore(void* corep) {
+	struct mNPCore* core = corep;
+	mCoreThreadInterrupt(core->thread);
+	core->thread->core->removeCoreCallbacks(core->thread->core, &core->callbacks);
+	mCoreThreadContinue(core->thread);
+	MutexDeinit(&core->mutex);
+	mNPEventQueueDeinit(&core->queue);
+	mNPEventQueueDeinit(&core->sentQueue);
+	free(core);
+}
 
 struct mNPContext* mNPContextCreate(void) {
 	struct mNPContext* context = malloc(sizeof(*context));
@@ -60,7 +101,7 @@ struct mNPContext* mNPContextCreate(void) {
 		return NULL;
 	}
 	memset(context, 0, sizeof(*context));
-	TableInit(&context->cores, 8, free); // TODO: Properly free
+	TableInit(&context->cores, 8, _deleteCore);
 	TableInit(&context->pending, 4, free);
 	return context;
 }
@@ -110,6 +151,7 @@ void mNPContextDeleteCore(struct mNPContext* context, uint32_t coreId) {
 		.coreId = coreId
 	};
 	mNPContextSend(context, &header, &data);
+	TableRemove(&context->cores, coreId);
 }
 
 void mNPContextCloneCore(struct mNPContext* context, uint32_t coreId, uint32_t flags, uint32_t nonce) {
@@ -155,6 +197,7 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 		return;
 	}
 
+	memset(core, 0, sizeof(*core));
 	core->p = context;
 	core->thread = thread;
 	MutexInit(&core->mutex);
@@ -166,19 +209,22 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 	core->coreId = info->coreId;
 	core->frameOffset = thread->core->frameCounter(thread->core),
 	core->waitingForEvent = false;
-	struct mCoreCallbacks callbacks = {
-		.context = core,
-		.videoFrameStarted = _coreFrame,
-		.coreReset = _coreReset
-	};
-	thread->core->addCoreCallbacks(thread->core, &callbacks);
+	core->callbacks.context = core;
+	core->callbacks.videoFrameStarted = _coreFrame;
+	core->callbacks.coreReset = _coreReset;
+	thread->core->addCoreCallbacks(thread->core, &core->callbacks);
 	mCoreThreadContinue(thread);
 	TableInsert(&context->cores, info->coreId, core);
 	TableRemove(&context->pending, nonce);
+	if (info->roomId) {
+		mNPContextJoinRoom(context, info->roomId, info->coreId);
+	}
 }
 
 static void _sendEvent(struct mNPCore* core, enum mNPEventType type, uint32_t datum) {
-	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
+	if (core->doingRollback) {
+		return;
+	}
 	struct mNPPacketHeader header = {
 		.packetType = mNP_PKT_EVENT,
 		.size = sizeof(struct mNPPacketEvent),
@@ -189,19 +235,20 @@ static void _sendEvent(struct mNPCore* core, enum mNPEventType type, uint32_t da
 			.eventType = type,
 			.coreId = core->coreId,
 			.eventDatum = datum,
-			.frameId = currentFrame
+			.frameId = core->currentFrame
 		}
 	};
 	*mNPEventQueueAppend(&core->sentQueue) = data.event;
-	mNPContextSend(core->p, &header, &data);
+	if (core->flags & mNP_CORE_ALLOW_CONTROL) {
+		mNPContextSend(core->p, &header, &data);
+	}
 }
 
 void mNPContextPushInput(struct mNPContext* context, uint32_t coreId, uint32_t input) {
 	struct mNPCore* core = TableLookup(&context->cores, coreId);
-	if (!core || !(core->flags & mNP_CORE_ALLOW_CONTROL) || !core->roomId) {
+	if (!core || !(core->flags & mNP_CORE_ALLOW_CONTROL) || !core->roomId || core->doingRollback) {
 		return;
 	}
-
 	mLOG(NP, DEBUG, "Recieved input for coreId %" PRIi32 ": %" PRIx32, coreId, input);
 	if (core->lastInput == input) {
 		return;
@@ -299,6 +346,7 @@ static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
 		MutexLock(&core->mutex);
 		while (mNPEventQueueSize(&core->sentQueue)) {
 			struct mNPEvent* sentEvent = mNPEventQueueGetPointer(&core->sentQueue, 0);
+			// TODO: Account for overflow
 			if (sentEvent->frameId > event->frameId) {
 				break;
 			}
@@ -316,47 +364,65 @@ static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
 }
 
 static void _pollEvent(struct mNPCore* core) {
-	uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
+	core->currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
 	if (!core->roomId) {
 		return;
 	}
-	bool needsToWait = core->framesRemaining == 0;
 	MutexLock(&core->mutex);
-	while (needsToWait && mNPEventQueueSize(&core->queue)) {
-		// Copy event so we don't have to hold onto the mutex
-		struct mNPEvent event = *mNPEventQueueGetPointer(&core->queue, 0);
-		MutexUnlock(&core->mutex);
-		if (event.frameId > currentFrame) {
-			needsToWait = false;
-			MutexLock(&core->mutex);
-		} else {
-			_handleEvent(core, &event);
-			MutexLock(&core->mutex);
-			mNPEventQueueShift(&core->queue, 0, 1);
+	if (core->doingRollback) {
+		while (mNPEventQueueSize(&core->queue)) {
+			// Copy event so we don't have to hold onto the mutex
+			struct mNPEvent event = *mNPEventQueueGetPointer(&core->queue, 0);
+			MutexUnlock(&core->mutex);
+			if (event.frameId > core->currentFrame) {
+				MutexLock(&core->mutex);
+				break;
+			} else {
+				_handleEvent(core, &event);
+				MutexLock(&core->mutex);
+				mNPEventQueueShift(&core->queue, 0, 1);
+			}
+		}
+		if (core->rollbackEnd == core->currentFrame || !mNPEventQueueSize(&core->queue)) {
+			if (core->p->callbacks.rollbackEnd) {
+				core->p->callbacks.rollbackEnd(core->p, &core->coreId, 1, core->p->userContext);
+			}
+			core->doingRollback = false;
 		}
 	}
-	MutexUnlock(&core->mutex);
-	if (needsToWait) {
+	if (core->nextSync == core->currentFrame && !core->doingRollback) {
 		core->waitingForEvent = true;
 		mCoreThreadWaitFromThread(core->thread);
 	}
+	/*if (core->currentFrame > core->nextSync) {
+		abort();
+	}*/
+	MutexUnlock(&core->mutex);
 }
 
 static void _coreReset(void* context) {
 	struct mNPCore* core = context;
+	core->currentFrame = 0;
 	_pollEvent(core);
 }
 
 static void _coreFrame(void* context) {
 	struct mNPCore* core = context;
-	_pollEvent(core);
+	core->currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
 
-	if ((core->flags & mNP_CORE_ALLOW_CONTROL) && core->roomId) {
-		uint32_t currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
-		_sendEvent(core, mNP_EVENT_FRAME, currentFrame);
+	if (core->doingRollback && core->rollbackStart < core->rollbackEnd) {
+		uint32_t frames = core->currentFrame - core->rollbackStart;
+		for (; frames; --frames) {
+			mCoreRewindRestore(&core->thread->rewind, core->thread->core);
+		}
+		core->rollbackStart = core->rollbackEnd;
 	}
 
-	--core->framesRemaining;
+	_pollEvent(core);
+
+	if ((core->flags & mNP_CORE_ALLOW_OBSERVE) && core->roomId) {
+		_sendEvent(core, mNP_EVENT_FRAME, core->currentFrame);
+	}
 }
 
 static bool _commRecv(struct mNPContext* context) {
@@ -462,6 +528,38 @@ static bool _parseConnect(struct mNPContext* context, const struct mNPPacketAck*
 	return true;
 }
 
+static void _dispatchRollback(struct mNPContext* context, struct mNPRollback* rollback) {
+	struct mNPCoreFilter filter = {
+		.roomId = rollback->roomId
+	};
+	mNPCoreListInit(&filter.results, 0);
+	TableEnumerate(&context->cores, _filterCores, &filter);
+	if (context->callbacks.rollbackStart) {
+		uint32_t* list = malloc(sizeof(uint32_t) * mNPCoreListSize(&filter.results));
+		size_t i;
+		for (i = 0; i < mNPCoreListSize(&filter.results); ++i) {
+			struct mNPCore* core = *mNPCoreListGetPointer(&filter.results, i);
+			list[i] = core->coreId;
+			core->rollbackEnd = rollback->endFrame;
+			if (core->doingRollback) {
+				if (core->rollbackStart < core->currentFrame) {
+					core->rollbackStart = rollback->startFrame;
+				} else {
+					core->rollbackStart = rollback->endFrame;
+				}
+			}
+			core->doingRollback = true;
+			if (core->currentFrame < core->rollbackEnd && core->waitingForEvent) {
+				core->waitingForEvent = false;
+				mCoreThreadStopWaiting(core->thread);
+			}
+		}
+		context->callbacks.rollbackStart(context, list, mNPCoreListSize(&filter.results), context->userContext);
+		free(list);
+	}
+	mNPCoreListDeinit(&filter.results);
+}
+
 static void _parseSync(struct mNPContext* context, const struct mNPPacketSync* sync, size_t size) {
 	uint32_t nEvents = sync->nEvents;
 	size -= sizeof(*sync);
@@ -469,6 +567,9 @@ static void _parseSync(struct mNPContext* context, const struct mNPPacketSync* s
 		mLOG(NP, WARN, "Received improperly sized Sync packet");
 		nEvents = size / sizeof(struct mNPEvent);
 	}
+	struct mNPRollback rollback = {
+		.roomId = 0
+	};
 	uint32_t i;
 	for (i = 0; i < nEvents; ++i) {
 		const struct mNPEvent* event = &sync->events[i];
@@ -477,14 +578,31 @@ static void _parseSync(struct mNPContext* context, const struct mNPPacketSync* s
 			continue;
 		}
 		MutexLock(&core->mutex);
-		if (mNPEventQueueSize(&core->sentQueue) && memcmp(event, mNPEventQueueGetPointer(&core->sentQueue, 0), sizeof(*event)) == 0) {
+		if (!rollback.roomId && mNPEventQueueSize(&core->sentQueue) && memcmp(event, mNPEventQueueGetPointer(&core->sentQueue, 0), sizeof(*event)) == 0) {
 			mNPEventQueueShift(&core->sentQueue, 0, 1);
+			if (!mNPEventQueueSize(&core->sentQueue) && core->waitingForEvent) {
+				core->waitingForEvent = false;
+				mCoreThreadStopWaiting(core->thread);
+			}
 		} else {
-			// TODO: Rollback
+			mNPEventQueueClear(&core->sentQueue);
+			if (!rollback.roomId) {
+				rollback.roomId = core->roomId;
+				rollback.startFrame = event->frameId;
+				rollback.endFrame = event->frameId;
+			}
 			*mNPEventQueueAppend(&core->queue) = *event;
 		}
-		core->framesRemaining = event->frameId + core->syncPeriod * 2;
+		core->nextSync = core->currentFrame + core->syncPeriod * 2;
+		if (rollback.roomId) {
+			if (300 > event->frameId - rollback.endFrame) {
+				rollback.endFrame = event->frameId;
+			}
+		}
 		MutexUnlock(&core->mutex);
+	}
+	if (rollback.roomId) {
+		_dispatchRollback(context, &rollback);
 	}
 }
 
@@ -495,9 +613,14 @@ static void _parseJoin(struct mNPContext* context, const struct mNPPacketJoin* j
 	struct mNPCore* core = TableLookup(&context->cores, join->coreId);
 	if (core) {
 		core->roomId = join->roomId;
-		core->framesRemaining = join->syncPeriod * 2;
-		core->frameOffset = core->thread->core->frameCounter(core->thread->core);
+		core->currentFrame = join->currentFrame;
+		core->nextSync = core->currentFrame + join->syncPeriod * 2;
+		core->frameOffset = core->thread->core->frameCounter(core->thread->core) - core->currentFrame;
 		core->syncPeriod = join->syncPeriod;
+		if (core->waitingForEvent) {
+			core->waitingForEvent = false;
+			mCoreThreadStopWaiting(core->thread);
+		}
 	}
 	if (context->callbacks.roomJoined) {
 		context->callbacks.roomJoined(context, join->roomId, join->coreId, context->userContext);

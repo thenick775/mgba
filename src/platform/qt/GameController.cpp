@@ -44,6 +44,7 @@ GameController::GameController(QObject* parent)
 	, m_frontBuffer(nullptr)
 	, m_threadContext()
 	, m_activeKeys(0)
+	, m_activeButtons(0)
 	, m_inactiveKeys(0)
 	, m_logLevels(0)
 	, m_gameOpen(false)
@@ -62,6 +63,7 @@ GameController::GameController(QObject* parent)
 	, m_wasPaused(false)
 	, m_inputBlocked(false)
 	, m_outputBlocked(false)
+	, m_updateKeys(true)
 	, m_audioChannels{ true, true, true, true, true, true }
 	, m_videoLayers{ true, true, true, true, true }
 	, m_autofire{}
@@ -804,6 +806,7 @@ void GameController::keyPressed(int key) {
 			m_activeKeys ^= mappedKey ^ 0xC0;
 		}
 	}
+	m_updateKeys = true;
 }
 
 void GameController::keyReleased(int key) {
@@ -819,11 +822,13 @@ void GameController::keyReleased(int key) {
 			m_inactiveKeys &= ~0xC0;
 		}
 	}
+	m_updateKeys = true;
 }
 
 void GameController::clearKeys() {
 	m_activeKeys = 0;
 	m_inactiveKeys = 0;
+	m_updateKeys = true;
 }
 
 void GameController::setAutofire(int key, bool enable) {
@@ -1249,8 +1254,12 @@ void GameController::pollEvents() {
 		return;
 	}
 
-	m_activeButtons = m_inputController->pollEvents();
-	updateKeys();
+	quint32 activeButtons = m_inputController->pollEvents();
+	if (activeButtons != m_activeButtons || m_updateKeys) {
+		m_activeButtons = activeButtons;
+		updateKeys();
+		m_updateKeys = false;
+	}
 }
 
 void GameController::updateAutofire() {

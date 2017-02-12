@@ -224,6 +224,7 @@ private:
 	bool m_wasPaused;
 	bool m_inputBlocked;
 	bool m_outputBlocked;
+	bool m_updateKeys;
 
 	std::shared_ptr<mTileCache> m_tileCache;
 

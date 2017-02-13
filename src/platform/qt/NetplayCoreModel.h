@@ -8,6 +8,7 @@
 
 #include <QAbstractItemModel>
 #include <QMultiMap>
+#include <functional>
 
 #include <mgba/internal/netplay/netplay.h>
 

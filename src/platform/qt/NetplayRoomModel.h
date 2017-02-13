@@ -7,6 +7,7 @@
 #define QGBA_NETPLAY_ROOM_MODEL
 
 #include <QAbstractItemModel>
+#include <functional>
 
 #include <mgba/internal/netplay/netplay.h>
 

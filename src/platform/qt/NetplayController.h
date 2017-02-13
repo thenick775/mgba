@@ -9,6 +9,7 @@
 #include <QList>
 #include <QMap>
 #include <QObject>
+#include <functional>
 
 #include <mgba/internal/netplay/netplay.h>
 

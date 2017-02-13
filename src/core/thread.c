@@ -89,6 +89,13 @@ void _frameStarted(void* context) {
 	if (!thread) {
 		return;
 	}
+}
+
+void _frameEnded(void* context) {
+	struct mCoreThread* thread = context;
+	if (!thread) {
+		return;
+	}
 	if (thread->core->opts.rewindEnable && thread->core->opts.rewindBufferCapacity > 0) {
 		if (thread->state != THREAD_REWINDING) {
 			mCoreRewindAppend(&thread->rewind, thread->core);
@@ -97,13 +104,6 @@ void _frameStarted(void* context) {
 				mCoreRewindAppend(&thread->rewind, thread->core);
 			}
 		}
-	}
-}
-
-void _frameEnded(void* context) {
-	struct mCoreThread* thread = context;
-	if (!thread) {
-		return;
 	}
 	if (thread->frameCallback) {
 		thread->frameCallback(thread);

@@ -212,7 +212,7 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 	core->frameOffset = thread->core->frameCounter(thread->core),
 	core->waitingForEvent = false;
 	core->callbacks.context = core;
-	core->callbacks.videoFrameStarted = _coreFrame;
+	core->callbacks.videoFrameEnded = _coreFrame;
 	core->callbacks.coreReset = _coreReset;
 	thread->core->addCoreCallbacks(thread->core, &core->callbacks);
 	mCoreThreadContinue(thread);

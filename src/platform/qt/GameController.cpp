@@ -219,6 +219,10 @@ GameController::GameController(QObject* parent)
 			controller->m_tileCache.reset();
 		}
 
+		if (controller->m_updateKeys) {
+			controller->updateKeys();
+			controller->m_updateKeys = false;
+		}
 
 		if (controller->m_pauseAfterFrame.testAndSetAcquire(true, false)) {
 			mCoreThreadPauseFromThread(context);
@@ -1255,10 +1259,9 @@ void GameController::pollEvents() {
 	}
 
 	quint32 activeButtons = m_inputController->pollEvents();
-	if (activeButtons != m_activeButtons || m_updateKeys) {
+	if (activeButtons != m_activeButtons) {
 		m_activeButtons = activeButtons;
-		updateKeys();
-		m_updateKeys = false;
+		m_updateKeys = true;
 	}
 }
 

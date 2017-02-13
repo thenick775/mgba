@@ -185,9 +185,14 @@ void NetplayController::addGameController(uint32_t nonce, uint32_t id) {
 		m_cores[id] = controller;
 		joinFirstRoom(controller);
 	}
-	auto connection = connect(controller, &GameController::keysUpdated, [this, id](quint32 keys) {
-		mNPContextPushInput(m_np, id, keys);
-	});
+	auto connection = connect(controller, &GameController::keysUpdated, this, [this, controller](quint32 input) {
+		// TODO: Add reverse mapping?
+		QList<uint32_t> keys = m_cores.keys(controller);
+		if (keys.empty()) {
+			return;
+		}
+		mNPContextPushInput(m_np, keys[0], input);
+	}, Qt::DirectConnection);
 	connect(this, &NetplayController::disconnected, [this, connection]() {
 		disconnect(connection);
 	});

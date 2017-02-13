@@ -6,10 +6,12 @@
 #include <mgba/internal/netplay/netplay.h>
 
 #include <mgba/core/core.h>
+#include <mgba/core/serialize.h>
 #include <mgba/core/thread.h>
 #include <mgba/core/version.h>
 #include <mgba/internal/netplay/server.h>
 #include <mgba-util/string.h>
+#include <mgba-util/vfs.h>
 #include "netplay-private.h"
 
 mLOG_DEFINE_CATEGORY(NP, "Netplay")
@@ -138,7 +140,7 @@ void mNPContextRegisterCore(struct mNPContext* context, struct mCoreThread* thre
 	struct mNPCoreInfo* pending = malloc(sizeof(*pending));
 	memcpy(pending, &data.info, sizeof(*pending));
 	TableInsert(&context->pending, nonce, pending);
-	mNPContextSend(context, &header, &data);
+	mNPContextSend(context, &header, &data, 0, NULL);
 }
 
 void mNPContextDeleteCore(struct mNPContext* context, uint32_t coreId) {
@@ -150,7 +152,7 @@ void mNPContextDeleteCore(struct mNPContext* context, uint32_t coreId) {
 	struct mNPPacketDeleteCore data = {
 		.coreId = coreId
 	};
-	mNPContextSend(context, &header, &data);
+	mNPContextSend(context, &header, &data, 0, NULL);
 	TableRemove(&context->cores, coreId);
 }
 
@@ -168,7 +170,7 @@ void mNPContextCloneCore(struct mNPContext* context, uint32_t coreId, uint32_t f
 	struct mNPCoreInfo* pending = malloc(sizeof(*pending));
 	memset(pending, 0, sizeof(*pending));
 	TableInsert(&context->pending, nonce, pending);
-	mNPContextSend(context, &header, &data);
+	mNPContextSend(context, &header, &data, 0, NULL);
 }
 
 void mNPContextJoinRoom(struct mNPContext* context, uint32_t roomId, uint32_t coreId) {
@@ -183,7 +185,7 @@ void mNPContextJoinRoom(struct mNPContext* context, uint32_t roomId, uint32_t co
 		.syncPeriod = 6,
 		.capacity = 4
 	};
-	mNPContextSend(context, &header, &data);
+	mNPContextSend(context, &header, &data, 0, NULL);
 }
 
 void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread, uint32_t nonce) {
@@ -218,6 +220,16 @@ void mNPContextAttachCore(struct mNPContext* context, struct mCoreThread* thread
 	TableRemove(&context->pending, nonce);
 	if (info->roomId) {
 		mNPContextJoinRoom(context, info->roomId, info->coreId);
+		struct mNPPacketHeader header = {
+			.packetType = mNP_PKT_REQUEST,
+			.size = sizeof(struct mNPPacketRequest),
+			.flags = 0
+		};
+		struct mNPPacketRequest data = {
+			.coreId = core->coreId,
+			.type = mNP_DATA_SAVESTATE
+		};
+		mNPContextSend(context, &header, &data, 0, NULL);
 	}
 }
 
@@ -240,7 +252,7 @@ static void _sendEvent(struct mNPCore* core, enum mNPEventType type, uint32_t da
 	};
 	*mNPEventQueueAppend(&core->sentQueue) = data.event;
 	if (core->flags & mNP_CORE_ALLOW_CONTROL) {
-		mNPContextSend(core->p, &header, &data);
+		mNPContextSend(core->p, &header, &data, 0, NULL);
 	}
 }
 
@@ -268,7 +280,7 @@ void mNPContextListRooms(struct mNPContext* context) {
 		.parent = 0,
 		.padding = 0
 	};
-	mNPContextSend(context, &header, &data);
+	mNPContextSend(context, &header, &data, 0, NULL);
 }
 
 void mNPContextListCores(struct mNPContext* context, uint32_t roomId) {
@@ -282,7 +294,7 @@ void mNPContextListCores(struct mNPContext* context, uint32_t roomId) {
 		.parent = roomId,
 		.padding = 0
 	};
-	mNPContextSend(context, &header, &data);
+	mNPContextSend(context, &header, &data, 0, NULL);
 }
 
 bool mNPContextConnect(struct mNPContext* context, const struct mNPServerOptions* opts) {
@@ -317,7 +329,7 @@ bool mNPContextConnect(struct mNPContext* context, const struct mNPServerOptions
 	context->server = serverSocket;
 	mNPCommFIFOInit(&context->commFifo);
 
-	mNPContextSend(context, &header, &data);
+	mNPContextSend(context, &header, &data, 0, NULL);
 	ThreadCreate(&context->commThread, _commThread, context);
 	return true;
 }
@@ -328,7 +340,7 @@ void mNPContextDisconnect(struct mNPContext* context) {
 		.size = 0,
 		.flags = 0
 	};
-	mNPContextSend(context, &header, NULL);
+	mNPContextSend(context, &header, NULL, 0, NULL);
 	ThreadJoin(context->commThread);
 	mLOG(NP, INFO, "Disconnected from server");
 	context->connected = false;
@@ -458,13 +470,13 @@ static bool _commRecv(struct mNPContext* context) {
 				chunkSize = PKT_CHUNK_SIZE;
 			}
 			ssize_t received = SocketRecv(context->server, ptr, chunkSize);
-			if (received < 0 || (size_t) received != chunkSize) {
+			if (received < 0) {
 				free(data);
 				SocketSetBlocking(context->server, false);
 				return false;
 			}
-			size -= chunkSize;
-			ptr += chunkSize;
+			size -= received;
+			ptr += received;
 		}
 		SocketSetBlocking(context->server, false);
 		if (size > 0) {
@@ -497,9 +509,9 @@ static THREAD_ENTRY _commThread(void* user) {
 	return 0;
 }
 
-void mNPContextSend(struct mNPContext* context, const struct mNPPacketHeader* header, const void* body) {
+void mNPContextSend(struct mNPContext* context, const struct mNPPacketHeader* header, const void* body, size_t tailSize, const void* tail) {
 	mNPCommFIFOWrite(&context->commFifo, header, sizeof(*header));
-	size_t size = header->size;
+	size_t size = header->size - tailSize;
 	if (size && body) {
 		const uint8_t* ptr = body;
 		while (size) {
@@ -509,6 +521,18 @@ void mNPContextSend(struct mNPContext* context, const struct mNPPacketHeader* he
 			}
 			mNPCommFIFOWrite(&context->commFifo, ptr, chunkSize);
 			size -= chunkSize;
+			ptr += chunkSize;
+		}
+	}
+	if (tailSize && tail) {
+		const uint8_t* ptr = tail;
+		while (tailSize) {
+			size_t chunkSize = tailSize;
+			if (chunkSize > PKT_CHUNK_SIZE) {
+				chunkSize = PKT_CHUNK_SIZE;
+			}
+			mNPCommFIFOWrite(&context->commFifo, ptr, chunkSize);
+			tailSize -= chunkSize;
 			ptr += chunkSize;
 		}
 	}
@@ -560,6 +584,60 @@ static void _dispatchRollback(struct mNPContext* context, struct mNPRollback* ro
 	mNPCoreListDeinit(&filter.results);
 }
 
+static void _parseData(struct mNPContext* context, const struct mNPPacketData* data, size_t size) {
+	if (sizeof(*data) > size || !data) {
+		return;
+	}
+	struct mNPCore* core = TableLookup(&context->cores, data->coreId);
+	if (!core) {
+		return;
+	}
+	struct VFile* vf = VFileFromConstMemory(data->data, size - sizeof(*data));
+	mCoreThreadInterrupt(core->thread);
+	switch (data->type) {
+	case mNP_DATA_SAVESTATE:
+		mCoreLoadStateNamed(core->thread->core, vf, SAVESTATE_SAVEDATA);
+		core->frameOffset = core->thread->core->frameCounter(core->thread->core) - core->currentFrame;
+		break;
+	}
+	mCoreThreadContinue(core->thread);
+	vf->close(vf);
+}
+
+static void _parseRequest(struct mNPContext* context, const struct mNPPacketRequest* req, size_t size) {
+	if (sizeof(*req) != size || !req) {
+		return;
+	}
+	struct mNPCore* core = TableLookup(&context->cores, req->coreId);
+	if (!core) {
+		return;
+	}
+	struct VFile* vf = VFileMemChunk(NULL, 0);
+	mCoreThreadInterrupt(core->thread);
+	switch (req->type) {
+	case mNP_DATA_SAVESTATE:
+		mCoreSaveStateNamed(core->thread->core, vf, SAVESTATE_SAVEDATA | SAVESTATE_SCREENSHOT);
+		break;
+	}
+	if (vf) {
+		size_t size = vf->size(vf);
+		struct mNPPacketHeader header = {
+			.packetType = mNP_PKT_DATA,
+			.size = size + sizeof(struct mNPPacketData),
+			.flags = 0
+		};
+		struct mNPPacketData data = {
+			.type = req->type,
+			.coreId = req->coreId
+		};
+		void* tail = vf->map(vf, size, MAP_READ);
+		mNPContextSend(context, &header, &data, size, tail);
+		vf->unmap(vf, tail, size);
+	}
+	vf->close(vf);
+	mCoreThreadContinue(core->thread);
+}
+
 static void _parseSync(struct mNPContext* context, const struct mNPPacketSync* sync, size_t size) {
 	uint32_t nEvents = sync->nEvents;
 	size -= sizeof(*sync);
@@ -593,6 +671,7 @@ static void _parseSync(struct mNPContext* context, const struct mNPPacketSync* s
 			}
 			*mNPEventQueueAppend(&core->queue) = *event;
 		}
+		// TODO: Fix this to be absolute
 		core->nextSync = core->currentFrame + core->syncPeriod * 2;
 		if (rollback.roomId) {
 			if (300 > event->frameId - rollback.endFrame) {
@@ -683,14 +762,20 @@ bool mNPContextRecv(struct mNPContext* context, const struct mNPPacketHeader* he
 			context->callbacks.serverShutdown(context, context->userContext);
 		}
 		return false;
-	case mNP_PKT_SYNC:
-		_parseSync(context, body, header->size);
-		break;
 	case mNP_PKT_JOIN:
 		_parseJoin(context, body, header->size);
 		break;
 	case mNP_PKT_LIST:
 		_parseList(context, body, header->size);
+		break;
+	case mNP_PKT_DATA:
+		_parseData(context, body, header->size);
+		break;
+	case mNP_PKT_REQUEST:
+		_parseRequest(context, body, header->size);
+		break;
+	case mNP_PKT_SYNC:
+		_parseSync(context, body, header->size);
 		break;
 	case mNP_PKT_REGISTER_CORE:
 		_parseRegisterCore(context, body, header->size);

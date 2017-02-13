@@ -38,8 +38,6 @@ enum mNPPacketType {
 };
 
 enum mNPDataType {
-	mNP_DATA_GENERIC,
-	mNP_DATA_CORE_CUSTOM,
 	mNP_DATA_SAVESTATE,
 	mNP_DATA_SCREENSHOT,
 	mNP_DATA_MAX
@@ -118,8 +116,8 @@ struct mNPPacketData {
 };
 
 struct mNPPacketRequest {
-	uint32_t coreId;
 	uint32_t type;
+	uint32_t coreId;
 };
 
 struct mNPPacketSync {

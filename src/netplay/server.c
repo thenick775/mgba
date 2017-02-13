@@ -9,8 +9,12 @@
 
 #include <mgba-util/table.h>
 #include <mgba-util/threading.h>
+#include <mgba-util/vector.h>
 
 mLOG_DEFINE_CATEGORY(NP_SERVER, "Netplay Server")
+
+DECLARE_VECTOR(mNPRequestList, struct mNPPacketRequest);
+DEFINE_VECTOR(mNPRequestList, struct mNPPacketRequest);
 
 static THREAD_ENTRY _listenThread(void* context);
 static THREAD_ENTRY _clientThread(void* context);
@@ -44,6 +48,7 @@ struct mNPClient {
 	Socket sock;
 	struct mNPPacketConnect clientInfo;
 	struct Table cores;
+	struct mNPRequestList outstandingRequests;
 	Mutex mutex;
 	struct mNPCommFIFO fifo;
 	Thread thread;
@@ -52,6 +57,7 @@ struct mNPClient {
 struct mNPServerCoreInfo {
 	struct mNPCoreInfo info;
 	struct Table clients;
+	struct Table controllingClients;
 	uint32_t currentFrame;
 };
 
@@ -129,8 +135,11 @@ static bool _registerCore(struct mNPClient* client, struct mNPServerCoreInfo* co
 		MutexUnlock(&serv->mutex);
 		return false;
 	}
+	// TODO: cleanup
 	TableInit(&core->clients, 0, NULL);
+	TableInit(&core->controllingClients, 0, NULL);
 	TableInsert(&core->clients, client->clientId, client);
+	TableInsert(&core->controllingClients, client->clientId, client);
 	core->info.coreId = serv->coreCounter;
 	core->currentFrame = 0;
 	TableInsert(&serv->cores, core->info.coreId, core);
@@ -189,6 +198,7 @@ THREAD_ENTRY _listenThread(void* context) {
 		TableInit(&client->cores, 8, NULL);
 		MutexInit(&client->mutex);
 		mNPCommFIFOInit(&client->fifo);
+		mNPRequestListInit(&client->outstandingRequests, 0);
 		memset(&client->clientInfo, 0, sizeof(client->clientInfo));
 
 		MutexLock(&serv->mutex);
@@ -287,8 +297,7 @@ static bool _createRoom(struct mNPClient* client, const struct mNPPacketJoin* jo
 	return true;
 }
 
-static bool _processJoin(struct mNPClient* client, const struct mNPPacketHeader* header, struct mNPPacketJoin* join, bool* forwarded
-	) {
+static bool _processJoin(struct mNPClient* client, const struct mNPPacketHeader* header, struct mNPPacketJoin* join, bool* forwarded) {
 	if (sizeof(*join) != header->size || !join) {
 		return false;
 	}
@@ -420,6 +429,18 @@ static void _processListRooms(struct mNPClient* client) {
 	SocketSend(client->sock, list, header.size);
 }
 
+static void _sendPacket(uint32_t id, void* value, void* user) {
+	UNUSED(id);
+	struct mNPClient* client = value;
+	struct mNPForwardedPacket* packet = user;
+	if (client == packet->client) {
+		// This is the client that initiated the request
+		return;
+	}
+	SocketSend(client->sock, &packet->header, sizeof(packet->header));
+	SocketSend(client->sock, packet->data, packet->header.size);
+}
+
 static bool _processList(struct mNPClient* client, const struct mNPPacketList* list, size_t size) {
 	if (sizeof(*list) != size || !list) {
 		return false;
@@ -434,6 +455,96 @@ static bool _processList(struct mNPClient* client, const struct mNPPacketList* l
 	default:
 		return false;
 	}
+	return true;
+}
+
+static void _sendData(uint32_t id, void* value, void* user) {
+	UNUSED(id);
+	struct mNPClient* client = value;
+	struct mNPForwardedPacket* packet = user;
+	struct mNPPacketData* data = packet->data;
+	size_t i;
+	for (i = 0; i < mNPRequestListSize(&client->outstandingRequests); ++i) {
+		struct mNPPacketRequest* req = mNPRequestListGetPointer(&client->outstandingRequests, i);
+		if (req->type == data->type && req->coreId == data->coreId) {
+			mNPRequestListShift(&client->outstandingRequests, i, 1);
+			SocketSend(client->sock, &packet->header, sizeof(packet->header));
+			SocketSend(client->sock, data, packet->header.size);
+			return;
+		}
+	}
+}
+
+static bool _processData(struct mNPClient* client, struct mNPPacketData* data, size_t size) {
+	if (sizeof(*data) > size || !data) {
+		return false;
+	}
+	if (!data->coreId) {
+		return false;
+	}
+	MutexLock(&client->p->mutex);
+	struct mNPServerCoreInfo* core = TableLookup(&client->p->cores, data->coreId);
+	if (!core) {
+		MutexUnlock(&client->p->mutex);
+		mNPAck(client->sock, mNP_REPLY_NO_SUCH_CORE);
+		return true;
+	}
+	struct mNPForwardedPacket packet = {
+		.header = {
+			.packetType = mNP_PKT_DATA,
+			.size = size,
+			.flags = 0
+		},
+		.data = data
+	};
+	TableEnumerate(&core->clients, _sendData, &packet);
+	MutexUnlock(&client->p->mutex);
+	return true;
+}
+
+static bool _processRequest(struct mNPClient* client, struct mNPPacketRequest* req, size_t size) {
+	if (sizeof(*req) != size || !req) {
+		return false;
+	}
+	if (!req->coreId) {
+		return false;
+	}
+	MutexLock(&client->p->mutex);
+	struct mNPServerCoreInfo* core = NULL;
+	switch (req->type) {
+	case mNP_DATA_SAVESTATE:
+		core = TableLookup(&client->cores, req->coreId);
+		break;
+	case mNP_DATA_SCREENSHOT:
+		core = TableLookup(&client->p->cores, req->coreId);
+		if (core && !core->info.flags & mNP_CORE_ALLOW_OBSERVE) {
+			MutexUnlock(&client->p->mutex);
+			mNPAck(client->sock, mNP_REPLY_DISALLOWED);
+			return true;
+		}
+		break;
+	}
+	if (!core) {
+		MutexUnlock(&client->p->mutex);
+		mNPAck(client->sock, mNP_REPLY_NO_SUCH_CORE);
+		return true;
+	}
+	MutexUnlock(&client->p->mutex);
+
+	mLOG(NP_SERVER, INFO, "Client %" PRIi32 " requesting data %" PRIi32 " from core %" PRIi32, client->clientId, req->type, req->coreId);
+	struct mNPForwardedPacket packet = {
+		.header = {
+			.packetType = mNP_PKT_REQUEST,
+			.size = size,
+			.flags = 0
+		},
+		.data = req,
+		.client = client
+	};
+
+	*mNPRequestListAppend(&client->outstandingRequests) = *req;
+	TableEnumerate(&core->clients, _sendPacket, &packet);
+
 	return true;
 }
 
@@ -496,6 +607,11 @@ static bool _processCloneCore(struct mNPClient* client, const struct mNPPacketCl
 		return true;
 	}
 	TableInsert(&room->clients, client->clientId, client);
+	TableInsert(&core->clients, client->clientId, client);
+	TableInsert(&client->cores, core->info.coreId, core);
+	if (clone->flags & mNP_CORE_ALLOW_CONTROL) {
+		TableInsert(&core->controllingClients, client->clientId, client);
+	}
 	MutexUnlock(&room->mutex);
 	MutexUnlock(&client->p->mutex);
 
@@ -628,6 +744,12 @@ static int _clientRecv(struct mNPClient* client) {
 		break;
 	case mNP_PKT_LIST:
 		result = _processList(client, data, header.size);
+		break;
+	case mNP_PKT_DATA:
+		result = _processData(client, data, header.size);
+		break;
+	case mNP_PKT_REQUEST:
+		result = _processRequest(client, data, header.size);
 		break;
 	case mNP_PKT_EVENT:
 		result = _forwardEvent(client, &header, data);

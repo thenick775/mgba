@@ -15,14 +15,14 @@
 #include <mgba-util/threading.h>
 #include <mgba-util/vector.h>
 
-#define PKT_CHUNK_SIZE 0x10000
-#define PKT_MAX_SIZE 0x4000000
-#define COMM_FIFO_SIZE 0x40000
+#define PKT_CHUNK_SIZE 0x100000
+#define PKT_MAX_SIZE  0x4000000
+#define COMM_FIFO_SIZE 0x400000
 
 DECLARE_VECTOR(mNPEventQueue, struct mNPEvent);
 
 bool mNPContextRecv(struct mNPContext*, const struct mNPPacketHeader* header, const void* body);
-void mNPContextSend(struct mNPContext*, const struct mNPPacketHeader* header, const void* body);
+void mNPContextSend(struct mNPContext*, const struct mNPPacketHeader* header, const void* body, size_t tailSize, const void* tail);
 
 void mNPAck(Socket sock, enum mNPReplyType reply);
 

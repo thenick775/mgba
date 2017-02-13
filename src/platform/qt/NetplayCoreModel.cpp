@@ -12,6 +12,7 @@ using namespace QGBA;
 NetplayCoreModel::NetplayCoreModel(NetplayController* controller, QObject* parent)
 	: QAbstractItemModel(parent)
 	, m_controller(controller)
+	, m_room(0)
 {
 	m_columns.append({
 		tr("Game"),

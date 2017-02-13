@@ -393,9 +393,10 @@ static void _processListCores(struct mNPClient* client, uint32_t roomId) {
 	} else {
 		header.size = sizeof(struct mNPPacketListCores);
 		list = malloc(header.size);
-		list->type = mNP_LIST_CORES;
 		list->nCores = 0;
 	}
+	list->type = mNP_LIST_CORES;
+	list->parent = roomId;
 	SocketSend(client->sock, &header, sizeof(header));
 	SocketSend(client->sock, list, header.size);
 }

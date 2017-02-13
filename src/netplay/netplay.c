@@ -258,7 +258,7 @@ static void _sendEvent(struct mNPCore* core, enum mNPEventType type, uint32_t da
 
 void mNPContextPushInput(struct mNPContext* context, uint32_t coreId, uint32_t input) {
 	struct mNPCore* core = TableLookup(&context->cores, coreId);
-	if (!core || !(core->flags & mNP_CORE_ALLOW_CONTROL) || !core->roomId || core->doingRollback) {
+	if (!core || !core->roomId || core->doingRollback) {
 		return;
 	}
 	mLOG(NP, DEBUG, "Recieved input for coreId %" PRIi32 ": %" PRIx32, coreId, input);
@@ -355,7 +355,6 @@ static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
 	case mNP_EVENT_NONE:
 		return;
 	case mNP_EVENT_FRAME:
-		MutexLock(&core->mutex);
 		while (mNPEventQueueSize(&core->sentQueue)) {
 			struct mNPEvent* sentEvent = mNPEventQueueGetPointer(&core->sentQueue, 0);
 			// TODO: Account for overflow
@@ -364,7 +363,6 @@ static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
 			}
 			mNPEventQueueShift(&core->sentQueue, 0, 1);
 		}
-		MutexUnlock(&core->mutex);
 		break;
 	case mNP_EVENT_RESET:
 		mCoreThreadReset(core->thread);
@@ -376,39 +374,30 @@ static void _handleEvent(struct mNPCore* core, const struct mNPEvent* event) {
 }
 
 static void _pollEvent(struct mNPCore* core) {
-	core->currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
 	if (!core->roomId) {
 		return;
 	}
 	MutexLock(&core->mutex);
-	if (core->doingRollback) {
-		while (mNPEventQueueSize(&core->queue)) {
-			// Copy event so we don't have to hold onto the mutex
-			struct mNPEvent event = *mNPEventQueueGetPointer(&core->queue, 0);
-			MutexUnlock(&core->mutex);
-			if (event.frameId > core->currentFrame) {
-				MutexLock(&core->mutex);
-				break;
-			} else {
-				_handleEvent(core, &event);
-				MutexLock(&core->mutex);
-				mNPEventQueueShift(&core->queue, 0, 1);
-			}
+	while (mNPEventQueueSize(&core->queue)) {
+		// Copy event so we don't have to hold onto the mutex
+		struct mNPEvent event = *mNPEventQueueGetPointer(&core->queue, 0);
+		if (event.frameId > core->currentFrame) {
+			break;
+		} else {
+			_handleEvent(core, &event);
+			mNPEventQueueShift(&core->queue, 0, 1);
 		}
-		if (core->rollbackEnd == core->currentFrame || !mNPEventQueueSize(&core->queue)) {
-			if (core->p->callbacks.rollbackEnd) {
-				core->p->callbacks.rollbackEnd(core->p, &core->coreId, 1, core->p->userContext);
-			}
-			core->doingRollback = false;
+	}
+	if (core->doingRollback && core->rollbackEnd == core->currentFrame) {
+		if (core->p->callbacks.rollbackEnd) {
+			core->p->callbacks.rollbackEnd(core->p, &core->coreId, 1, core->p->userContext);
 		}
+		core->doingRollback = false;
 	}
 	if (core->nextSync == core->currentFrame && !core->doingRollback) {
 		core->waitingForEvent = true;
 		mCoreThreadWaitFromThread(core->thread);
 	}
-	/*if (core->currentFrame > core->nextSync) {
-		abort();
-	}*/
 	MutexUnlock(&core->mutex);
 }
 
@@ -423,18 +412,17 @@ static void _coreFrame(void* context) {
 	core->currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
 
 	if (core->doingRollback && core->rollbackStart < core->rollbackEnd) {
-		uint32_t frames = core->currentFrame - core->rollbackStart;
-		for (; frames; --frames) {
-			mCoreRewindRestore(&core->thread->rewind, core->thread->core);
+		while (core->currentFrame > core->rollbackStart) {
+			if (!mCoreRewindRestore(&core->thread->rewind, core->thread->core)) {
+				break;
+			}
+			core->currentFrame = core->thread->core->frameCounter(core->thread->core) - core->frameOffset;
 		}
 		core->rollbackStart = core->rollbackEnd;
 	}
 
 	_pollEvent(core);
-
-	if ((core->flags & mNP_CORE_ALLOW_OBSERVE) && core->roomId) {
-		_sendEvent(core, mNP_EVENT_FRAME, core->currentFrame);
-	}
+	_sendEvent(core, mNP_EVENT_FRAME, core->currentFrame);
 }
 
 static bool _commRecv(struct mNPContext* context) {
@@ -564,14 +552,14 @@ static void _dispatchRollback(struct mNPContext* context, struct mNPRollback* ro
 		for (i = 0; i < mNPCoreListSize(&filter.results); ++i) {
 			struct mNPCore* core = *mNPCoreListGetPointer(&filter.results, i);
 			list[i] = core->coreId;
-			core->rollbackEnd = rollback->endFrame;
 			if (core->doingRollback) {
-				if (core->rollbackStart < core->currentFrame) {
+				if (core->rollbackStart != core->rollbackEnd) {
 					core->rollbackStart = rollback->startFrame;
 				} else {
 					core->rollbackStart = rollback->endFrame;
 				}
 			}
+			core->rollbackEnd = rollback->endFrame;
 			core->doingRollback = true;
 			if (core->currentFrame < core->rollbackEnd && core->waitingForEvent) {
 				core->waitingForEvent = false;

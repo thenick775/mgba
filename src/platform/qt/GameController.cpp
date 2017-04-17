@@ -20,7 +20,6 @@
 #include <mgba/core/directories.h>
 #include <mgba/core/serialize.h>
 #include <mgba/core/tile-cache.h>
-#include <mgba/core/video-logger.h>
 #ifdef M_CORE_GBA
 #include <mgba/gba/interface.h>
 #include <mgba/internal/gba/gba.h>
@@ -33,6 +32,7 @@
 #include <mgba/internal/gb/renderers/tile-cache.h>
 #endif
 #include <mgba-util/vfs.h>
+#include "feature/video-logger.h"
 
 using namespace QGBA;
 using namespace std;
@@ -158,6 +158,7 @@ GameController::GameController(QObject* parent)
 		}
 		controller->m_patch = QString();
 		controller->clearOverride();
+		controller->endVideoLog();
 
 		QMetaObject::invokeMethod(controller->m_audioProcessor, "pause");
 
@@ -1204,6 +1205,8 @@ void GameController::startVideoLog(const QString& path) {
 	if (!isLoaded() || m_vl) {
 		return;
 	}
+
+	Interrupter interrupter(this);
 	m_vlPath = path;
 	m_vl = mVideoLoggerCreate(m_threadContext.core);
 }
@@ -1212,13 +1215,15 @@ void GameController::endVideoLog() {
 	if (!m_vl) {
 		return;
 	}
+
+	Interrupter interrupter(this);
 	if (isLoaded()) {
 		VFile* vf = VFileDevice::open(m_vlPath, O_WRONLY | O_CREAT | O_TRUNC);
 		mVideoLoggerWrite(m_threadContext.core, m_vl, vf);
 		vf->close(vf);
 	}
 	mVideoLoggerDestroy(m_threadContext.core, m_vl);
-	m_vf = nullptr;
+	m_vl = nullptr;
 }
 
 void GameController::pollEvents() {

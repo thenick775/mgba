@@ -15,6 +15,8 @@ CXX_GUARD_START
 #include <mgba-util/table.h>
 #include <mgba-util/vector.h>
 
+struct DSGXSoftwareRenderer;
+struct DSGXSoftwareEndpoint;
 struct DSGXSoftwarePolygon {
 	struct DSGXPolygon* poly;
 	unsigned polyId;
@@ -28,6 +30,10 @@ struct DSGXSoftwarePolygon {
 	int texH;
 	int minY;
 	int maxY;
+
+	unsigned (*getTexelCoord)(struct DSGXSoftwarePolygon*, struct DSGXSoftwareEndpoint*);
+	uint16_t (*getTexel)(struct DSGXSoftwarePolygon*, unsigned texelCoord, uint8_t* ta);
+	uint32_t (*getColor)(struct DSGXSoftwareEndpoint*, uint16_t texel, uint8_t ta, uint8_t pa, struct DSGXSoftwareRenderer*);
 };
 
 struct DSGXSoftwareEdge {

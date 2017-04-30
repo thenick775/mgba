@@ -92,6 +92,91 @@ static unsigned _mixTexels(int weightA, unsigned colorA, int weightB, unsigned c
 	return c;
 }
 
+static uint16_t _getTexel1(struct DSGXSoftwarePolygon* poly, unsigned texelCoord, uint8_t* tao) {
+	uint16_t texel = ((uint8_t*) poly->texBase)[texelCoord];
+	uint8_t ta = (texel >> 5) & 0x7;
+	ta = (ta << 2) + (ta >> 1);
+	*tao = ta;
+	return texel & 0x1F;
+}
+
+static uint16_t _getTexel2(struct DSGXSoftwarePolygon* poly, unsigned texelCoord, uint8_t* tao) {
+	UNUSED(tao);
+	uint16_t texel = ((uint8_t*) poly->texBase)[texelCoord >> 2];
+	if (texelCoord & 0x3) {
+		texel >>= 2 * (texelCoord & 0x3);
+	}
+	return texel & 0x3;
+}
+
+static uint16_t _getTexel3(struct DSGXSoftwarePolygon* poly, unsigned texelCoord, uint8_t* tao) {
+	UNUSED(tao);
+	uint16_t texel = ((uint8_t*) poly->texBase)[texelCoord >> 1];
+	if (texelCoord & 0x1) {
+		texel >>= 4;
+	}
+	return texel & 0xF;
+}
+
+static uint16_t _getTexel4(struct DSGXSoftwarePolygon* poly, unsigned texelCoord, uint8_t* tao) {
+	UNUSED(tao);
+	return ((uint8_t*) poly->texBase)[texelCoord];
+}
+
+static uint16_t _getTexel6(struct DSGXSoftwarePolygon* poly, unsigned texelCoord, uint8_t* ta) {
+	uint16_t texel = ((uint8_t*) poly->texBase)[texelCoord];
+	*ta = (texel >> 3) & 0x1F;
+	return texel & 0x7;
+}
+
+static uint16_t _getTexel7(struct DSGXSoftwarePolygon* poly, unsigned texelCoord, uint8_t* tao) {
+	UNUSED(tao);
+	return poly->texBase[texelCoord];
+}
+
+static uint32_t _getColor0(struct DSGXSoftwareEndpoint* ep, uint16_t texel, uint8_t ta, uint8_t pa, struct DSGXSoftwareRenderer* renderer) {
+	UNUSED(renderer);
+	uint8_t r, g, b;
+	_expandColor(texel, &r, &g, &b);
+	uint8_t wr = ((r + 1) * (ep->cr + 1) - 1) >> 6;
+	uint8_t wg = ((g + 1) * (ep->cg + 1) - 1) >> 6;
+	uint8_t wb = ((b + 1) * (ep->cb + 1) - 1) >> 6;
+	uint8_t wa = ((ta + 1) * (pa + 1) - 1) >> 6;
+	return _finishColor(wr, wg, wb, wa);
+}
+
+static uint32_t _getColor1(struct DSGXSoftwareEndpoint* ep, uint16_t texel, uint8_t ta, uint8_t pa, struct DSGXSoftwareRenderer* renderer) {
+	UNUSED(renderer);
+	uint8_t r, g, b;
+	_expandColor(texel, &r, &g, &b);
+	uint8_t wr = (r * ta + ep->cr * (63 - ta)) >> 6;
+	uint8_t wg = (g * ta + ep->cg * (63 - ta)) >> 6;
+	uint8_t wb = (b * ta + ep->cb * (63 - ta)) >> 6;
+	return _finishColor(wr, wg, wb, pa);
+}
+
+static uint32_t _getColor2(struct DSGXSoftwareEndpoint* ep, uint16_t texel, uint8_t ta, uint8_t pa, struct DSGXSoftwareRenderer* renderer) {
+	uint8_t r, g, b;
+	_expandColor(texel, &r, &g, &b);
+	uint8_t tr, tg, tb;
+	_expandColor(renderer->d.toonTable[ep->cr >> 1], &tr, &tg, &tb);
+	// TODO: highlight mode
+	uint8_t wr = ((r + 1) * (tr + 1) - 1) >> 6;
+	uint8_t wg = ((g + 1) * (tg + 1) - 1) >> 6;
+	uint8_t wb = ((b + 1) * (tb + 1) - 1) >> 6;
+	uint8_t wa = ((ta + 1) * (pa + 1) - 1) >> 6;
+	return _finishColor(wr, wg, wb, wa);
+}
+
+static uint32_t _getColor3(struct DSGXSoftwareEndpoint* ep, uint16_t texel, uint8_t ta, uint8_t pa, struct DSGXSoftwareRenderer* renderer) {
+	UNUSED(renderer);
+	UNUSED(ep);
+	UNUSED(ta);
+	uint8_t r, g, b;
+	_expandColor(texel, &r, &g, &b);
+	return _finishColor(r, g, b, pa);
+}
+
 static color_t _lookupColor(struct DSGXSoftwareRenderer* renderer, struct DSGXSoftwareEndpoint* ep, struct DSGXSoftwarePolygon* poly) {
 	if (!poly->texBase && poly->texFormat) {
 		return 0;
@@ -139,54 +224,19 @@ static color_t _lookupColor(struct DSGXSoftwareRenderer* renderer, struct DSGXSo
 	if (pa) {
 		pa = (pa << 1) + 1;
 	}
-	switch (poly->texFormat) {
-	case 0:
-	default:
+	if (poly->getTexel) {
+		texel = poly->getTexel(poly, texelCoord, &ta);
+	} else if (!poly->texFormat) {
 		return _finishColor(ep->cr, ep->cg, ep->cb, pa);
-	case 1:
-		texel = ((uint8_t*) poly->texBase)[texelCoord];
-		ta = (texel >> 5) & 0x7;
-		ta = (ta << 2) + (ta >> 1);
-		texel &= 0x1F;
-		break;
-	case 2:
-		texel = ((uint8_t*) poly->texBase)[texelCoord >> 2];
-		if (texelCoord & 0x3) {
-			texel >>= 2 * (texelCoord & 0x3);
-		}
-		texel &= 0x3;
-		break;
-	case 3:
-		texel = ((uint8_t*) poly->texBase)[texelCoord >> 1];
-		if (texelCoord & 0x1) {
-			texel >>= 4;
-		}
-		texel &= 0xF;
-		break;
-	case 4:
-		texel = ((uint8_t*) poly->texBase)[texelCoord];
-		break;
-	case 5:
-		texelCoord = (s & ~3) + (t & 3) + (t >> 2) * poly->texW;
-		texel = ((uint8_t*) poly->texBase)[texelCoord];
-		texel >>= (s & 3) * 2;
-		texel &= 3;
-		break;
-	case 6:
-		texel = ((uint8_t*) poly->texBase)[texelCoord];
-		ta = (texel >> 3) & 0x1F;
-		texel &= 0x7;
-		break;
-	case 7:
-		texel = poly->texBase[texelCoord];
-		break;
 	}
-	uint8_t r, g, b;
-	unsigned wr, wg, wb, wa;
 	if (poly->texFormat == 5) {
 		if (!renderer->d.tex[1]) {
 			return 0;
 		}
+		texelCoord = (s & ~3) + (t & 3) + (t >> 2) * poly->texW;
+		texel = ((uint8_t*) poly->texBase)[texelCoord];
+		texel >>= (s & 3) * 2;
+		texel &= 3;
 		uint16_t half = DSGXTexParamsGetVRAMBase(poly->texParams) & 0x8000;
 		uint32_t slot1Base = ((DSGXTexParamsGetVRAMBase(poly->texParams) << 1) & 0x7FFF) + (texelCoord >> 2) + half;
 		uint16_t texel2 = renderer->d.tex[1][slot1Base];
@@ -246,36 +296,10 @@ static color_t _lookupColor(struct DSGXSoftwareRenderer* renderer, struct DSGXSo
 		}
 		texel = poly->palBase[texel];
 	}
-	_expandColor(texel, &r, &g, &b);
 	if (ta) {
 		ta = (ta << 1) + 1;
 	}
-	switch (poly->blendFormat) {
-	default:
-	case 0:
-		wr = ((r + 1) * (ep->cr + 1) - 1) >> 6;
-		wg = ((g + 1) * (ep->cg + 1) - 1) >> 6;
-		wb = ((b + 1) * (ep->cb + 1) - 1) >> 6;
-		wa = ((ta + 1) * (pa + 1) - 1) >> 6;
-		return _finishColor(wr, wg, wb, wa);
-	case 1:
-		wr = (r * ta + ep->cr * (63 - ta)) >> 6;
-		wg = (g * ta + ep->cg * (63 - ta)) >> 6;
-		wb = (b * ta + ep->cb * (63 - ta)) >> 6;
-		return _finishColor(wr, wg, wb, pa);
-	case 2: {
-		uint8_t tr, tg, tb;
-		_expandColor(renderer->d.toonTable[ep->cr >> 1], &tr, &tg, &tb);
-		// TODO: highlight mode
-		wr = ((r + 1) * (tr + 1) - 1) >> 6;
-		wg = ((g + 1) * (tg + 1) - 1) >> 6;
-		wb = ((b + 1) * (tb + 1) - 1) >> 6;
-		wa = ((ta + 1) * (pa + 1) - 1) >> 6;
-		return _finishColor(wr, wg, wb, pa);
-	}
-	case 3:
-		return _finishColor(r, g, b, pa);
-	}
+	return poly->getColor(ep, texel, ta, pa, renderer);
 }
 
 static inline int32_t _interpolate(int32_t x0, int32_t x1, int64_t w0, int64_t w1, int64_t w, int32_t qr) {
@@ -468,10 +492,22 @@ static void _preparePoly(struct DSGXRenderer* renderer, struct DSGXVertex* verts
 	poly->texBase = NULL;
 	poly->palBase = NULL;
 	if (renderer->tex[DSGXTexParamsGetVRAMBase(poly->texParams) >> VRAM_BLOCK_OFFSET]) {
+		static uint16_t (* const _texelLookup[])(struct DSGXSoftwarePolygon*, unsigned texelCoord, uint8_t* ta) = {
+			NULL,
+			_getTexel1,
+			_getTexel2,
+			_getTexel3,
+			_getTexel4,
+			NULL,
+			_getTexel6,
+			_getTexel7,
+		};
+
 		poly->texBase = &renderer->tex[DSGXTexParamsGetVRAMBase(poly->poly->texParams) >> VRAM_BLOCK_OFFSET][(DSGXTexParamsGetVRAMBase(poly->poly->texParams) << 2) & 0xFFFF];
+		poly->getTexel = _texelLookup[poly->texFormat];
 		switch (poly->texFormat) {
 		case 0:
-		poly->texBase = NULL;
+			poly->texBase = NULL;
 			break;
 		case 2:
 			if (renderer->texPal[poly->poly->palBase >> 11]) {
@@ -482,6 +518,21 @@ static void _preparePoly(struct DSGXRenderer* renderer, struct DSGXVertex* verts
 			if (renderer->texPal[poly->poly->palBase >> 10]) {
 				poly->palBase = &renderer->texPal[poly->poly->palBase >> 10][(poly->poly->palBase << 3) & 0x1FFF];
 			}
+			break;
+		}
+
+		switch (poly->blendFormat) {
+		case 0:
+			poly->getColor = _getColor0;
+			break;
+		case 1:
+			poly->getColor = _getColor1;
+			break;
+		case 2:
+			poly->getColor = _getColor2;
+			break;
+		case 3:
+			poly->getColor = _getColor3;
 			break;
 		}
 	}

@@ -104,6 +104,14 @@ if(BUILD_PERF)
 		    DESTINATION . COMPONENT ${BINARY_NAME}-3ds)
 endif()
 
+add_executable(forwarder.elf forwarder.c)
+target_link_libraries(forwarder.elf ${BINARY_NAME} ctru)
+add_custom_command(OUTPUT forwarder.cia
+                   COMMAND ${STRIP} -o forwarder-stripped.elf forwarder.elf
+                   COMMAND ${MAKEROM} -f cia -o forwarder.cia -rsf ${CMAKE_CURRENT_SOURCE_DIR}/forwarder.rsf -target t -exefslogo -elf forwarder-stripped.elf -icon ${BINARY_NAME}.smdh -banner ${BINARY_NAME}.bnr -major ${LIB_VERSION_MAJOR} -minor ${LIB_VERSION_MINOR} -micro ${LIB_VERSION_PATCH}
+                   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/forwarder.rsf forwarder.elf ${BINARY_NAME}.smdh ${BINARY_NAME}.bnr)
+add_custom_target(forwarder.cia ALL DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/forwarder.cia ${CMAKE_CURRENT_BINARY_DIR}/romfs/rom.bin)
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cia.rsf.in ${CMAKE_CURRENT_BINARY_DIR}/cia.rsf)
 install(FILES
 	    ${CMAKE_CURRENT_BINARY_DIR}/${BINARY_NAME}.3dsx

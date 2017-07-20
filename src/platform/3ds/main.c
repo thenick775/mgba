@@ -86,6 +86,7 @@ static C3D_RenderBuf topScreen;
 static C3D_RenderBuf upscaleBuffer;
 
 static aptHookCookie cookie;
+FS_Archive savedataArchive;
 
 extern bool allocateRomBuffer(void);
 
@@ -127,6 +128,8 @@ static void _cleanup(void) {
 	if (hasSound == DSP_SUPPORTED) {
 		ndspExit();
 	}
+
+	FSUSER_CloseArchive(savedataArchive);
 
 	csndExit();
 	ptmuExit();
@@ -659,7 +662,15 @@ static void _postAudioBuffer(struct mAVStream* stream, blip_t* left, blip_t* rig
 	}
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+	char initialPath[0x300] = { 0 };
+	if (argc > 1) {
+		strncpy(initialPath, argv[1], sizeof(initialPath) - 1);
+	} else {
+		u8 hmac[0x20] = {};
+		APT_ReceiveDeliverArg(initialPath, sizeof(initialPath) - 1, hmac, NULL, NULL);
+	}
+
 	rotation.d.sample = _sampleRotation;
 	rotation.d.readTiltX = _readTiltX;
 	rotation.d.readTiltY = _readTiltY;
@@ -849,7 +860,15 @@ int main() {
 	_map3DSKey(&runner.params.keyMap, KEY_CSTICK_UP, mGUI_INPUT_INCREASE_BRIGHTNESS);
 	_map3DSKey(&runner.params.keyMap, KEY_CSTICK_DOWN, mGUI_INPUT_DECREASE_BRIGHTNESS);
 
-	mGUIRunloop(&runner);
+	if (initialPath[0] == '/') {
+		size_t i;
+		for (i = 0; runner.keySources[i].id; ++i) {
+			mInputMapLoad(&runner.params.keyMap, runner.keySources[i].id, mCoreConfigGetInput(&runner.config));
+		}
+		mGUIRun(&runner, initialPath);
+	} else {
+		mGUIRunloop(&runner);
+	}
 	mGUIDeinit(&runner);
 
 	_cleanup();

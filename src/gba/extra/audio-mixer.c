@@ -8,12 +8,12 @@
 #include <mgba/core/blip_buf.h>
 #include <mgba/internal/gba/gba.h>
 
-static void _mks4agbInit(void* cpu, struct mCPUComponent* component);
-static void _mks4agbDeinit(struct mCPUComponent* component);
+static void _mp2kInit(void* cpu, struct mCPUComponent* component);
+static void _mp2kDeinit(struct mCPUComponent* component);
 
-static bool _mks4agbEngage(struct GBAAudioMixer* mixer, uint32_t address);
-static void _mks4agbVblank(struct GBAAudioMixer* mixer);
-static void _mks4agbStep(struct GBAAudioMixer* mixer);
+static bool _mp2kEngage(struct GBAAudioMixer* mixer, uint32_t address);
+static void _mp2kVblank(struct GBAAudioMixer* mixer);
+static void _mp2kStep(struct GBAAudioMixer* mixer);
 
 static const float FACTOR = 1.f / 42134400.f; // VIDEO_TOTAL_LENGTH * 150
 
@@ -25,14 +25,14 @@ static const uint8_t _duration[0x30] = {
 };
 
 void GBAAudioMixerCreate(struct GBAAudioMixer* mixer) {
-	mixer->d.init = _mks4agbInit;
-	mixer->d.deinit = _mks4agbDeinit;
-	mixer->engage = _mks4agbEngage;
-	mixer->vblank = _mks4agbVblank;
-	mixer->step = _mks4agbStep;
+	mixer->d.init = _mp2kInit;
+	mixer->d.deinit = _mp2kDeinit;
+	mixer->engage = _mp2kEngage;
+	mixer->vblank = _mp2kVblank;
+	mixer->step = _mp2kStep;
 }
 
-void _mks4agbInit(void* cpu, struct mCPUComponent* component) {
+void _mp2kInit(void* cpu, struct mCPUComponent* component) {
 	struct ARMCore* arm = cpu;
 	struct GBA* gba = (struct GBA*) arm->master;
 	struct GBAAudioMixer* mixer = (struct GBAAudioMixer*) component;
@@ -45,29 +45,29 @@ void _mks4agbInit(void* cpu, struct mCPUComponent* component) {
 	memset(&mixer->activeTracks, 0, sizeof(mixer->activeTracks));
 }
 
-void _mks4agbDeinit(struct mCPUComponent* component) {
+void _mp2kDeinit(struct mCPUComponent* component) {
 	struct GBAAudioMixer* mixer = (struct GBAAudioMixer*) component;
 }
 
-static void _loadInstrument(struct ARMCore* cpu, struct GBAMKS4AGBInstrument* instrument, uint32_t base) {
+static void _loadInstrument(struct ARMCore* cpu, struct GBAMP2kInstrument* instrument, uint32_t base) {
 	struct ARMMemory* memory = &cpu->memory;
-	instrument->type = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, type), 0);
-	instrument->key = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, key), 0);
-	instrument->length = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, length), 0);
-	instrument->pan = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, pan), 0);
+	instrument->type = memory->load8(cpu, base + offsetof(struct GBAMP2kInstrument, type), 0);
+	instrument->key = memory->load8(cpu, base + offsetof(struct GBAMP2kInstrument, key), 0);
+	instrument->length = memory->load8(cpu, base + offsetof(struct GBAMP2kInstrument, length), 0);
+	instrument->pan = memory->load8(cpu, base + offsetof(struct GBAMP2kInstrument, pan), 0);
 	if (instrument->type == 0x40 || instrument->type == 0x80) {
-		instrument->subTable = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBInstrument, subTable), 0);
-		instrument->map = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBInstrument, map), 0);
+		instrument->subTable = memory->load32(cpu, base + offsetof(struct GBAMP2kInstrument, subTable), 0);
+		instrument->map = memory->load32(cpu, base + offsetof(struct GBAMP2kInstrument, map), 0);
 	} else {
-		instrument->waveData = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBInstrument, waveData), 0);
-		instrument->adsr.attack = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, adsr.attack), 0);
-		instrument->adsr.decay = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, adsr.decay), 0);
-		instrument->adsr.sustain = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, adsr.sustain), 0);
-		instrument->adsr.release = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBInstrument, adsr.release), 0);
+		instrument->waveData = memory->load32(cpu, base + offsetof(struct GBAMP2kInstrument, waveData), 0);
+		instrument->adsr.attack = memory->load8(cpu, base + offsetof(struct GBAMP2kInstrument, adsr.attack), 0);
+		instrument->adsr.decay = memory->load8(cpu, base + offsetof(struct GBAMP2kInstrument, adsr.decay), 0);
+		instrument->adsr.sustain = memory->load8(cpu, base + offsetof(struct GBAMP2kInstrument, adsr.sustain), 0);
+		instrument->adsr.release = memory->load8(cpu, base + offsetof(struct GBAMP2kInstrument, adsr.release), 0);
 	}
 }
 
-static void _lookupInstrument(struct ARMCore* cpu, struct GBAMKS4AGBInstrument* instrument, uint8_t key) {
+static void _lookupInstrument(struct ARMCore* cpu, struct GBAMP2kInstrument* instrument, uint8_t key) {
 	struct ARMMemory* memory = &cpu->memory;
 	if (instrument->type == 0x40) {
 		uint32_t subInstrumentBase = instrument->subTable;
@@ -78,11 +78,11 @@ static void _lookupInstrument(struct ARMCore* cpu, struct GBAMKS4AGBInstrument* 
 	}
 }
 
-static void _stepSample(struct GBAAudioMixer* mixer, struct GBAMKS4AGBTrack* track) {
+static void _stepSample(struct GBAAudioMixer* mixer, struct GBAMP2kTrack* track) {
 	struct ARMCore* cpu = mixer->p->p->cpu;
 	struct ARMMemory* memory = &cpu->memory;
 	uint32_t headerAddress;
-	struct GBAMKS4AGBInstrument instrument = track->track.instrument;
+	struct GBAMP2kInstrument instrument = track->track.instrument;
 
 	uint8_t note = track->lastNote;
 	_lookupInstrument(cpu, &instrument, note);
@@ -131,7 +131,7 @@ static void _stepSample(struct GBAAudioMixer* mixer, struct GBAMKS4AGBTrack* tra
 	track->currentOffset = base - mixer->tempoI;
 }
 
-static int _playNote(struct GBAAudioMixer* mixer, struct GBAMKS4AGBTrack* track, uint32_t base) {
+static int _playNote(struct GBAAudioMixer* mixer, struct GBAMP2kTrack* track, uint32_t base) {
 	struct ARMCore* cpu = mixer->p->p->cpu;
 	struct ARMMemory* memory = &cpu->memory;
 	int8_t arguments[3] = {
@@ -166,7 +166,7 @@ static int _playNote(struct GBAAudioMixer* mixer, struct GBAMKS4AGBTrack* track,
 static uint32_t _runCommand(struct GBAAudioMixer* mixer, size_t channelId, uint8_t command, uint32_t base) {
 	struct ARMCore* cpu = mixer->p->p->cpu;
 	struct ARMMemory* memory = &cpu->memory;
-	struct GBAMKS4AGBTrack* track = &mixer->activeTracks[channelId];
+	struct GBAMP2kTrack* track = &mixer->activeTracks[channelId];
 	uint32_t address;
 	int nArgs = 0;
 
@@ -313,7 +313,7 @@ static uint32_t _runCommand(struct GBAAudioMixer* mixer, size_t channelId, uint8
 static void _stepTrack(struct GBAAudioMixer* mixer, size_t channelId) {
 	struct ARMCore* cpu = mixer->p->p->cpu;
 	struct ARMMemory* memory = &cpu->memory;
-	struct GBAMKS4AGBTrack* track = &mixer->activeTracks[channelId];
+	struct GBAMP2kTrack* track = &mixer->activeTracks[channelId];
 
 	uint32_t base = track->track.cmdPtr;
 	if (base < 0x20) {
@@ -332,120 +332,120 @@ static void _stepTrack(struct GBAAudioMixer* mixer, size_t channelId) {
 	}
 }
 
-static void _mks4agbReload(struct GBAAudioMixer* mixer) {
+static void _mp2kReload(struct GBAAudioMixer* mixer) {
 	struct ARMCore* cpu = mixer->p->p->cpu;
 	struct ARMMemory* memory = &cpu->memory;
-	mixer->context.magic = memory->load32(cpu, mixer->contextAddress + offsetof(struct GBAMKS4AGBContext, magic), 0);
+	mixer->context.magic = memory->load32(cpu, mixer->contextAddress + offsetof(struct GBAMP2kContext, magic), 0);
 	int i;
-	for (i = 0; i < MKS4AGB_MAX_SOUND_CHANNELS; ++i) {
-		struct GBAMKS4AGBSoundChannel* ch = &mixer->context.chans[i];
-		struct GBAMKS4AGBTrack* track = &mixer->activeTracks[i];
+	for (i = 0; i < MP2K_MAX_SOUND_CHANNELS; ++i) {
+		struct GBAMP2kSoundChannel* ch = &mixer->context.chans[i];
+		struct GBAMP2kTrack* track = &mixer->activeTracks[i];
 		track->waiting = false;
-		uint32_t base = mixer->contextAddress + offsetof(struct GBAMKS4AGBContext, chans[i]);
+		uint32_t base = mixer->contextAddress + offsetof(struct GBAMP2kContext, chans[i]);
 
-		ch->status = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, status), 0);
-		ch->type = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, type), 0);
-		ch->rightVolume = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, rightVolume), 0);
-		ch->leftVolume = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, leftVolume), 0);
-		ch->adsr.attack = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, adsr.attack), 0);
-		ch->adsr.decay = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, adsr.decay), 0);
-		ch->adsr.sustain = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, adsr.sustain), 0);
-		ch->adsr.release = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, adsr.release), 0);
-		ch->ky = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, ky), 0);
-		ch->envelopeV = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, envelopeV), 0);
-		ch->envelopeRight = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, envelopeRight), 0);
-		ch->envelopeLeft = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, envelopeLeft), 0);
-		ch->echoVolume = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, echoVolume), 0);
-		ch->echoLength = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, echoLength), 0);
-		ch->d1 = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, d1), 0);
-		ch->d2 = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, d2), 0);
-		ch->gt = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, gt), 0);
-		ch->midiKey = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, midiKey), 0);
-		ch->ve = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, ve), 0);
-		ch->pr = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, pr), 0);
-		ch->rp = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, rp), 0);
-		ch->d3[0] = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, d3[0]), 0);
-		ch->d3[1] = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, d3[1]), 0);
-		ch->d3[2] = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, d3[2]), 0);
-		ch->ct = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, ct), 0);
-		ch->fw = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, fw), 0);
-		ch->freq = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, freq), 0);
-		ch->waveData = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, waveData), 0);
-		ch->cp = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, cp), 0);
-		ch->track = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, track), 0);
-		ch->pp = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, pp), 0);
-		ch->np = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, np), 0);
-		ch->d4 = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, d4), 0);
-		ch->xpi = memory->load16(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, xpi), 0);
-		ch->xpc = memory->load16(cpu, base + offsetof(struct GBAMKS4AGBSoundChannel, xpc), 0);
+		ch->status = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, status), 0);
+		ch->type = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, type), 0);
+		ch->rightVolume = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, rightVolume), 0);
+		ch->leftVolume = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, leftVolume), 0);
+		ch->adsr.attack = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, adsr.attack), 0);
+		ch->adsr.decay = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, adsr.decay), 0);
+		ch->adsr.sustain = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, adsr.sustain), 0);
+		ch->adsr.release = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, adsr.release), 0);
+		ch->ky = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, ky), 0);
+		ch->envelopeV = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, envelopeV), 0);
+		ch->envelopeRight = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, envelopeRight), 0);
+		ch->envelopeLeft = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, envelopeLeft), 0);
+		ch->echoVolume = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, echoVolume), 0);
+		ch->echoLength = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, echoLength), 0);
+		ch->d1 = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, d1), 0);
+		ch->d2 = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, d2), 0);
+		ch->gt = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, gt), 0);
+		ch->midiKey = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, midiKey), 0);
+		ch->ve = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, ve), 0);
+		ch->pr = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, pr), 0);
+		ch->rp = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, rp), 0);
+		ch->d3[0] = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, d3[0]), 0);
+		ch->d3[1] = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, d3[1]), 0);
+		ch->d3[2] = memory->load8(cpu, base + offsetof(struct GBAMP2kSoundChannel, d3[2]), 0);
+		ch->ct = memory->load32(cpu, base + offsetof(struct GBAMP2kSoundChannel, ct), 0);
+		ch->fw = memory->load32(cpu, base + offsetof(struct GBAMP2kSoundChannel, fw), 0);
+		ch->freq = memory->load32(cpu, base + offsetof(struct GBAMP2kSoundChannel, freq), 0);
+		ch->waveData = memory->load32(cpu, base + offsetof(struct GBAMP2kSoundChannel, waveData), 0);
+		ch->cp = memory->load32(cpu, base + offsetof(struct GBAMP2kSoundChannel, cp), 0);
+		ch->track = memory->load32(cpu, base + offsetof(struct GBAMP2kSoundChannel, track), 0);
+		ch->pp = memory->load32(cpu, base + offsetof(struct GBAMP2kSoundChannel, pp), 0);
+		ch->np = memory->load32(cpu, base + offsetof(struct GBAMP2kSoundChannel, np), 0);
+		ch->d4 = memory->load32(cpu, base + offsetof(struct GBAMP2kSoundChannel, d4), 0);
+		ch->xpi = memory->load16(cpu, base + offsetof(struct GBAMP2kSoundChannel, xpi), 0);
+		ch->xpc = memory->load16(cpu, base + offsetof(struct GBAMP2kSoundChannel, xpc), 0);
 
 		base = ch->track;
 		if (base) {
-			track->track.flags = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, flags), 0);
-			track->track.wait = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, wait), 0);
-			track->track.patternLevel = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, patternLevel), 0);
-			track->track.repN = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, repN), 0);
-			track->track.gateTime = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, gateTime), 0);
-			track->track.key = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, key), 0);
-			track->track.velocity = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, velocity), 0);
-			track->track.runningStatus = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, runningStatus), 0);
-			track->track.keyM = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, keyM), 0);
-			track->track.pitM = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, pitM), 0);
-			track->track.keyShift = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, keyShift), 0);
-			track->track.keyShiftX = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, keyShiftX), 0);
-			track->track.tune = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, tune), 0);
-			track->track.pitX = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, pitX), 0);
-			track->track.bend = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, bend), 0);
-			track->track.bendRange = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, bendRange), 0);
-			track->track.volMR = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, volMR), 0);
-			track->track.volML = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, volML), 0);
-			track->track.vol = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, vol), 0);
-			track->track.volX = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, volX), 0);
-			track->track.pan = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, pan), 0);
-			track->track.panX = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, panX), 0);
-			track->track.modM = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, modM), 0);
-			track->track.mod = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, mod), 0);
-			track->track.modT = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, modT), 0);
-			track->track.lfoSpeed = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, lfoSpeed), 0);
-			track->track.lfoSpeedC = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, lfoSpeedC), 0);
-			track->track.lfoDelay = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, lfoDelay), 0);
-			track->track.lfoDelayC = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, lfoDelayC), 0);
-			track->track.priority = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, priority), 0);
-			track->track.echoVolume = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, echoVolume), 0);
-			track->track.echoLength = memory->load8(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, echoLength), 0);
-			track->track.chan = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, chan), 0);
-			_loadInstrument(cpu, &track->track.instrument, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, instrument));
-			track->track.cmdPtr = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, cmdPtr), 0);
-			track->track.patternStack[0] = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, patternStack[0]), 0);
-			track->track.patternStack[1] = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, patternStack[1]), 0);
-			track->track.patternStack[2] = memory->load32(cpu, base + offsetof(struct GBAMKS4AGBMusicPlayerTrack, patternStack[2]), 0);
+			track->track.flags = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, flags), 0);
+			track->track.wait = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, wait), 0);
+			track->track.patternLevel = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, patternLevel), 0);
+			track->track.repN = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, repN), 0);
+			track->track.gateTime = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, gateTime), 0);
+			track->track.key = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, key), 0);
+			track->track.velocity = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, velocity), 0);
+			track->track.runningStatus = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, runningStatus), 0);
+			track->track.keyM = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, keyM), 0);
+			track->track.pitM = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, pitM), 0);
+			track->track.keyShift = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, keyShift), 0);
+			track->track.keyShiftX = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, keyShiftX), 0);
+			track->track.tune = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, tune), 0);
+			track->track.pitX = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, pitX), 0);
+			track->track.bend = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, bend), 0);
+			track->track.bendRange = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, bendRange), 0);
+			track->track.volMR = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, volMR), 0);
+			track->track.volML = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, volML), 0);
+			track->track.vol = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, vol), 0);
+			track->track.volX = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, volX), 0);
+			track->track.pan = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, pan), 0);
+			track->track.panX = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, panX), 0);
+			track->track.modM = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, modM), 0);
+			track->track.mod = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, mod), 0);
+			track->track.modT = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, modT), 0);
+			track->track.lfoSpeed = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, lfoSpeed), 0);
+			track->track.lfoSpeedC = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, lfoSpeedC), 0);
+			track->track.lfoDelay = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, lfoDelay), 0);
+			track->track.lfoDelayC = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, lfoDelayC), 0);
+			track->track.priority = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, priority), 0);
+			track->track.echoVolume = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, echoVolume), 0);
+			track->track.echoLength = memory->load8(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, echoLength), 0);
+			track->track.chan = memory->load32(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, chan), 0);
+			_loadInstrument(cpu, &track->track.instrument, base + offsetof(struct GBAMP2kMusicPlayerTrack, instrument));
+			track->track.cmdPtr = memory->load32(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, cmdPtr), 0);
+			track->track.patternStack[0] = memory->load32(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, patternStack[0]), 0);
+			track->track.patternStack[1] = memory->load32(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, patternStack[1]), 0);
+			track->track.patternStack[2] = memory->load32(cpu, base + offsetof(struct GBAMP2kMusicPlayerTrack, patternStack[2]), 0);
 		} else {
 			memset(&track->track, 0, sizeof(track->track));
 		}
 	}
 }
 
-bool _mks4agbEngage(struct GBAAudioMixer* mixer, uint32_t address) {
+bool _mp2kEngage(struct GBAAudioMixer* mixer, uint32_t address) {
 	if (address < BASE_WORKING_RAM) {
 		return false;
 	}
 	if (address != mixer->contextAddress) {
 		mixer->contextAddress = address;
 		mixer->p->externalMixing = true;
-		_mks4agbReload(mixer);
+		_mp2kReload(mixer);
 	}
 	return true;
 }
 
-void _mks4agbStep(struct GBAAudioMixer* mixer) {
+void _mp2kStep(struct GBAAudioMixer* mixer) {
 	if (!mixer->p->externalMixing) {
 		return;
 	}
 	mixer->frame += mixer->p->sampleInterval * FACTOR;
 	while (mixer->frame >= mixer->tempoI) {
 		int i;
-		for (i = 0; i < MKS4AGB_MAX_SOUND_CHANNELS; ++i) {
-			struct GBAMKS4AGBTrack* track = &mixer->activeTracks[i];
+		for (i = 0; i < MP2K_MAX_SOUND_CHANNELS; ++i) {
+			struct GBAMP2kTrack* track = &mixer->activeTracks[i];
 			if (track->notePlaying > 0) {
 				--track->notePlaying;
 				if (!track->notePlaying) {
@@ -465,11 +465,11 @@ void _mks4agbStep(struct GBAAudioMixer* mixer) {
 	}
 }
 
-void _mks4agbVblank(struct GBAAudioMixer* mixer) {
+void _mp2kVblank(struct GBAAudioMixer* mixer) {
 	if (!mixer->contextAddress) {
 		return;
 	}
 	mLOG(GBA_AUDIO, DEBUG, "Frame");
 	mixer->p->externalMixing = true;
-	_mks4agbReload(mixer);
+	_mp2kReload(mixer);
 }

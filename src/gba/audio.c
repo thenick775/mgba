@@ -14,7 +14,7 @@
 #include <mgba/internal/gba/serialize.h>
 #include <mgba/internal/gba/video.h>
 
-#define MKS4AGB_LOCK_MAX 8
+#define MP2K_LOCK_MAX 8
 
 #ifdef _3DS
 #define blip_add_delta blip_add_delta_fast
@@ -120,9 +120,9 @@ void GBAAudioScheduleFifoDma(struct GBAAudio* audio, int number, struct GBADMA* 
 		audio->p->cpu->memory.load32(audio->p->cpu, source - 0x980, NULL)
 	};
 	if (audio->mixer) {
-		if (magic[0] - MKS4AGB_MAGIC <= MKS4AGB_LOCK_MAX) {
+		if (magic[0] - MP2K_MAGIC <= MP2K_LOCK_MAX) {
 			audio->mixer->engage(audio->mixer, source - 0x350);
-		} else if (magic[1] - MKS4AGB_MAGIC <= MKS4AGB_LOCK_MAX) {
+		} else if (magic[1] - MP2K_MAGIC <= MP2K_LOCK_MAX) {
 			audio->mixer->engage(audio->mixer, source - 0x980);
 		} else {
 			audio->externalMixing = false;

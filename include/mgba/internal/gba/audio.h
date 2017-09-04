@@ -15,8 +15,8 @@ CXX_GUARD_START
 #include <mgba/internal/gb/audio.h>
 #include <mgba-util/circle-buffer.h>
 
-#define MKS4AGB_MAGIC 0x68736D53
-#define MKS4AGB_MAX_SOUND_CHANNELS 12
+#define MP2K_MAGIC 0x68736D53
+#define MP2K_MAX_SOUND_CHANNELS 12
 
 mLOG_DECLARE_CATEGORY(GBA_AUDIO);
 
@@ -92,19 +92,19 @@ struct GBAStereoSample {
 	int16_t right;
 };
 
-struct GBAMKS4AGBADSR {
+struct GBAMP2kADSR {
 	uint8_t attack;
 	uint8_t decay;
 	uint8_t sustain;
 	uint8_t release;
 };
 
-struct GBAMKS4AGBSoundChannel {
+struct GBAMP2kSoundChannel {
 	uint8_t status;
 	uint8_t type;
 	uint8_t rightVolume;
 	uint8_t leftVolume;
-	struct GBAMKS4AGBADSR adsr;
+	struct GBAMP2kADSR adsr;
 	uint8_t ky;
 	uint8_t envelopeV;
 	uint8_t envelopeRight;
@@ -132,7 +132,7 @@ struct GBAMKS4AGBSoundChannel {
 	uint16_t xpc;
 };
 
-struct GBAMKS4AGBContext {
+struct GBAMP2kContext {
 	uint32_t magic;
 	uint8_t pcmDmaCounter;
 	uint8_t reverb;
@@ -157,10 +157,10 @@ struct GBAMKS4AGBContext {
 	uint32_t plynote;
 	uint32_t extVolPit;
 	uint8_t gap2[16];
-	struct GBAMKS4AGBSoundChannel chans[MKS4AGB_MAX_SOUND_CHANNELS];
+	struct GBAMP2kSoundChannel chans[MP2K_MAX_SOUND_CHANNELS];
 };
 
-struct GBAMKS4AGBMusicPlayerInfo {
+struct GBAMP2kMusicPlayerInfo {
 	uint32_t songHeader;
 	uint32_t status;
 	uint8_t trackCount;
@@ -184,7 +184,7 @@ struct GBAMKS4AGBMusicPlayerInfo {
 	uint32_t intp;
 };
 
-struct GBAMKS4AGBInstrument {
+struct GBAMP2kInstrument {
 	uint8_t type;
 	uint8_t key;
 	uint8_t length;
@@ -197,12 +197,12 @@ struct GBAMKS4AGBInstrument {
 		uint32_t subTable;
 	};
 	union {
-		struct GBAMKS4AGBADSR adsr;
+		struct GBAMP2kADSR adsr;
 		uint32_t map;
 	};
 };
 
-struct GBAMKS4AGBMusicPlayerTrack {
+struct GBAMP2kMusicPlayerTrack {
 	uint8_t flags;
 	uint8_t wait;
 	uint8_t patternLevel;
@@ -236,7 +236,7 @@ struct GBAMKS4AGBMusicPlayerTrack {
 	uint8_t echoVolume;
 	uint8_t echoLength;
 	uint32_t chan;
-	struct GBAMKS4AGBInstrument instrument;
+	struct GBAMP2kInstrument instrument;
 	uint8_t gap[10];
 	uint16_t unk_3A;
 	uint32_t unk_3C;
@@ -244,8 +244,8 @@ struct GBAMKS4AGBMusicPlayerTrack {
 	uint32_t patternStack[3];
 };
 
-struct GBAMKS4AGBTrack {
-	struct GBAMKS4AGBMusicPlayerTrack track;
+struct GBAMP2kTrack {
+	struct GBAMP2kMusicPlayerTrack track;
 	uint8_t lastCommand;
 	uint8_t lastNote;
 	struct GBAStereoSample lastSample;
@@ -265,9 +265,9 @@ struct GBAAudioMixer {
 	void (*vblank)(struct GBAAudioMixer* mixer);
 	void (*step)(struct GBAAudioMixer* mixer);
 
-	struct GBAMKS4AGBContext context;
-	struct GBAMKS4AGBMusicPlayerInfo player;
-	struct GBAMKS4AGBTrack activeTracks[MKS4AGB_MAX_SOUND_CHANNELS];
+	struct GBAMP2kContext context;
+	struct GBAMP2kMusicPlayerInfo player;
+	struct GBAMP2kTrack activeTracks[MP2K_MAX_SOUND_CHANNELS];
 	float tempoI;
 	float frame;
 };

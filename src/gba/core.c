@@ -279,6 +279,7 @@ static void _GBACoreLoadConfig(struct mCore* core, const struct mCoreConfig* con
 
 	mCoreConfigCopyValue(&core->config, config, "allowOpposingDirections");
 	mCoreConfigCopyValue(&core->config, config, "gba.bios");
+	mCoreConfigCopyValue(&core->config, config, "gba.audioHle");
 
 #ifndef DISABLE_THREADING
 	mCoreConfigCopyValue(&core->config, config, "threadedVideo");
@@ -472,7 +473,8 @@ static void _GBACoreReset(struct mCore* core) {
 	}
 
 #ifndef MINIMAL_CORE
-	if (!gbacore->audioMixer) {
+	int useAudioMixer;
+	if (!gbacore->audioMixer && mCoreConfigGetIntValue(&core->config, "gba.audioHle", &useAudioMixer) && useAudioMixer) {
 		gbacore->audioMixer = malloc(sizeof(*gbacore->audioMixer));
 		GBAAudioMixerCreate(gbacore->audioMixer);
 		((struct ARMCore*) core->cpu)->components[CPU_COMPONENT_AUDIO_MIXER] = &gbacore->audioMixer->d;

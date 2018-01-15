@@ -91,6 +91,7 @@ public slots:
 	void exportSharkport();
 
 	void openSettingsWindow();
+	void enterDebugView();
 
 	void startVideoLog();
 

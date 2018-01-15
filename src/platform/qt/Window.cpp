@@ -5,6 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "Window.h"
 
+#include <QDesktopWidget>
+#include <QDockWidget>
 #include <QKeyEvent>
 #include <QKeySequence>
 #include <QMenuBar>
@@ -28,6 +30,7 @@
 #include "CoreController.h"
 #include "DebuggerConsole.h"
 #include "DebuggerConsoleController.h"
+#include "DisassemblyView.h"
 #include "Display.h"
 #include "CoreController.h"
 #include "FrameView.h"
@@ -40,6 +43,7 @@
 #include "LogView.h"
 #include "MapView.h"
 #include "MemorySearch.h"
+#include "MemoryModel.h"
 #include "MemoryView.h"
 #include "MultiplayerController.h"
 #include "OverrideView.h"
@@ -47,6 +51,7 @@
 #include "PaletteView.h"
 #include "PlacementControl.h"
 #include "PrinterView.h"
+#include "RegisterView.h"
 #include "ROMInfo.h"
 #include "SensorView.h"
 #include "SettingsView.h"
@@ -468,6 +473,28 @@ void Window::openSettingsWindow() {
 	connect(settingsWindow, &SettingsView::libraryCleared, m_libraryView, &LibraryController::clear);
 #endif
 	openView(settingsWindow);
+}
+
+void Window::enterDebugView() {
+	QDockWidget* screen = new QDockWidget;
+	screen->setWidget(m_screenWidget);
+	addDockWidget(Qt::RightDockWidgetArea, screen);
+
+	QDockWidget* memory = new QDockWidget;
+	MemoryModel* memModel = new MemoryModel;
+	memModel->setController(m_controller);
+	memory->setWidget(memModel);
+	addDockWidget(Qt::BottomDockWidgetArea, memory);
+
+	QDockWidget* registers = new QDockWidget;
+	RegisterView* regView = new RegisterView(m_controller);
+	connect(m_controller.get(), &CoreController::frameAvailable, regView, &RegisterView::updateRegisters);
+	registers->setWidget(regView);
+	addDockWidget(Qt::RightDockWidgetArea, registers);
+
+	DisassemblyView* disasmView = new DisassemblyView;
+	disasmView->setController(m_controller);
+	setCentralWidget(disasmView);
 }
 
 void Window::startVideoLog() {
@@ -1464,6 +1491,7 @@ void Window::setupMenu(QMenuBar* menubar) {
 #endif
 	m_actions.addSeparator("tools");
 
+	addGameAction(tr("Debugger mode"), "debugMode", this, &Window::enterDebugView, "tools");
 	addGameAction(tr("View &palette..."), "paletteWindow", openControllerTView<PaletteView>(), "tools");
 	addGameAction(tr("View &sprites..."), "spriteWindow", openControllerTView<ObjView>(), "tools");
 	addGameAction(tr("View &tiles..."), "tileWindow", openControllerTView<TileView>(), "tools");

@@ -69,6 +69,7 @@ set(SOURCE_FILES
 	ColorPicker.cpp
 	CoreManager.cpp
 	CoreController.cpp
+	DisassemblyView.cpp
 	Display.cpp
 	DisplayGL.cpp
 	DisplayQt.cpp

@@ -18,6 +18,8 @@
 #include <QFileOpenEvent>
 #include <QIcon>
 
+#include <mgba/core/version.h>
+#include <mgba/debugger/debugger.h>
 #include <mgba-util/socket.h>
 #include <mgba-util/vfs.h>
 
@@ -48,6 +50,7 @@ GBAApp::GBAApp(int& argc, char* argv[], ConfigController* config)
 	SocketSubsystemInit();
 	qRegisterMetaType<const uint32_t*>("const uint32_t*");
 	qRegisterMetaType<mCoreThread*>("mCoreThread*");
+	qRegisterMetaType<mDebuggerEntryReason>("mDebuggerEntryReason");
 
 	if (!m_configController->getQtOption("displayDriver").isNull()) {
 		Display::setDriver(static_cast<Display::Driver>(m_configController->getQtOption("displayDriver").toInt()));

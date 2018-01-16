@@ -30,7 +30,7 @@
 #include "CoreController.h"
 #include "DebuggerConsole.h"
 #include "DebuggerConsoleController.h"
-#include "DisassemblyView.h"
+#include "DebugModeContext.h"
 #include "Display.h"
 #include "CoreController.h"
 #include "FrameView.h"
@@ -43,7 +43,6 @@
 #include "LogView.h"
 #include "MapView.h"
 #include "MemorySearch.h"
-#include "MemoryModel.h"
 #include "MemoryView.h"
 #include "MultiplayerController.h"
 #include "OverrideView.h"
@@ -51,7 +50,6 @@
 #include "PaletteView.h"
 #include "PlacementControl.h"
 #include "PrinterView.h"
-#include "RegisterView.h"
 #include "ROMInfo.h"
 #include "SensorView.h"
 #include "SettingsView.h"
@@ -476,25 +474,11 @@ void Window::openSettingsWindow() {
 }
 
 void Window::enterDebugView() {
-	QDockWidget* screen = new QDockWidget;
-	screen->setWidget(m_screenWidget);
-	addDockWidget(Qt::RightDockWidgetArea, screen);
-
-	QDockWidget* memory = new QDockWidget;
-	MemoryModel* memModel = new MemoryModel;
-	memModel->setController(m_controller);
-	memory->setWidget(memModel);
-	addDockWidget(Qt::BottomDockWidgetArea, memory);
-
-	QDockWidget* registers = new QDockWidget;
-	RegisterView* regView = new RegisterView(m_controller);
-	connect(m_controller.get(), &CoreController::frameAvailable, regView, &RegisterView::updateRegisters);
-	registers->setWidget(regView);
-	addDockWidget(Qt::RightDockWidgetArea, registers);
-
-	DisassemblyView* disasmView = new DisassemblyView;
-	disasmView->setController(m_controller);
-	setCentralWidget(disasmView);
+	if (!m_debugContext) {
+		m_debugContext = std::make_unique<DebugModeContext>();
+	}
+	m_debugContext->attach(this, m_screenWidget, m_controller);
+	connect(this, &Window::shutdown, m_debugContext.get(), &DebugModeContext::release);
 }
 
 void Window::startVideoLog() {
@@ -816,6 +800,7 @@ void Window::gameStopped() {
 	setWindowFilePath(QString());
 	updateTitle();
 	detachWidget(m_display.get());
+	setCentralWidget(m_screenWidget);
 	m_screenWidget->setDimensions(m_logo.width(), m_logo.height());
 	m_screenWidget->setLockIntegerScaling(false);
 	m_screenWidget->setLockAspectRatio(true);
@@ -1481,17 +1466,8 @@ void Window::setupMenu(QMenuBar* menubar) {
 	m_actions.addSeparator("tools");
 	m_actions.addAction(tr("Settings..."), "settings", this, &Window::openSettingsWindow, "tools");
 
-#ifdef USE_DEBUGGERS
-	m_actions.addSeparator("tools");
-	m_actions.addAction(tr("Open debugger console..."), "debuggerWindow", this, &Window::consoleOpen, "tools");
-#ifdef USE_GDB_STUB
-	Action* gdbWindow = addGameAction(tr("Start &GDB server..."), "gdbWindow", this, &Window::gdbOpen, "tools");
-	m_platformActions.insert(PLATFORM_GBA, gdbWindow);
-#endif
-#endif
 	m_actions.addSeparator("tools");
 
-	addGameAction(tr("Debugger mode"), "debugMode", this, &Window::enterDebugView, "tools");
 	addGameAction(tr("View &palette..."), "paletteWindow", openControllerTView<PaletteView>(), "tools");
 	addGameAction(tr("View &sprites..."), "spriteWindow", openControllerTView<ObjView>(), "tools");
 	addGameAction(tr("View &tiles..."), "tileWindow", openControllerTView<TileView>(), "tools");
@@ -1515,6 +1491,36 @@ void Window::setupMenu(QMenuBar* menubar) {
 	addGameAction(tr("Stop debug video log"), "stopVL", [this]() {
 		m_controller->endVideoLog();
 	}, "tools");
+
+#ifdef USE_DEBUGGERS
+	m_actions.addMenu(tr("&Debug"), "debug");
+
+	m_actions.addAction(tr("Open debugger console..."), "debuggerWindow", this, &Window::consoleOpen, "debug");
+#ifdef USE_GDB_STUB
+	Action* gdbWindow = addGameAction(tr("Start &GDB server..."), "gdbWindow", this, &Window::gdbOpen, "debug");
+	m_platformActions.insert(PLATFORM_GBA, gdbWindow);
+#endif
+	m_actions.addSeparator("debug");
+
+	addGameAction(tr("Debugger mode"), "debugMode", this, &Window::enterDebugView, "debug");
+
+	addGameAction(tr("&Break"), "debug.break", [this]() {
+		if (m_debugContext) {
+			m_debugContext->debugger()->doBreak();
+		}
+	}, "debug", tr("Alt+B"));
+	addGameAction(tr("&Continue"), "debug.continue", [this]() {
+		if (m_debugContext) {
+			m_debugContext->debugger()->doContinue();
+		}
+	}, "debug", tr("Alt+C"));
+
+	addGameAction(tr("&Next instruction"), "debug.next", [this]() {
+		if (m_debugContext) {
+			m_debugContext->debugger()->next();
+		}
+	}, "debug", tr("Alt+N"));
+#endif
 
 	ConfigOption* skipBios = m_config->addOption("skipBios");
 	skipBios->connect([this](const QVariant& value) {

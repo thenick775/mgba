@@ -31,6 +31,7 @@ class ConfigController;
 class CoreController;
 class CoreManager;
 class DebuggerConsoleController;
+class DebugModeContext;
 class Display;
 class GDBController;
 class GIFView;
@@ -216,6 +217,7 @@ private:
 
 	std::unique_ptr<OverrideView> m_overrideView;
 	std::unique_ptr<SensorView> m_sensorView;
+	std::unique_ptr<DebugModeContext> m_debugContext;
 
 #ifdef USE_FFMPEG
 	VideoView* m_videoView = nullptr;

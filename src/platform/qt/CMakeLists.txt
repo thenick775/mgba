@@ -69,7 +69,6 @@ set(SOURCE_FILES
 	ColorPicker.cpp
 	CoreManager.cpp
 	CoreController.cpp
-	DisassemblyView.cpp
 	Display.cpp
 	DisplayGL.cpp
 	DisplayQt.cpp
@@ -98,6 +97,7 @@ set(SOURCE_FILES
 	OverrideView.cpp
 	PaletteView.cpp
 	PlacementControl.cpp
+	PrinterView.cpp
 	RegisterView.cpp
 	ROMInfo.cpp
 	RotatedHeaderView.cpp
@@ -195,9 +195,13 @@ endif()
 
 if(USE_DEBUGGERS)
 	list(APPEND SOURCE_FILES
+		DebugModeContext.cpp
+		Debugger.cpp
 		DebuggerController.cpp
 		DebuggerConsole.cpp
-		DebuggerConsoleController.cpp)
+		DebuggerConsoleController.cpp
+		DisassemblyView.cpp
+		RegisterView.cpp)
 endif()
 
 if(USE_GDB_STUB)

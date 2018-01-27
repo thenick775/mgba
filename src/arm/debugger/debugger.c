@@ -78,6 +78,7 @@ static void ARMDebuggerListWatchpoints(struct mDebuggerPlatform*, struct mWatchp
 static void ARMDebuggerCheckBreakpoints(struct mDebuggerPlatform*);
 static bool ARMDebuggerHasBreakpoints(struct mDebuggerPlatform*);
 static void ARMDebuggerTrace(struct mDebuggerPlatform*, char* out, size_t* length);
+static int ARMDebuggerDisassemble(struct mDebuggerPlatform* d, char* out, size_t length, uint32_t address, int segment, int flags);
 static bool ARMDebuggerGetRegister(struct mDebuggerPlatform*, const char* name, int32_t* value);
 static bool ARMDebuggerSetRegister(struct mDebuggerPlatform*, const char* name, int32_t value);
 
@@ -94,6 +95,7 @@ struct mDebuggerPlatform* ARMDebuggerPlatformCreate(void) {
 	platform->checkBreakpoints = ARMDebuggerCheckBreakpoints;
 	platform->hasBreakpoints = ARMDebuggerHasBreakpoints;
 	platform->trace = ARMDebuggerTrace;
+	platform->disassemble = ARMDebuggerDisassemble;
 	platform->getRegister = ARMDebuggerGetRegister;
 	platform->setRegister = ARMDebuggerSetRegister;
 	return platform;
@@ -324,6 +326,32 @@ static void ARMDebuggerTrace(struct mDebuggerPlatform* d, char* out, size_t* len
 		               cpu->gprs[12], cpu->gprs[13], cpu->gprs[14], cpu->gprs[15],
 		               cpu->cpsr.packed, disassembly);
 }
+
+static int ARMDebuggerDisassemble(struct mDebuggerPlatform* d, char* out, size_t length, uint32_t address, int segment, int flags) {
+	UNUSED(segment);
+	struct ARMInstructionInfo info;
+	if (flags == MODE_ARM) {
+		uint32_t instruction = d->p->core->busRead32(d->p->core, address);
+		ARMDecodeARM(instruction, &info);
+		ARMDisassemble(&info, address + WORD_SIZE_ARM * 2, out, length);
+		return WORD_SIZE_ARM;
+	} else {
+		struct ARMInstructionInfo info2;
+		struct ARMInstructionInfo combined;
+		uint16_t instruction = d->p->core->busRead16(d->p->core, address);
+		uint16_t instruction2 = d->p->core->busRead16(d->p->core, address + WORD_SIZE_THUMB);
+		ARMDecodeThumb(instruction, &info);
+		ARMDecodeThumb(instruction2, &info2);
+		if (ARMDecodeThumbCombine(&info, &info2, &combined)) {
+			ARMDisassemble(&combined, address + WORD_SIZE_THUMB * 2, out, length);
+			return WORD_SIZE_THUMB * 2;
+		} else {
+			ARMDisassemble(&info, address + WORD_SIZE_THUMB * 2, out, length);
+			return WORD_SIZE_THUMB;
+		}
+	}
+}
+
 
 bool ARMDebuggerGetRegister(struct mDebuggerPlatform* d, const char* name, int32_t* value) {
 	struct ARMDebugger* debugger = (struct ARMDebugger*) d;

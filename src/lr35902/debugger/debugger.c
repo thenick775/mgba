@@ -71,6 +71,7 @@ static void LR35902DebuggerListWatchpoints(struct mDebuggerPlatform*, struct mWa
 static void LR35902DebuggerCheckBreakpoints(struct mDebuggerPlatform*);
 static bool LR35902DebuggerHasBreakpoints(struct mDebuggerPlatform*);
 static void LR35902DebuggerTrace(struct mDebuggerPlatform*, char* out, size_t* length);
+static int LR35902DebuggerDisassemble(struct mDebuggerPlatform* d, char* out, size_t length, uint32_t address, int segment, int flags);
 static bool LR35902DebuggerGetRegister(struct mDebuggerPlatform*, const char* name, int32_t* value);
 static bool LR35902DebuggerSetRegister(struct mDebuggerPlatform*, const char* name, int32_t value);
 
@@ -87,6 +88,7 @@ struct mDebuggerPlatform* LR35902DebuggerPlatformCreate(void) {
 	platform->d.checkBreakpoints = LR35902DebuggerCheckBreakpoints;
 	platform->d.hasBreakpoints = LR35902DebuggerHasBreakpoints;
 	platform->d.trace = LR35902DebuggerTrace;
+	platform->d.disassemble = LR35902DebuggerDisassemble;
 	platform->d.getRegister = LR35902DebuggerGetRegister;
 	platform->d.setRegister = LR35902DebuggerSetRegister;
 	platform->printStatus = NULL;
@@ -222,6 +224,21 @@ static void LR35902DebuggerTrace(struct mDebuggerPlatform* d, char* out, size_t*
 		               cpu->a, cpu->f.packed, cpu->b, cpu->c,
 		               cpu->d, cpu->e, cpu->h, cpu->l,
 		               cpu->sp, cpu->memory.currentSegment(cpu, cpu->pc), cpu->pc, disassembly);
+}
+
+static int LR35902DebuggerDisassemble(struct mDebuggerPlatform* d, char* out, size_t length, uint32_t address, int segment, int flags) {
+	UNUSED(flags);
+	struct LR35902InstructionInfo info = {0};
+	int bytesRead = 0;
+	uint8_t instruction;
+	size_t bytesRemaining;
+	for (bytesRemaining = 1; bytesRemaining; --bytesRemaining) {
+		instruction = d->p->core->rawRead8(d->p->core, address, segment);
+		++bytesRead;
+		bytesRemaining += LR35902Decode(instruction, &info);
+	};
+	LR35902Disassemble(&info, address, out, length);
+	return bytesRead;
 }
 
 bool LR35902DebuggerGetRegister(struct mDebuggerPlatform* d, const char* name, int32_t* value) {

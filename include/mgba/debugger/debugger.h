@@ -110,6 +110,7 @@ struct mDebuggerPlatform {
 	void (*listWatchpoints)(struct mDebuggerPlatform*, struct mWatchpointList*);
 
 	void (*trace)(struct mDebuggerPlatform*, char* out, size_t* length);
+	int (*disassemble)(struct mDebuggerPlatform*, char* out, size_t length, uint32_t address, int segment, int flags);
 
 	bool (*getRegister)(struct mDebuggerPlatform*, const char* name, int32_t* value);
 	bool (*setRegister)(struct mDebuggerPlatform*, const char* name, int32_t value);

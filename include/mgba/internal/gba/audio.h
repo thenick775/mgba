@@ -191,15 +191,15 @@ struct GBAMP2kInstrument {
 	union {
 		uint8_t pan;
 		uint8_t sweep;
-	};
+	} ps;
 	union {
 		uint32_t waveData;
 		uint32_t subTable;
-	};
+	} data;
 	union {
 		struct GBAMP2kADSR adsr;
 		uint32_t map;
-	};
+	} extInfo;
 };
 
 struct GBAMP2kMusicPlayerTrack {
@@ -246,10 +246,9 @@ struct GBAMP2kMusicPlayerTrack {
 
 struct GBAMP2kTrack {
 	struct GBAMP2kMusicPlayerTrack track;
+	struct GBAMP2kSoundChannel* channel;
 	uint8_t lastCommand;
-	uint8_t lastNote;
-	struct GBAStereoSample lastSample;
-	uint32_t notePlaying;
+	struct CircleBuffer buffer;
 	uint32_t samplePlaying;
 	float currentOffset;
 	bool waiting;
@@ -268,8 +267,11 @@ struct GBAAudioMixer {
 	struct GBAMP2kContext context;
 	struct GBAMP2kMusicPlayerInfo player;
 	struct GBAMP2kTrack activeTracks[MP2K_MAX_SOUND_CHANNELS];
-	float tempoI;
-	float frame;
+
+	double tempo;
+	double frame;
+
+	struct GBAStereoSample last;
 };
 
 void GBAAudioInit(struct GBAAudio* audio, size_t samples);

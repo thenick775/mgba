@@ -446,6 +446,8 @@ void GBReset(struct LR35902Core* cpu) {
 	}
 
 	gb->sgbBit = -1;
+	gb->sgbControllers = 0;
+	gb->sgbCurrentController = 0;
 	gb->currentSgbBits = 0;
 	memset(gb->sgbPacket, 0, sizeof(gb->sgbPacket));
 
@@ -555,6 +557,10 @@ void GBUnmapBIOS(struct GB* gb) {
 		free(gb->memory.romBase);
 		gb->memory.romBase = gb->memory.rom;
 	}
+	// XXX: Force AGB registers for AGB-mode
+	if (gb->model == GB_MODEL_AGB && gb->cpu->pc == 0x100) {
+		gb->cpu->b = 1;
+	}
 }
 
 void GBDetectModel(struct GB* gb) {
@@ -612,6 +618,7 @@ void GBDetectModel(struct GB* gb) {
 void GBUpdateIRQs(struct GB* gb) {
 	int irqs = gb->memory.ie & gb->memory.io[REG_IF];
 	if (!irqs) {
+		gb->cpu->irqPending = false;
 		return;
 	}
 	gb->cpu->halted = false;

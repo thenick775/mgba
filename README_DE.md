@@ -10,7 +10,7 @@ Aktuelle Neuigkeiten und Downloads findest Du auf [mgba.io](https://mgba.io).
 Features
 --------
 
-- Nahzu vollständige Unterstützung der Game Boy Advance-Hardware[<sup>[1]</sup>](#missing).
+- Sehr genaue Unterstützung der Game Boy Advance-Hardware[<sup>[1]</sup>](#missing).
 - Unterstützung der Game Boy-/Game Boy Color-Hardware.
 - Schnelle Emulation. mGBA ist dafür bekannt, auch auf schwacher Hardware wie Netbooks mit voller Geschwindigkeit zu laufen.
 - Qt- und SDL-Portierungen für eine vollwertige und eine "leichtgewichtige" Benutzeroberfläche.
@@ -18,6 +18,7 @@ Features
 - Erkennung des Speichertypes, einschließlich der Größe des Flash-Speichers[<sup>[2]</sup>](#flashdetect).
 - Unterstützung für Spielmodule mit Bewegungssensoren und Rüttel-Effekten (nur verwendbar mit Spiele-Controllern).
 - Unterstützung für Echtzeituhren, selbst ohne Konfiguration.
+- Unterstützung für den Lichtsensor in Boktai-Spielen
 - Unterstützung für Game Boy Printer und Game Boy Camera.
 - Eingebaute BIOS-Implementierung mit der Möglichkeit, externe BIOS-Dateien zu laden.
 - Turbo/Vorlauf-Unterstützung durch drücken der Tab-Taste.
@@ -35,6 +36,31 @@ Features
 - Unterstützung für das Laden und Exportieren von GameShark- und Action Replay-Abbildern.
 - Verfügbare Cores für RetroArch/Libretro und OpenEmu.
 - Viele, viele kleinere Dinge.
+
+### Game Boy-Mapper
+
+Die folgenden Mapper werden vollständig unterstützt:
+
+- MBC1
+- MBC1M
+- MBC2
+- MBC3
+- MBC3+RTC (MBC3+Echtzeituhr)
+- MBC5
+- MBC5+Rumble (MBC5+Rüttel-Modul)
+- MBC7
+
+Die folgenden Mapper werden teilweise unterstützt:
+
+- Pocket Cam
+- TAMA5
+- HuC-3
+
+Die folgenden Mapper werden derzeit nicht unterstützt:
+
+- MBC6
+- HuC-1
+- MMM01
 
 ### Geplante Features
 
@@ -106,15 +132,15 @@ Bitte beachte, dass Du unter macOS nicht 'make install' verwenden solltest, da d
 
 ### Für Entwickler: Kompilieren unter Windows
 
-Um mGBA auf Windows zu kompilieren, wird MSYS2 empfohlen. Befolge die Installationsschritte auf der [MSYS2-Website](https://msys2.github.io). Stelle sicher, dass Du die 32-Bit-Version ("MSYS2 MinGW 32-bit") (oder die 64-Bit-Version "MSYS2 MinGW 64-bit", wenn Du mGBA für x86_64 kompilieren willst) verwendest und führe folgendes Kommando (einschließlich der Klammern) aus, um alle benötigten Abhängigkeiten zu installieren. Bitte beachte, dass dafür über 500MiB an Paketen heruntergeladen werden, was eine Weile dauern kann):
+Um mGBA auf Windows zu kompilieren, wird MSYS2 empfohlen. Befolge die Installationsschritte auf der [MSYS2-Website](https://msys2.github.io). Stelle sicher, dass Du die 32-Bit-Version ("MSYS2 MinGW 32-bit") (oder die 64-Bit-Version "MSYS2 MinGW 64-bit", wenn Du mGBA für x86_64 kompilieren willst) verwendest und führe folgendes Kommando (einschließlich der Klammern) aus, um alle benötigten Abhängigkeiten zu installieren. Bitte beachte, dass dafür über 1100MiB an Paketen heruntergeladen werden, was eine Weile dauern kann:
 
 Für x86 (32 Bit):
 
-	pacman -Sy mingw-w64-i686-{cmake,ffmpeg,gcc,gdb,imagemagick,libzip,pkg-config,qt5,SDL2,ntldd-git}
+	pacman -Sy base-devel git mingw-w64-i686-{cmake,ffmpeg,gcc,gdb,imagemagick,libelf,libepoxy,libzip,pkg-config,qt5,SDL2,ntldd-git}
 
 Für x86_64 (64 Bit):
 
-	pacman -Sy mingw-w64-x86_64-{cmake,ffmpeg,gcc,gdb,imagemagick,libzip,pkg-config,qt5,SDL2,ntldd-git}
+	pacman -Sy base-devel git mingw-w64-x86_64-{cmake,ffmpeg,gcc,gdb,imagemagick,libelf,libepoxy,libzip,pkg-config,qt5,SDL2,ntldd-git}
 
 Lade den aktuellen mGBA-Quellcode mithilfe des folgenden Kommandos herunter:
 
@@ -164,7 +190,7 @@ Fußnoten
 Copyright
 ---------
 
-Copyright für mGBA © 2013 – 2017 Jeffrey Pfau. mGBA wird unter der [Mozilla Public License version 2.0](https://www.mozilla.org/MPL/2.0/) veröffentlicht. Eine Kopie der Lizenz ist in der mitgelieferten Datei LICENSE verfügbar.
+Copyright für mGBA © 2013 – 2018 Jeffrey Pfau. mGBA wird unter der [Mozilla Public License version 2.0](https://www.mozilla.org/MPL/2.0/) veröffentlicht. Eine Kopie der Lizenz ist in der mitgelieferten Datei LICENSE verfügbar.
 
 mGBA beinhaltet die folgenden Bibliotheken von Drittanbietern:
 

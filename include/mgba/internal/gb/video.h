@@ -26,7 +26,6 @@ enum {
 
 	GB_VIDEO_HORIZONTAL_LENGTH = 456,
 
-	GB_VIDEO_MODE_1_LENGTH = 65664,
 	GB_VIDEO_TOTAL_LENGTH = 70224,
 
 	GB_BASE_MAP = 0x1800,
@@ -144,6 +143,8 @@ struct GBVideo {
 	int ocpIndex;
 	bool ocpIncrement;
 	uint8_t sgbCommandHeader;
+	int sgbBufferIndex;
+	uint8_t sgbPacketBuffer[128];
 
 	uint16_t dmgPalette[12];
 	uint16_t palette[64];

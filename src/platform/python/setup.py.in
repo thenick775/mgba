@@ -4,6 +4,7 @@ import os
 import sys
 
 os.environ["BINDIR"] = "${CMAKE_BINARY_DIR}"
+os.environ["LIBDIR"] = "${CMAKE_INSTALL_PREFIX}/${LIBDIR}"
 os.environ["CPPFLAGS"] = " ".join([d for d in "${INCLUDE_FLAGS}".split(";") if d])
 
 classifiers = [
@@ -22,7 +23,7 @@ setup(name="${BINARY_NAME}",
       url="http://github.com/mgba-emu/mgba/",
       packages=["mgba"],
       package_dir={
-        "mgba": "${CMAKE_CURRENT_SOURCE_DIR}"
+        "mgba": "${CMAKE_CURRENT_SOURCE_DIR}/mgba"
       },
       setup_requires=['cffi>=1.6', 'pytest-runner'],
       install_requires=['cffi>=1.6', 'cached-property'],

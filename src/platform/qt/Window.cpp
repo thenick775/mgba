@@ -192,7 +192,9 @@ void Window::resizeFrame(const QSize& size) {
 	m_screenWidget->setSizeHint(newSize);
 	newSize -= m_screenWidget->size();
 	newSize += this->size();
-	resize(newSize);
+	if (!isFullScreen()) {
+		resize(newSize);
+	}
 }
 
 void Window::setConfig(ConfigController* config) {
@@ -406,7 +408,7 @@ void Window::exportSharkport() {
 
 void Window::openSettingsWindow() {
 	SettingsView* settingsWindow = new SettingsView(m_config, &m_inputController);
-#if defined(BUILD_GL) || defined(BUILD_GLES)
+#if defined(BUILD_GL) || defined(BUILD_GLES2)
 	if (m_display->supportsShaders()) {
 		settingsWindow->setShaderSelector(m_shaderView.get());
 	}
@@ -416,7 +418,9 @@ void Window::openSettingsWindow() {
 	connect(settingsWindow, &SettingsView::cameraDriverChanged, this, &Window::mustRestart);
 	connect(settingsWindow, &SettingsView::languageChanged, this, &Window::mustRestart);
 	connect(settingsWindow, &SettingsView::pathsChanged, this, &Window::reloadConfig);
+#ifdef USE_SQLITE3
 	connect(settingsWindow, &SettingsView::libraryCleared, m_libraryView, &LibraryController::clear);
+#endif
 	openView(settingsWindow);
 }
 
@@ -638,8 +642,6 @@ void Window::gameStarted() {
 	multiplayerChanged();
 	updateTitle();
 	QSize size = m_controller->screenDimensions();
-	m_display->setMinimumSize(size);
-	m_screenWidget->setMinimumSize(m_display->minimumSize());
 	m_screenWidget->setDimensions(size.width(), size.height());
 	m_config->updateOption("lockIntegerScaling");
 	m_config->updateOption("lockAspectRatio");
@@ -647,6 +649,7 @@ void Window::gameStarted() {
 		resizeFrame(size * m_savedScale);
 	}
 	attachWidget(m_display.get());
+	m_display->setMinimumSize(size);
 
 #ifndef Q_OS_MAC
 	if (isFullScreen()) {
@@ -721,7 +724,6 @@ void Window::gameStopped() {
 #elif defined(M_CORE_GBA)
 	m_display->setMinimumSize(VIDEO_HORIZONTAL_PIXELS, VIDEO_VERTICAL_PIXELS);
 #endif
-	m_screenWidget->setMinimumSize(m_display->minimumSize());
 
 	m_videoLayers->clear();
 	m_audioChannels->clear();
@@ -769,12 +771,11 @@ void Window::reloadDisplayDriver() {
 		detachWidget(m_display.get());
 	}
 	m_display = std::move(std::unique_ptr<Display>(Display::create(this)));
-#if defined(BUILD_GL) || defined(BUILD_GLES)
+#if defined(BUILD_GL) || defined(BUILD_GLES2)
 	m_shaderView.reset();
 	m_shaderView = std::make_unique<ShaderSelector>(m_display.get(), m_config);
 #endif
-	m_screenWidget->setMinimumSize(m_display->minimumSize());
-	m_screenWidget->setSizePolicy(m_display->sizePolicy());
+
 	connect(this, &Window::shutdown, m_display.get(), &Display::stopDrawing);
 	connect(m_display.get(), &Display::hideCursor, [this]() {
 		if (static_cast<QStackedLayout*>(m_screenWidget->layout())->currentWidget() == m_display.get()) {
@@ -788,7 +789,7 @@ void Window::reloadDisplayDriver() {
 	const mCoreOptions* opts = m_config->options();
 	m_display->lockAspectRatio(opts->lockAspectRatio);
 	m_display->filter(opts->resampleVideo);
-#if defined(BUILD_GL) || defined(BUILD_GLES)
+#if defined(BUILD_GL) || defined(BUILD_GLES2)
 	if (opts->shader) {
 		struct VDir* shader = VDirOpen(opts->shader);
 		if (shader && m_display->supportsShaders()) {
@@ -800,6 +801,7 @@ void Window::reloadDisplayDriver() {
 #endif
 
 	if (m_controller) {
+		m_display->setMinimumSize(m_controller->screenDimensions());
 		connect(m_controller.get(), &CoreController::stopping, m_display.get(), &Display::stopDrawing);
 		connect(m_controller.get(), &CoreController::stateLoaded, m_display.get(), &Display::forceDraw);
 		connect(m_controller.get(), &CoreController::rewound, m_display.get(), &Display::forceDraw);
@@ -810,6 +812,12 @@ void Window::reloadDisplayDriver() {
 
 		attachWidget(m_display.get());
 		m_display->startDrawing(m_controller);
+	} else {
+#ifdef M_CORE_GB
+		m_display->setMinimumSize(GB_VIDEO_HORIZONTAL_PIXELS, GB_VIDEO_VERTICAL_PIXELS);
+#elif defined(M_CORE_GBA)
+		m_display->setMinimumSize(VIDEO_HORIZONTAL_PIXELS, VIDEO_VERTICAL_PIXELS);
+#endif
 	}
 }
 
@@ -933,6 +941,7 @@ void Window::openStateWindow(LoadSave ls) {
 	}
 	m_stateWindow->setAttribute(Qt::WA_DeleteOnClose);
 	m_stateWindow->setMode(ls);
+	updateFrame();
 	attachWidget(m_stateWindow);
 }
 
@@ -1658,6 +1667,16 @@ void Window::focusCheck() {
 	}
 }
 
+void Window::updateFrame() {
+	QSize size = m_controller->screenDimensions();
+	QImage currentImage(reinterpret_cast<const uchar*>(m_controller->drawContext()), size.width(), size.height(),
+	                    size.width() * BYTES_PER_PIXEL, QImage::Format_RGBX8888);
+	QPixmap pixmap;
+	pixmap.convertFromImage(currentImage);
+	m_screenWidget->setPixmap(pixmap);
+	emit paused(true);
+}
+
 void Window::setController(CoreController* controller, const QString& fname) {
 	if (!controller) {
 		return;
@@ -1694,15 +1713,7 @@ void Window::setController(CoreController* controller, const QString& fname) {
 		});
 	}
 	connect(m_controller.get(), &CoreController::stopping, &m_inputController, &InputController::resumeScreensaver);
-	connect(m_controller.get(), &CoreController::paused, [this]() {
-		QSize size = m_controller->screenDimensions();
-		QImage currentImage(reinterpret_cast<const uchar*>(m_controller->drawContext()), size.width(), size.height(),
-		                    size.width() * BYTES_PER_PIXEL, QImage::Format_RGBX8888);
-		QPixmap pixmap;
-		pixmap.convertFromImage(currentImage);
-		m_screenWidget->setPixmap(pixmap);
-		emit paused(true);
-	});
+	connect(m_controller.get(), &CoreController::paused, this, &Window::updateFrame);
 
 #ifndef Q_OS_MAC
 	connect(m_controller.get(), &CoreController::paused, menuBar(), &QWidget::show);
@@ -1732,13 +1743,17 @@ void Window::setController(CoreController* controller, const QString& fname) {
 	connect(m_controller.get(), &CoreController::failed, this, &Window::gameFailed);
 	connect(m_controller.get(), &CoreController::unimplementedBiosCall, this, &Window::unimplementedBiosCall);
 
+#ifdef USE_GDB_STUB
 	if (m_gdbController) {
 		m_gdbController->setController(m_controller);
 	}
+#endif
 
+#ifdef USE_DEBUGGERS
 	if (m_console) {
 		m_console->setController(m_controller);
 	}
+#endif
 
 #ifdef USE_MAGICK
 	if (m_gifView) {
@@ -1770,11 +1785,15 @@ void Window::setController(CoreController* controller, const QString& fname) {
 }
 
 WindowBackground::WindowBackground(QWidget* parent)
-	: QLabel(parent)
+	: QWidget(parent)
 {
 	setLayout(new QStackedLayout());
 	layout()->setContentsMargins(0, 0, 0, 0);
-	setAlignment(Qt::AlignCenter);
+}
+
+void WindowBackground::setPixmap(const QPixmap& pmap) {
+	m_pixmap = pmap;
+	update();
 }
 
 void WindowBackground::setSizeHint(const QSize& hint) {
@@ -1798,11 +1817,9 @@ void WindowBackground::setLockAspectRatio(bool lock) {
 	m_lockAspectRatio = lock;
 }
 
-void WindowBackground::paintEvent(QPaintEvent*) {
-	const QPixmap* logo = pixmap();
-	if (!logo) {
-		return;
-	}
+void WindowBackground::paintEvent(QPaintEvent* event) {
+	QWidget::paintEvent(event);
+	const QPixmap& logo = pixmap();
 	QPainter painter(this);
 	painter.setRenderHint(QPainter::SmoothPixmapTransform);
 	painter.fillRect(QRect(QPoint(), size()), Qt::black);
@@ -1821,5 +1838,5 @@ void WindowBackground::paintEvent(QPaintEvent*) {
 	}
 	QPoint origin = QPoint((s.width() - ds.width()) / 2, (s.height() - ds.height()) / 2);
 	QRect full(origin, ds);
-	painter.drawPixmap(full, *logo);
+	painter.drawPixmap(full, logo);
 }

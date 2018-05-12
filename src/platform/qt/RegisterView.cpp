@@ -129,6 +129,7 @@ void RegisterView::updateRegistersARM() {
 	m_registers["lr"]->setText(QString("%1").arg((uint32_t) core->gprs[ARM_LR], 8, 16, QChar('0')).toUpper());
 	m_registers["pc"]->setText(QString("%1").arg((uint32_t) core->gprs[ARM_PC], 8, 16, QChar('0')).toUpper());
 	m_registers["cpsr"]->setText(QString("%1").arg((uint32_t) core->cpsr.packed, 8, 16, QChar('0')).toUpper());
+	m_pc = core->gprs[ARM_PC] - (core->executionMode == MODE_ARM ? WORD_SIZE_ARM : WORD_SIZE_THUMB);
 }
 #endif
 
@@ -146,5 +147,6 @@ void RegisterView::updateRegistersLR35902() {
 	m_registers["l"]->setText(QString("%1").arg((uint8_t) core->l, 2, 16, QChar('0')).toUpper());
 	m_registers["sp"]->setText(QString("%1").arg((uint8_t) core->sp, 4, 16, QChar('0')).toUpper());
 	m_registers["pc"]->setText(QString("%1").arg((uint8_t) core->pc, 4, 16, QChar('0')).toUpper());
+	m_pc = core->pc;
 }
 #endif

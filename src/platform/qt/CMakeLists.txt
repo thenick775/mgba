@@ -200,7 +200,7 @@ if(USE_DEBUGGERS)
 		DebuggerController.cpp
 		DebuggerConsole.cpp
 		DebuggerConsoleController.cpp
-		DisassemblyView.cpp
+		DisassemblyModel.cpp
 		RegisterView.cpp)
 endif()
 

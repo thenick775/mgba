@@ -22,6 +22,8 @@ Q_OBJECT
 public:
 	RegisterView(std::shared_ptr<CoreController> controller, QWidget* parent = nullptr);
 
+	uint32_t pc() const { return m_pc; }
+
 public slots:
 	void updateRegisters();
 
@@ -35,6 +37,7 @@ private:
 #endif
 
 	QMap<QString, QLabel*> m_registers;
+	uint32_t m_pc = 0;
 
 	std::shared_ptr<CoreController> m_controller;
 };

@@ -14,12 +14,13 @@
 #ifdef USE_DEBUGGERS
 
 class QMainWindow;
+class QTableView;
 
 namespace QGBA {
 
 class CoreController;
 class Debugger;
-class DisassemblyView;
+class DisassemblyModel;
 class RegisterView;
 
 class DebugModeContext : public QObject {
@@ -37,7 +38,8 @@ private:
 	QDockWidget* m_screen = nullptr;
 	QDockWidget* m_memory = nullptr;
 	QDockWidget* m_registers = nullptr;
-	DisassemblyView* m_disassembly = nullptr;
+	QTableView* m_disassemblyView = nullptr;
+	DisassemblyModel* m_disassembly = nullptr;
 	Debugger* m_debugger;
 
 	std::shared_ptr<CoreController> m_controller;

@@ -26,7 +26,7 @@ public slots:
 	void updateRegisters();
 
 private:
-	void addRegisters(const QStringList& names);
+	void addRegisters(const QStringList& names, int column = 0);
 #ifdef M_CORE_GBA
 	void updateRegistersARM();
 #endif

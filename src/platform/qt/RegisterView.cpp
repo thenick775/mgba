@@ -15,7 +15,7 @@
 #endif
 
 #include <QFontDatabase>
-#include <QFormLayout>
+#include <QGridLayout>
 #include <QLabel>
 
 using namespace QGBA;
@@ -24,7 +24,7 @@ RegisterView::RegisterView(std::shared_ptr<CoreController> controller, QWidget* 
 	: QWidget(parent)
 	, m_controller(controller)
 {
-	QFormLayout* layout = new QFormLayout;
+	QGridLayout* layout = new QGridLayout;
 	setLayout(layout);
 
 	switch (controller->platform()) {
@@ -39,6 +39,8 @@ RegisterView::RegisterView(std::shared_ptr<CoreController> controller, QWidget* 
 			"r5",
 			"r6",
 			"r7",
+		}, 0);
+		addRegisters({
 			"r8",
 			"r9",
 			"r10",
@@ -48,23 +50,25 @@ RegisterView::RegisterView(std::shared_ptr<CoreController> controller, QWidget* 
 			"lr",
 			"pc",
 			"cpsr",
-		});
+		}, 1);
 		break;
 #endif
 #ifdef M_CORE_GB
 	case PLATFORM_GB:
 		addRegisters({
 			"a",
-			"f",
 			"b",
-			"c",
 			"d",
-			"e",
 			"h",
+			"sp"
+		}, 0);
+		addRegisters({
+			"f",
+			"c",
+			"e",
 			"l",
-			"sp",
 			"pc"
-		});
+		}, 1);
 		break;
 #endif
 	default:
@@ -72,16 +76,18 @@ RegisterView::RegisterView(std::shared_ptr<CoreController> controller, QWidget* 
 	}
 }
 
-void RegisterView::addRegisters(const QStringList& names) {
-	QFormLayout* form = static_cast<QFormLayout*>(layout());
+void RegisterView::addRegisters(const QStringList& names, int column) {
+	QGridLayout* grid = static_cast<QGridLayout*>(layout());
 	const QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+	int i = 0;
 	for (const auto& reg : names) {
 		QLabel* value = new QLabel;
 		value->setTextInteractionFlags(Qt::TextSelectableByMouse);
 		value->setFont(font);
-		form->addWidget(value);
 		m_registers[reg] = value;
-		form->addRow(reg, value);
+		grid->addWidget(new QLabel(reg), i, column * 2);
+		grid->addWidget(value, i, column * 2 + 1);
+		++i;
 	}
 }
 

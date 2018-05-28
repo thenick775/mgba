@@ -57,8 +57,10 @@ public:
 	void argumentsPassed(mArguments*);
 
 	void resizeFrame(const QSize& size);
+	QSize sizeHint() const override;
 
 	void updateMultiplayerStatus(bool canOpenAnother) { m_multiWindow->setEnabled(canOpenAnother); }
+
 
 signals:
 	void startDrawing();

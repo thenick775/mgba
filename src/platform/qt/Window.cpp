@@ -217,11 +217,16 @@ void Window::resizeFrame(const QSize& size) {
 		}
 	}
 	m_screenWidget->setSizeHint(newSize);
-	newSize -= m_screenWidget->size();
-	newSize += this->size();
 	if (!isFullScreen()) {
-		resize(newSize);
+		m_screenWidget->resize(newSize);
+		m_screenWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+		adjustSize();
+		m_screenWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 	}
+}
+
+QSize Window::sizeHint() const {
+	return QSize();
 }
 
 void Window::setConfig(ConfigController* config) {
@@ -1896,6 +1901,7 @@ WindowBackground::WindowBackground(QWidget* parent)
 	: QWidget(parent)
 {
 	setLayout(new QStackedLayout());
+	setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 	layout()->setContentsMargins(0, 0, 0, 0);
 }
 

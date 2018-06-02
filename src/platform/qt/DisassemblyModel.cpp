@@ -234,7 +234,7 @@ QString DisassemblyModel::disassemble(const Instruction& insn, const uint8_t* me
 #endif
 #ifdef M_CORE_GB
 	case PLATFORM_GB: {
-		LR35902InstructionInfo info;
+		LR35902InstructionInfo info{};
 		for (size_t i = 0; i < insn.nRaw; ++i) {
 			LR35902Decode(mem[i], &info);
 		}
@@ -268,8 +268,8 @@ void DisassemblyModel::refreshLR35902(const mCoreMemoryBlock& block) {
 	InstructionBlock& iblock = m_instructionBlocks[block.start];
 	iblock.memory = core->getMemoryBlock(core, block.id, &iblock.memsize);
 	for (int segment = 0; segment < block.maxSegment; ++segment) {
-		LR35902InstructionInfo info;
 		for (uint32_t address = block.start; address < block.end && address - block.start < block.size;) {
+			LR35902InstructionInfo info{};
 			Instruction insn{
 				address,
 				0,
@@ -281,8 +281,8 @@ void DisassemblyModel::refreshLR35902(const mCoreMemoryBlock& block) {
 				++address;
 				++insn.nRaw;
 				bytesRemaining += LR35902Decode(byte, &info);
-				iblock.mapping[segment].append(insn);
 			}
+			iblock.mapping[segment].append(insn);
 		}
 	}
 }

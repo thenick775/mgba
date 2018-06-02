@@ -145,8 +145,8 @@ void RegisterView::updateRegistersLR35902() {
 	m_registers["e"]->setText(QString("%1").arg((uint8_t) core->e, 2, 16, QChar('0')).toUpper());
 	m_registers["h"]->setText(QString("%1").arg((uint8_t) core->h, 2, 16, QChar('0')).toUpper());
 	m_registers["l"]->setText(QString("%1").arg((uint8_t) core->l, 2, 16, QChar('0')).toUpper());
-	m_registers["sp"]->setText(QString("%1").arg((uint8_t) core->sp, 4, 16, QChar('0')).toUpper());
-	m_registers["pc"]->setText(QString("%1").arg((uint8_t) core->pc, 4, 16, QChar('0')).toUpper());
+	m_registers["sp"]->setText(QString("%1").arg((uint16_t) core->sp, 4, 16, QChar('0')).toUpper());
+	m_registers["pc"]->setText(QString("%1").arg((uint16_t) core->pc, 4, 16, QChar('0')).toUpper());
 	m_pc = core->pc;
 }
 #endif

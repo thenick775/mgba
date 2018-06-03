@@ -268,6 +268,7 @@ void DisassemblyModel::refreshLR35902(const mCoreMemoryBlock& block) {
 	InstructionBlock& iblock = m_instructionBlocks[block.start];
 	iblock.memory = core->getMemoryBlock(core, block.id, &iblock.memsize);
 	for (int segment = 0; segment < block.maxSegment; ++segment) {
+		auto& sblock = iblock.mapping[segment];
 		for (uint32_t address = block.start; address < block.end && address - block.start < block.size;) {
 			LR35902InstructionInfo info{};
 			Instruction insn{
@@ -282,7 +283,7 @@ void DisassemblyModel::refreshLR35902(const mCoreMemoryBlock& block) {
 				++insn.nRaw;
 				bytesRemaining += LR35902Decode(byte, &info);
 			}
-			iblock.mapping[segment].append(insn);
+			sblock.append(insn);
 		}
 	}
 }
@@ -292,8 +293,10 @@ void DisassemblyModel::refreshLR35902(const mCoreMemoryBlock& block) {
 void DisassemblyModel::refreshARM(const mCoreMemoryBlock& block) {
 	mCore* core = m_controller->thread()->core;
 	InstructionBlock& iblock = m_instructionBlocks[block.start];
-	iblock.mapping[MODE_ARM].reserve(block.size / 2);
-	iblock.mapping[MODE_THUMB].reserve(block.size);
+	auto& armBlock = iblock.mapping[MODE_ARM];
+	auto& thumbBlock = iblock.mapping[MODE_THUMB];
+	armBlock.reserve(block.size / 2);
+	thumbBlock.reserve(block.size);
 	iblock.memory = core->getMemoryBlock(core, block.id, &iblock.memsize);
 	ARMInstructionInfo thumbLast{};
 	uint16_t thumbLastOpcode = 0;
@@ -305,7 +308,7 @@ void DisassemblyModel::refreshARM(const mCoreMemoryBlock& block) {
 			address,
 			4,
 		};
-		iblock.mapping[MODE_ARM].append(arm);
+		armBlock.append(arm);
 
 		for (int i = 0; i < 2; ++i) {
 			Instruction thumb = {
@@ -317,10 +320,10 @@ void DisassemblyModel::refreshARM(const mCoreMemoryBlock& block) {
 			if (ARMDecodeThumbCombine(&thumbLast, &info, &info)) {
 				thumb.nRaw = 4;
 				thumb.address -= WORD_SIZE_THUMB;
-				iblock.mapping[MODE_THUMB].back() = thumb;
+				thumbBlock.back() = thumb;
 				thumbLast = ARMInstructionInfo{};
 			} else {
-				iblock.mapping[MODE_THUMB].append(thumb);
+				thumbBlock.append(thumb);
 				thumbLast = info;
 				thumbLastOpcode = opcode;
 			}

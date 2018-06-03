@@ -55,41 +55,21 @@ void DebugModeContext::attach(QMainWindow* window, QWidget* screen, shared_ptr<C
 		m_disassembly = new DisassemblyModel;
 	}
 	m_disassembly->setController(controller);
-
-	if (!m_disassemblyView) {
-		m_disassemblyView = new QTableView;
-		m_disassemblyView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-		m_disassemblyView->setSelectionBehavior(QAbstractItemView::SelectRows);
-		m_disassemblyView->setShowGrid(false);
-		m_disassemblyView->horizontalHeader()->setSectionResizeMode(QHeaderView::Fixed);
-		m_disassemblyView->horizontalHeader()->setStretchLastSection(true);
-		m_disassemblyView->horizontalHeader()->hide();
-		m_disassemblyView->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
-	}
-	m_disassemblyView->setModel(m_disassembly);
-	m_disassemblyView->verticalHeader()->setDefaultSectionSize(m_disassembly->headerData(0, Qt::Vertical, Qt::SizeHintRole).toSize().height());
-	m_disassemblyView->horizontalHeader()->resizeSection(0, m_disassembly->headerData(0, Qt::Horizontal, Qt::SizeHintRole).toSize().width());
-	m_disassemblyView->horizontalHeader()->resizeSection(1, m_disassembly->headerData(1, Qt::Horizontal, Qt::SizeHintRole).toSize().width());
-	m_disassemblyView->horizontalHeader()->resizeSection(2, m_disassembly->headerData(2, Qt::Horizontal, Qt::SizeHintRole).toSize().width());
-	window->setCentralWidget(m_disassemblyView);
+	window->setCentralWidget(m_disassembly);
 
 	if (!m_debugger) {
 		m_debugger = new Debugger(this);
 	}
 	connect(m_debugger, static_cast<void (Debugger::*)(mDebuggerEntryReason)>(&Debugger::entered), regView, &RegisterView::updateRegisters);
 	connect(m_debugger, &Debugger::stepped, regView, &RegisterView::updateRegisters);
-	connect(m_debugger, &Debugger::stepped, m_disassemblyView, [this, regView]() {
-		m_disassemblyView->setCurrentIndex(m_disassembly->addressToIndex(regView->pc()));
+	connect(m_debugger, &Debugger::stepped, m_disassembly, [this, regView]() {
+		m_disassembly->jumpToPc(regView->pc());
 	});
 
 	m_debugger->setController(controller);
 	m_debugger->attach();
 
 	connect(controller.get(), &CoreController::frameAvailable, regView, &RegisterView::updateRegisters);
-	connect(controller.get(), &CoreController::frameAvailable, m_disassemblyView, [this, regView]() {
-		m_disassemblyView->setCurrentIndex(m_disassembly->addressToIndex(regView->pc()));
-	});
-
 	connect(controller.get(), &CoreController::stopping, this, &DebugModeContext::release);
 }
 

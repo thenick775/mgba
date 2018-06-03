@@ -38,7 +38,6 @@ private:
 	QDockWidget* m_screen = nullptr;
 	QDockWidget* m_memory = nullptr;
 	QDockWidget* m_registers = nullptr;
-	QTableView* m_disassemblyView = nullptr;
 	DisassemblyModel* m_disassembly = nullptr;
 	Debugger* m_debugger;
 

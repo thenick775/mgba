@@ -14,63 +14,68 @@
 #include <mgba/internal/lr35902/decoder.h>
 #endif
 
-#include <QAbstractItemModel>
+#include <QAbstractScrollArea>
+#include <QMap>
+#include <QVector>
 
 #include <memory>
 
 namespace QGBA {
 
-class DisassemblyModel : public QAbstractItemModel {
+class DisassemblyModel : public QAbstractScrollArea {
 Q_OBJECT
 
 public:
+	DisassemblyModel(QWidget* parent = nullptr);
+
 	void setController(std::shared_ptr<CoreController>);
 
-	virtual QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override;
-	virtual QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
-
-	virtual QModelIndex index(int row, int column, const QModelIndex& parent) const override;
-	virtual QModelIndex parent(const QModelIndex& index) const override;
-
-	virtual int columnCount(const QModelIndex& parent = QModelIndex()) const override;
-	virtual int rowCount(const QModelIndex& parent = QModelIndex()) const override;
-
-	QModelIndex addressToIndex(uint32_t) const;
-
 public slots:
-	void refresh(bool ro = false);
+	void jumpToAddress(const QString& hex);
+	void jumpToAddress(uint32_t);
+	void jumpToPc(uint32_t);
+
+protected:
+	void resizeEvent(QResizeEvent*) override;
+	void paintEvent(QPaintEvent*) override;
+	void keyPressEvent(QKeyEvent*) override;
+
+private slots:
+	void jumpToEstimate(int);
 
 private:
 	struct Instruction {
+		QString disassembly;
+		QString hexcode;
 		uint32_t address;
-		uint32_t nRaw;
+		int segment;
+		int bytesize;
 	};
 
 	struct InstructionBlock {
-		QMap<int, QVector<Instruction>> mapping;
 		bool isMirror = false;
 		uint32_t mirror;
-		const void* memory;
 		size_t memsize;
 	};
 
-	Instruction indexToInstruction(int, const uint8_t** mem) const;
+	Instruction disassemble(uint32_t address);
 
-	QString disassemble(const Instruction&, const uint8_t* mem) const;
-
-	void refreshBlock(const mCoreMemoryBlock&);
-
-#ifdef M_CORE_GB
-	void refreshLR35902(const mCoreMemoryBlock&);
-#endif
 #ifdef M_CORE_GBA
-	void refreshARM(const mCoreMemoryBlock&);
+	uint32_t lastInstructionARM(uint32_t);
 #endif
+#ifdef M_CORE_GB
+	uint32_t lastInstructionLR35902(uint32_t);
+#endif
+
+	void adjustCursor(int adjust, bool shift);
 
 	QMap<uint32_t, InstructionBlock> m_instructionBlocks;
 
 	std::shared_ptr<CoreController> m_controller;
 	int m_currentMapping = 0;
+	int m_address;
+	int m_pc;
+	int m_indexEstimate;
 };
 
 }

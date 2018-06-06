@@ -15,6 +15,7 @@
 using namespace QGBA;
 
 static QFont s_font;
+static QFontMetrics s_metrics(s_font);
 static QSize s_hexMetrics;
 static QMargins s_margins;
 
@@ -22,8 +23,9 @@ DisassemblyModel::DisassemblyModel(QWidget* parent)
 	: QAbstractScrollArea(parent)
 {
 	s_font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-	s_hexMetrics = QFontMetrics(s_font).size(0, "FFFFFFFF") * 1.2;
-	s_margins = QMargins(3, s_hexMetrics.height() + 1, 0, 0);
+	s_metrics = QFontMetrics(s_font);
+	s_hexMetrics = s_metrics.size(0, "FFFFFFFF") * 1.2;
+	s_margins = QMargins(s_hexMetrics.height() * 1.5, s_hexMetrics.height() / 2, 0, 0);
 
 	setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 	setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
@@ -128,13 +130,30 @@ void DisassemblyModel::paintEvent(QPaintEvent* event) {
 	painter.setPen(palette.color(QPalette::WindowText));
 
 	CoreController::Interrupter interrupter(m_controller);
+	mDebuggerPlatform* debugger = m_controller->debugger()->platform;
 	int offset = 0;
 	int height = viewport()->size().height() / s_hexMetrics.height();
 	for (int y = 0; y < height; ++y) {
-		int yp = s_hexMetrics.height() * y + s_margins.top();
+		int yp = s_hexMetrics.height() * y + s_margins.top() + s_metrics.ascent();
 		Instruction insn = disassemble(m_address + offset);
-		if (insn.address == m_pc) {
+
+		if (m_selected.contains(insn.address)) {
 			painter.fillRect(QRectF(QPointF(0, yp - QFontMetrics(s_font).height()), QSizeF(viewport()->width(), s_hexMetrics.height())), palette.highlight());
+		}
+
+		float yc = yp + QFontMetrics(s_font).height() / 2 - s_metrics.ascent();
+		if (m_breakpointCache.contains(std::make_pair(insn.address, insn.segment)) || m_breakpointCache.contains(std::make_pair(insn.address, -1))) {
+			painter.setBrush(Qt::red);
+			painter.setPen(Qt::NoPen);
+			painter.drawEllipse(QPointF(s_hexMetrics.height() / 2, yc), s_hexMetrics.height() * 0.3, s_hexMetrics.height() * 0.3);
+		}
+		if (insn.address == m_pc) {
+			painter.setBrush(Qt::black);
+			painter.setPen(Qt::NoPen);
+			painter.drawEllipse(QPointF(s_hexMetrics.height() / 2, yc), s_hexMetrics.height() * 0.2, s_hexMetrics.height() * 0.2);
+		}
+
+		if (m_selected.contains(insn.address)) {
 			painter.setPen(palette.color(QPalette::HighlightedText));
 		} else {
 			painter.setPen(palette.color(QPalette::WindowText));
@@ -147,20 +166,64 @@ void DisassemblyModel::paintEvent(QPaintEvent* event) {
 	}
 }
 
+void DisassemblyModel::wheelEvent(QWheelEvent* event) {
+	adjustCursor(event->angleDelta().y() / 8, false);
+}
+
+void DisassemblyModel::mousePressEvent(QMouseEvent* event) {
+	uint32_t address = addressFromTop((event->y() - s_margins.top()) / s_hexMetrics.height());
+	if (event->modifiers() & Qt::ShiftModifier) {
+		if (m_selected.contains(address)) {
+			m_selected.remove(address);
+		} else {
+			m_selected.insert(address);
+		}
+	} else {
+		m_selected.clear();
+		m_selected.insert(address);
+	}
+	viewport()->update();
+}
+
+void DisassemblyModel::mouseDoubleClickEvent(QMouseEvent* event) {
+	CoreController::Interrupter interrupter(m_controller);
+	mDebuggerPlatform* debugger = m_controller->debugger()->platform;
+	uint32_t address = addressFromTop((event->y() - s_margins.top()) / s_hexMetrics.height());
+	if (m_breakpointCache.contains(std::make_pair(address, -1))) {
+		for (size_t id : m_breakpointCache.values(std::make_pair(address, -1))) {
+			debugger->clearBreakpoint(debugger, id);
+		}
+		m_breakpointCache.remove(std::make_pair(address, -1));
+	} else {
+		struct mBreakpoint breakpoint = {
+			.address = address,
+			.segment = -1,
+			.type = BREAKPOINT_HARDWARE
+		};
+		ssize_t id = debugger->setBreakpoint(debugger, &breakpoint);
+		if (id >= 0) {
+			m_breakpointCache.insert(std::make_pair(address, -1), id);
+		}
+	}
+	viewport()->update();
+}
+
 void DisassemblyModel::keyPressEvent(QKeyEvent* event) {
 	int key = event->key();
 	switch (key) {
 	case Qt::Key_Up:
 		adjustCursor(-1, event->modifiers() & Qt::ShiftModifier);
-		break;
+		return;
 	case Qt::Key_Down:
 		adjustCursor(1, event->modifiers() & Qt::ShiftModifier);
-		break;
+		return;
 	}
+	event->ignore();
 }
 
 DisassemblyModel::Instruction DisassemblyModel::disassemble(uint32_t address) {
 	Instruction insn{};
+	insn.segment = -1;
 	char buffer[64]{};
 	mCore* core = m_controller->thread()->core;
 
@@ -261,17 +324,23 @@ uint32_t DisassemblyModel::lastInstructionLR35902(uint32_t address) {
 #endif
 
 void DisassemblyModel::adjustCursor(int adjust, bool shift) {
-	int cursorPosition = m_address;
 	if (shift) {
 		// TODO
 	}
+	m_address = addressFromTop(adjust);
+	viewport()->update();
+}
 
+
+uint32_t DisassemblyModel::addressFromTop(int adjust) {
+	uint32_t cursorPosition = m_address;
+	uint32_t address = m_address;
 	CoreController::Interrupter interrupter(m_controller);
 	while (adjust) {
 		int offset = 0;
-		while (cursorPosition == m_address) {
+		while (cursorPosition == address) {
 			offset += (adjust < 0 ? -1 : 1);
-			if (-offset > cursorPosition) {
+			if (offset < 0 && -offset > cursorPosition) {
 				break;
 			}
 			switch (m_controller->platform()) {
@@ -287,8 +356,8 @@ void DisassemblyModel::adjustCursor(int adjust, bool shift) {
 		#endif
 			}
 		}
-		m_address = cursorPosition;
+		address = cursorPosition;
 		adjust += (adjust < 0 ? 1 : -1);
 	}
-	viewport()->update();
+	return address;
 }

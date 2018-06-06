@@ -16,6 +16,7 @@
 
 #include <QAbstractScrollArea>
 #include <QMap>
+#include <QSet>
 #include <QVector>
 
 #include <memory>
@@ -38,6 +39,9 @@ public slots:
 protected:
 	void resizeEvent(QResizeEvent*) override;
 	void paintEvent(QPaintEvent*) override;
+	void wheelEvent(QWheelEvent*) override;
+	void mousePressEvent(QMouseEvent*) override;
+	void mouseDoubleClickEvent(QMouseEvent*) override;
 	void keyPressEvent(QKeyEvent*) override;
 
 private slots:
@@ -69,13 +73,17 @@ private:
 
 	void adjustCursor(int adjust, bool shift);
 
+	uint32_t addressFromTop(int adjust);
+
 	QMap<uint32_t, InstructionBlock> m_instructionBlocks;
 
 	std::shared_ptr<CoreController> m_controller;
 	int m_currentMapping = 0;
-	int m_address;
-	int m_pc;
+	uint32_t m_address;
+	uint32_t m_pc;
+	QSet<uint32_t> m_selected;
 	int m_indexEstimate;
+	QMultiHash<std::pair<uint32_t, int>, size_t> m_breakpointCache;
 };
 
 }

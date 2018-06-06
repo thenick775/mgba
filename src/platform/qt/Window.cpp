@@ -484,6 +484,9 @@ void Window::enterDebugView() {
 	}
 	m_debugContext->attach(this, m_screenWidget, m_controller);
 	connect(this, &Window::shutdown, m_debugContext.get(), &DebugModeContext::release);
+	connect(m_debugContext->debugger(), static_cast<void (Debugger::*)(mDebuggerEntryReason)>(&Debugger::entered), m_display.get(), &Display::pauseDrawing);
+	connect(m_debugContext->debugger(), &Debugger::continued, m_display.get(), &Display::unpauseDrawing);
+	m_display->pauseDrawing();
 }
 
 void Window::startVideoLog() {

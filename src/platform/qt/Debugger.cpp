@@ -25,6 +25,7 @@ Debugger::Debugger(QObject* parent)
 void Debugger::doContinue() {
 	CoreController::Interrupter interrupter(m_gameController);
 	m_debugger.state = DEBUGGER_RUNNING;
+	emit continued();
 	mCoreThreadStopWaiting(m_gameController->thread());
 }
 

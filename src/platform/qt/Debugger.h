@@ -29,6 +29,7 @@ public slots:
 signals:
 	void entered(mDebuggerEntryReason);
 	void stepped();
+	void continued();
 
 protected:
 	virtual void init() {}

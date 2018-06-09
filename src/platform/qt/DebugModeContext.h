@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Debugger.h"
+#include "DisassemblyModel.h"
 
 #include <QDockWidget>
 
@@ -19,8 +20,6 @@ class QTableView;
 namespace QGBA {
 
 class CoreController;
-class Debugger;
-class DisassemblyModel;
 class RegisterView;
 
 class DebugModeContext : public QObject {
@@ -29,17 +28,20 @@ Q_OBJECT
 public:
 	void attach(QMainWindow*, QWidget* screen, std::shared_ptr<CoreController>);
 
-	Debugger* debugger() { return m_debugger; }
+	Debugger* debugger() { return m_debugger.get(); }
 
 public slots:
 	void release();
 
+protected:
+	bool eventFilter(QObject* obj, QEvent* event) override;
+
 private:
-	QDockWidget* m_screen = nullptr;
-	QDockWidget* m_memory = nullptr;
-	QDockWidget* m_registers = nullptr;
-	DisassemblyModel* m_disassembly = nullptr;
-	Debugger* m_debugger;
+	std::unique_ptr<QDockWidget> m_screen;
+	std::unique_ptr<QDockWidget> m_memory;
+	std::unique_ptr<QDockWidget> m_registers;
+	std::unique_ptr<DisassemblyModel> m_disassembly;
+	std::unique_ptr<Debugger> m_debugger;
 
 	std::shared_ptr<CoreController> m_controller;
 };

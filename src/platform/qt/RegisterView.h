@@ -23,6 +23,7 @@ public:
 	RegisterView(std::shared_ptr<CoreController> controller, QWidget* parent = nullptr);
 
 	uint32_t pc() const { return m_pc; }
+	int execMode() const { return m_mode; }
 
 public slots:
 	void updateRegisters();
@@ -38,6 +39,7 @@ private:
 
 	QMap<QString, QLabel*> m_registers;
 	uint32_t m_pc = 0;
+	int m_mode = 0;
 
 	std::shared_ptr<CoreController> m_controller;
 };

@@ -92,6 +92,14 @@ void DisassemblyModel::jumpToPc(uint32_t pc) {
 	adjustCursor(-2, false);
 }
 
+void DisassemblyModel::setMapping(int mapping) {
+	if (m_currentMapping == mapping) {
+		return;
+	}
+	m_currentMapping = mapping;
+	adjustCursor(0, false);
+}
+
 void DisassemblyModel::jumpToEstimate(int index) {
 	int blockMapping = -1;
 	uint32_t offset = 0;
@@ -147,7 +155,7 @@ void DisassemblyModel::paintEvent(QPaintEvent* event) {
 			painter.setPen(Qt::NoPen);
 			painter.drawEllipse(QPointF(s_hexMetrics.height() / 2, yc), s_hexMetrics.height() * 0.3, s_hexMetrics.height() * 0.3);
 		}
-		if (insn.address == m_pc) {
+		if (m_pc >= insn.address && m_pc < insn.address + insn.bytesize) {
 			painter.setBrush(Qt::black);
 			painter.setPen(Qt::NoPen);
 			painter.drawEllipse(QPointF(s_hexMetrics.height() / 2, yc), s_hexMetrics.height() * 0.2, s_hexMetrics.height() * 0.2);

@@ -130,6 +130,7 @@ void RegisterView::updateRegistersARM() {
 	m_registers["pc"]->setText(QString("%1").arg((uint32_t) core->gprs[ARM_PC], 8, 16, QChar('0')).toUpper());
 	m_registers["cpsr"]->setText(QString("%1").arg((uint32_t) core->cpsr.packed, 8, 16, QChar('0')).toUpper());
 	m_pc = core->gprs[ARM_PC] - (core->executionMode == MODE_ARM ? WORD_SIZE_ARM : WORD_SIZE_THUMB);
+	m_mode = core->executionMode;
 }
 #endif
 

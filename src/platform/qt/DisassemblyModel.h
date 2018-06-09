@@ -35,6 +35,7 @@ public slots:
 	void jumpToAddress(const QString& hex);
 	void jumpToAddress(uint32_t);
 	void jumpToPc(uint32_t);
+	void setMapping(int);
 
 protected:
 	void resizeEvent(QResizeEvent*) override;

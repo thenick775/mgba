@@ -63,9 +63,11 @@ void DebugModeContext::attach(QMainWindow* window, QWidget* screen, shared_ptr<C
 	connect(m_debugger, static_cast<void (Debugger::*)(mDebuggerEntryReason)>(&Debugger::entered), regView, &RegisterView::updateRegisters);
 	connect(m_debugger, &Debugger::stepped, regView, &RegisterView::updateRegisters);
 	connect(m_debugger, &Debugger::stepped, m_disassembly, [this, regView]() {
+		m_disassembly->setMapping(regView->execMode());
 		m_disassembly->jumpToPc(regView->pc());
 	});
 	connect(m_debugger, static_cast<void (Debugger::*)(mDebuggerEntryReason)>(&Debugger::entered), m_disassembly, [this, regView]() {
+		m_disassembly->setMapping(regView->execMode());
 		m_disassembly->jumpToPc(regView->pc());
 	});
 

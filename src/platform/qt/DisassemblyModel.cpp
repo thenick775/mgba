@@ -29,6 +29,7 @@ DisassemblyModel::DisassemblyModel(QWidget* parent)
 
 	setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 	setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
+	setMinimumSize(s_hexMetrics + QSize(s_margins.left() + s_metrics.width("stmia r12!, {r0, r2, r4, r6, r8, r10, r11, r12, sp, pc}^"), s_margins.top()));
 
 	connect(verticalScrollBar(), &QSlider::sliderMoved, this, &DisassemblyModel::jumpToEstimate);
 }

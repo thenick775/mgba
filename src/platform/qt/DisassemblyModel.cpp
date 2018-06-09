@@ -89,6 +89,21 @@ void DisassemblyModel::jumpToAddress(uint32_t address) {
 
 void DisassemblyModel::jumpToPc(uint32_t pc) {
 	m_pc = pc;
+	if (isVisible(m_pc, 0)) {
+		viewport()->update();
+		return;
+	}
+	for (int i = 1; i < 4; ++i) {
+		if (isVisible(m_pc, i)) {
+			adjustCursor(i, false);
+			return;
+		}
+
+		if (isVisible(m_pc, -i)) {
+			adjustCursor(-i, false);
+			return;
+		}
+	}
 	jumpToAddress(m_pc);
 	adjustCursor(-2, false);
 }
@@ -340,7 +355,6 @@ void DisassemblyModel::adjustCursor(int adjust, bool shift) {
 	viewport()->update();
 }
 
-
 uint32_t DisassemblyModel::addressFromTop(int adjust) {
 	uint32_t cursorPosition = m_address;
 	uint32_t address = m_address;
@@ -369,4 +383,10 @@ uint32_t DisassemblyModel::addressFromTop(int adjust) {
 		adjust += (adjust < 0 ? 1 : -1);
 	}
 	return address;
+}
+
+bool DisassemblyModel::isVisible(uint32_t address, int adjust) {
+	uint32_t top = addressFromTop(adjust);
+	uint32_t bottom = addressFromTop(adjust + (viewport()->size().height() - s_margins.top()) / s_hexMetrics.height());
+	return address >= top && address < bottom;
 }

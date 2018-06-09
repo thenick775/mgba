@@ -75,6 +75,7 @@ private:
 	void adjustCursor(int adjust, bool shift);
 
 	uint32_t addressFromTop(int adjust);
+	bool isVisible(uint32_t address, int adjust);
 
 	QMap<uint32_t, InstructionBlock> m_instructionBlocks;
 

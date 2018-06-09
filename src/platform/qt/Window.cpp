@@ -743,6 +743,7 @@ void Window::gameStarted() {
 	if (m_savedScale > 0) {
 		resizeFrame(size * m_savedScale);
 	}
+	setCentralWidget(m_screenWidget);
 	attachWidget(m_display.get());
 	setFocus();
 
@@ -1794,6 +1795,10 @@ void Window::setController(CoreController* controller, const QString& fname) {
 		if (fb >= 0) {
 			controller->setFramebufferHandle(fb);
 		}
+	}
+
+	if (m_debugContext) {
+		m_debugContext->release();
 	}
 
 	m_controller = std::shared_ptr<CoreController>(controller);

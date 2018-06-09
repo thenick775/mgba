@@ -81,6 +81,11 @@ void DebugModeContext::release() {
 	}
 
 	if (m_screen) {
+		// Prevent screen from being deleted
+		QWidget* w = m_screen->widget();
+		if (w) {
+			w->setParent(nullptr);
+		}
 		delete m_screen;
 		m_screen = nullptr;
 	}
@@ -105,5 +110,6 @@ void DebugModeContext::release() {
 		m_debugger = nullptr;
 	}
 
+	disconnect();
 	m_controller.reset();
 }

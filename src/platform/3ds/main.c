@@ -115,8 +115,6 @@ static bool _initGpu(void) {
 		return false;
 	}
 
-	C3D_RenderTargetSetClear(upscaleBuffer, C3D_CLEAR_COLOR, 0, 0);
-
 	return ctrInitGpu();
 }
 
@@ -214,6 +212,8 @@ static void _csndPlaySound(u32 flags, u32 sampleRate, float vol, void* left, voi
 static void _postAudioBuffer(struct mAVStream* stream, blip_t* left, blip_t* right);
 
 static void _drawStart(void) {
+	C3D_FrameBufClear(&bottomScreen[doubleBuffer]->frameBuf, C3D_CLEAR_COLOR, 0, 0);
+	C3D_FrameBufClear(&topScreen[doubleBuffer]->frameBuf, C3D_CLEAR_COLOR, 0, 0);
 }
 
 static void _frameStart(void) {
@@ -230,9 +230,6 @@ static void _frameStart(void) {
 		}
 	}
 	C3D_FrameBegin(flags);
-	// Mark both buffers used to make sure they get cleared
-	C3D_FrameDrawOn(topScreen[doubleBuffer]);
-	C3D_FrameDrawOn(bottomScreen[doubleBuffer]);
 	ctrStartFrame();
 }
 
@@ -247,8 +244,6 @@ static void _drawEnd(void) {
 	frameStarted = false;
 
 	doubleBuffer ^= 1;
-	C3D_FrameBufClear(&bottomScreen[doubleBuffer]->frameBuf, C3D_CLEAR_COLOR, 0, 0);
-	C3D_FrameBufClear(&topScreen[doubleBuffer]->frameBuf, C3D_CLEAR_COLOR, 0, 0);
 }
 
 static int _batteryState(void) {
@@ -558,7 +553,7 @@ static void _drawFrame(struct mGUIRunner* runner, bool faded) {
 	C3D_Tex* tex = &outputTexture;
 
 	GSPGPU_FlushDataCache(outputBuffer, 256 * VIDEO_VERTICAL_PIXELS * 2);
-	C3D_SafeDisplayTransfer(
+	C3D_SyncDisplayTransfer(
 			outputBuffer, GX_BUFFER_DIM(256, VIDEO_VERTICAL_PIXELS),
 			tex->data, GX_BUFFER_DIM(256, 256),
 			GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGB565) |
@@ -570,7 +565,6 @@ static void _drawFrame(struct mGUIRunner* runner, bool faded) {
 		blip_clear(runner->core->getAudioChannel(runner->core, 1));
 	}
 
-	gspWaitForPPF();
 	_drawTex(runner->core, faded);
 }
 
@@ -587,13 +581,12 @@ static void _drawScreenshot(struct mGUIRunner* runner, const color_t* pixels, un
 	}
 
 	GSPGPU_FlushDataCache(newPixels, 256 * height * sizeof(u32));
-	C3D_SafeDisplayTransfer(
+	C3D_SyncDisplayTransfer(
 			(u32*) newPixels, GX_BUFFER_DIM(256, height),
 			tex->data, GX_BUFFER_DIM(256, 256),
 			GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGB565) |
 				GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGB565) |
 				GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_FLIP_VERT(1));
-	gspWaitForPPF();
 	linearFree(newPixels);
 
 	_drawTex(runner->core, faded);

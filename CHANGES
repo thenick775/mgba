@@ -1,32 +1,51 @@
-0.6.2: (Future)
+0.6.4 (Future):
 Bugfixes:
- - GBA Video: Force align 256-color tiles
- - GBA DMA: ROM reads are forced to increment
- - GB Video: Only trigger STAT write IRQs when screen is on (fixes mgba.io/i/912)
- - GBA Cheats: Fix PARv3 slide codes (fixes mgba.io/i/919)
- - GBA Video: OBJWIN can change blend params after OBJ is drawn (fixes mgba.io/i/921)
- - GBA Savedata: Fix crash when resizing flash
- - GB Memory: HDMAs should not start when LCD is off (fixes mgba.io/i/310)
- - GBA Cheats: Fix slide codes not initializing properly
- - Qt: Fix locale being set to English on settings save (fixes mgba.io/i/906)
+ - GBA Video: Mark OAM dirty on reset (fixes mgba.io/i/1062)
+ - GBA Hardware: Fix RTC overriding light sensor (fixes mgba.io/i/1069)
+ - GBA Savedata: Fix savedata modified time updating when read-only
+ - GB Video: Fix enabling window when LY > WY (fixes mgba.io/i/409)
+ - PowerPC: Fix several potential crashes (fixes mgba.io/i/1089)
+ - Qt: Fix build with Qt 5.11 (fixes mgba.io/i/1094)
+
+0.6.3: (2017-04-14)
+Bugfixes:
+ - GB Audio: Revert unsigned audio changes
+ - GB Video: Fix bad merge (fixes mgba.io/i/1040)
+ - GBA Video: Fix OBJ blending regression (fixes mgba.io/i/1037)
+
+0.6.2: (2017-04-03)
+Bugfixes:
+ - Core: Fix ROM patches not being unloaded when disabled (fixes mgba.io/i/962)
+ - 3DS: Fix opening files in directory names with trailing slashes
  - LR35902: Fix watchpoints not reporting new value
+ - GB MBC: Fix MBC2 saves (fixes mgba.io/i/954)
+ - GB Memory: HDMAs should not start when LCD is off (fixes mgba.io/i/310)
+ - GB Memory: Fix OAM DMA blocking regions (fixes mgba.io/i/1013)
+ - GB Video: Only trigger STAT write IRQs when screen is on (fixes mgba.io/i/912)
+ - GBA: Fix some GBA ROM misdetection (fixes mgba.io/i/978)
+ - GBA: Fix SharkPort saves for EEPROM games
  - GBA Audio: Increase PSG volume (fixes mgba.io/i/932)
  - GBA BIOS: Fix incorrect exit condition in LZ77
- - 3DS: Fix opening files in directory names with trailing slashes
- - GB MBC: Fix MBC2 saves (fixes mgba.io/i/954)
- - GBA Memory: Fix copy-on-write memory leak
- - Core: Fix ROM patches not being unloaded when disabled (fixes mgba.io/i/962)
- - GBA I/O: Fix writing to DISPCNT CGB flag (fixes mgba.io/i/902)
- - GBA Memory: Partially revert prefetch changes (fixes mgba.io/i/840)
- - PSP2: Fix issues causing poor audio
- - Wii: Fix screen tear when unpausing
- - GBA: Fix some GBA ROM misdetection (fixes mgba.io/i/978)
+ - GBA Cheats: Fix PARv3 slide codes (fixes mgba.io/i/919)
+ - GBA Cheats: Fix slide codes not initializing properly
+ - GBA DMA: ROM reads are forced to increment
  - GBA Hardware: RTC accuracy improvements
- - GBA: Fix SharkPort saves for EEPROM games
+ - GBA I/O: Fix writing to DISPCNT CGB flag (fixes mgba.io/i/902)
+ - GBA Memory: Fix copy-on-write memory leak
+ - GBA Memory: Partially revert prefetch changes (fixes mgba.io/i/840)
+ - GBA Savedata: Fix crash when resizing flash
+ - GBA Video: Force align 256-color tiles
+ - GBA Video: OBJWIN can change blend params after OBJ is drawn (fixes mgba.io/i/921)
+ - PSP2: Fix issues causing poor audio
+ - Python: Fix package directory
+ - Qt: Fix locale being set to English on settings save (fixes mgba.io/i/906)
+ - Qt: Fix opening in fullscreen (fixes mgba.io/i/993)
+ - Wii: Fix screen tear when unpausing
+ - Wii: Fix various setup and teardown drawing issues (fixes mgba.io/i/988)
 Misc:
- - GBA: Improve multiboot image detection
- - GB MBC: Remove erroneous bank 0 wrapping
  - 3DS: Scale font based on glyph heights (fixes mgba.io/i/961)
+ - GB MBC: Remove erroneous bank 0 wrapping
+ - GBA: Improve multiboot image detection
  - PSP2: Use system enter key by default
 
 0.6.1: (2017-10-01)
@@ -62,6 +81,7 @@ Bugfixes:
  - Qt: Fix timezone issues with time overrides
  - Qt: Fix sprite export pausing game indefinitely (fixes mgba.io/i/841)
  - SDL: Fix potential race condition when pressing keys (fixes mgba.io/i/872)
+ - GB Audio: Make audio unsigned with bias (fixes mgba.io/i/749)
 Misc:
  - CMake: Fix CPack dependencies for libpng 1.6
  - GBA: Detect hardware for Pokémon FireRed ROM hacks

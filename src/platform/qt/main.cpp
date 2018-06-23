@@ -17,12 +17,22 @@
 #include <QLibraryInfo>
 #include <QTranslator>
 
+#if defined(BUILD_SDL)
+#include <SDL.h>
+#endif
+
 #ifdef QT_STATIC
 #include <QtPlugin>
-#ifdef _WIN32
+#ifdef Q_OS_WIN
 Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin);
 #ifdef BUILD_QT_MULTIMEDIA
 Q_IMPORT_PLUGIN(QWindowsAudioPlugin);
+#endif
+#elif defined(Q_OS_MAC)
+Q_IMPORT_PLUGIN(QCocoaIntegrationPlugin);
+#ifdef BUILD_QT_MULTIMEDIA
+Q_IMPORT_PLUGIN(CoreAudioPlugin);
+Q_IMPORT_PLUGIN(AVFServicePlugin);
 #endif
 #endif
 #endif
@@ -30,8 +40,10 @@ Q_IMPORT_PLUGIN(QWindowsAudioPlugin);
 using namespace QGBA;
 
 int main(int argc, char* argv[]) {
-#if defined(BUILD_SDL) && SDL_VERSION_ATLEAST(2, 0, 0)
+#ifdef BUILD_SDL
+#if SDL_VERSION_ATLEAST(2, 0, 0) // CPP does not shortcut function lookup
 	SDL_SetMainReady();
+#endif
 #endif
 
 	ConfigController configController;

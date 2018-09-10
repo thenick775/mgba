@@ -6,6 +6,14 @@ Bugfixes:
  - GB Video: Fix enabling window when LY > WY (fixes mgba.io/i/409)
  - PowerPC: Fix several potential crashes (fixes mgba.io/i/1089)
  - Qt: Fix build with Qt 5.11 (fixes mgba.io/i/1094)
+ - GBA Serialize: Fix loading channel 3 volume (fixes mgba.io/i/1107)
+ - GBA BIOS: Fix BitUnPack final byte
+ - GB I/O: DMA register is R/W
+ - GBA Video: Improve sprite cycle counting (fixes mgba.io/i/1126)
+ - GBA: Reset WAITCNT properly
+ - GBA Serialize: Fix loading states in Hblank
+Misc:
+ - FFmpeg: Support libswresample (fixes mgba.io/i/1120, mgba.io/b/123)
 
 0.6.3: (2017-04-14)
 Bugfixes:

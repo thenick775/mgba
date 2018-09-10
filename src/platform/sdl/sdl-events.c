@@ -407,7 +407,7 @@ static void _pauseAfterFrame(struct mCoreThread* context) {
 
 static void _mSDLHandleKeypress(struct mCoreThread* context, struct mSDLPlayer* sdlContext, const struct SDL_KeyboardEvent* event) {
 	int key = -1;
-	if (!event->keysym.mod) {
+	if (!(event->keysym.mod & ~(KMOD_NUM | KMOD_CAPS))) {
 		key = mInputMapKey(sdlContext->bindings, SDL_BINDING_KEY, event->keysym.sym);
 	}
 	if (key != -1) {
@@ -488,7 +488,7 @@ static void _mSDLHandleKeypress(struct mCoreThread* context, struct mSDLPlayer* 
 				case SDLK_F8:
 				case SDLK_F9:
 					mCoreThreadInterrupt(context);
-					mCoreSaveState(context->core, event->keysym.sym - SDLK_F1 + 1, SAVESTATE_SAVEDATA | SAVESTATE_SCREENSHOT);
+					mCoreSaveState(context->core, event->keysym.sym - SDLK_F1 + 1, SAVESTATE_SAVEDATA | SAVESTATE_SCREENSHOT | SAVESTATE_RTC);
 					mCoreThreadContinue(context);
 					break;
 				default:
@@ -506,7 +506,7 @@ static void _mSDLHandleKeypress(struct mCoreThread* context, struct mSDLPlayer* 
 				case SDLK_F8:
 				case SDLK_F9:
 					mCoreThreadInterrupt(context);
-					mCoreLoadState(context->core, event->keysym.sym - SDLK_F1 + 1, SAVESTATE_SCREENSHOT);
+					mCoreLoadState(context->core, event->keysym.sym - SDLK_F1 + 1, SAVESTATE_SCREENSHOT | SAVESTATE_RTC);
 					mCoreThreadContinue(context);
 					break;
 				default:

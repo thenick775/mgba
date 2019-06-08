@@ -3,8 +3,7 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-#ifndef QGBA_MEMORY_VIEW
-#define QGBA_MEMORY_VIEW
+#pragma once
 
 #include "MemoryModel.h"
 
@@ -12,17 +11,17 @@
 
 namespace QGBA {
 
-class GameController;
+class CoreController;
 
 class MemoryView : public QWidget {
 Q_OBJECT
 
 public:
-	MemoryView(GameController* controller, QWidget* parent = nullptr);
+	MemoryView(std::shared_ptr<CoreController> controller, QWidget* parent = nullptr);
 
 public slots:
 	void update();
-	void jumpToAddress(uint32_t address) { m_ui.hexfield->jumpToAddress(address); }
+	void jumpToAddress(uint32_t address);
 
 private slots:
 	void setIndex(int);
@@ -33,10 +32,9 @@ private slots:
 private:
 	Ui::MemoryView m_ui;
 
-	GameController* m_controller;
+	std::shared_ptr<CoreController> m_controller;
+	QPair<uint32_t, uint32_t> m_region;
 	QPair<uint32_t, uint32_t> m_selection;
 };
 
 }
-
-#endif

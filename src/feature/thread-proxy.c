@@ -7,7 +7,6 @@
 
 #include <mgba/core/tile-cache.h>
 #include <mgba/internal/gba/gba.h>
-#include <mgba/internal/gba/io.h>
 
 #ifndef DISABLE_THREADING
 
@@ -122,7 +121,7 @@ static bool _readData(struct mVideoLogger* logger, void* data, size_t length, bo
 		if (!block || read) {
 			break;
 		}
-		mLOG(GBA_VIDEO, DEBUG, "Proxy thread can't read VRAM. CPU thread asleep?");
+		mLOG(GBA_VIDEO, DEBUG, "Can't read %"PRIz"u bytes. CPU thread asleep?", length);
 		MutexLock(&proxyRenderer->mutex);
 		ConditionWake(&proxyRenderer->fromThreadCond);
 		ConditionWait(&proxyRenderer->toThreadCond, &proxyRenderer->mutex);
@@ -143,7 +142,7 @@ static void _wait(struct mVideoLogger* logger) {
 		_proxyThreadRecover(proxyRenderer);
 		return;
 	}
-	while (proxyRenderer->threadState == PROXY_THREAD_BUSY) {
+	while (RingFIFOSize(&proxyRenderer->dirtyQueue)) {
 		ConditionWake(&proxyRenderer->toThreadCond);
 		ConditionWait(&proxyRenderer->fromThreadCond, &proxyRenderer->mutex);
 	}

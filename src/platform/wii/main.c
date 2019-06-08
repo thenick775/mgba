@@ -24,6 +24,7 @@
 #include <mgba-util/gui/file-select.h>
 #include <mgba-util/gui/font.h>
 #include <mgba-util/gui/menu.h>
+#include <mgba-util/memory.h>
 #include <mgba-util/vfs.h>
 
 #define GCN1_INPUT 0x47434E31
@@ -32,7 +33,9 @@
 #define CLASSIC_INPUT 0x57494943
 
 #define TEX_W 256
-#define TEX_H 160
+#define TEX_H 224
+
+#define ANALOG_DEADZONE 0x30
 
 static void _mapKey(struct mInputMap* map, uint32_t binding, int nativeKey, enum GBAKey key) {
 	mInputBindKey(map, binding, __builtin_ctz(nativeKey), key);
@@ -66,6 +69,7 @@ static enum VideoMode {
 
 static void _retraceCallback(u32 count);
 
+static void _postAudioBuffer(struct mAVStream* stream, blip_t* left, blip_t* right);
 static void _audioDMA(void);
 static void _setRumble(struct mRumble* rumble, int enable);
 static void _sampleRotation(struct mRotationSource* source);
@@ -92,6 +96,7 @@ static s8 WPAD_StickX(u8 chan, u8 right);
 static s8 WPAD_StickY(u8 chan, u8 right);
 
 static void* outputBuffer;
+static struct mAVStream stream;
 static struct mRumble rumble;
 static struct mRotationSource rotation;
 static GXRModeObj* vmode;
@@ -113,6 +118,9 @@ static uint32_t referenceRetraceCount;
 static bool frameLimiter = true;
 static int scaleFactor;
 static unsigned corew, coreh;
+
+uint32_t* romBuffer;
+size_t romBufferSize;
 
 static void* framebuffer[2] = { 0, 0 };
 static int whichFb = 0;
@@ -218,7 +226,7 @@ static void reconfigureScreen(struct mGUIRunner* runner) {
 		runner->params.width = vmode->fbWidth * guiScale * wAdjust;
 		runner->params.height = vmode->efbHeight * guiScale * hAdjust;
 		if (runner->core) {
-			double ratio = GBAAudioCalculateRatio(1,audioSampleRate, 1);
+			double ratio = GBAAudioCalculateRatio(1, audioSampleRate, 1);
 			blip_set_rates(runner->core->getAudioChannel(runner->core, 0), runner->core->frequency(runner->core), 48000 * ratio);
 			blip_set_rates(runner->core->getAudioChannel(runner->core, 1), runner->core->frequency(runner->core), 48000 * ratio);
 
@@ -247,6 +255,11 @@ int main(int argc, char* argv[]) {
 	AUDIO_RegisterDMACallback(_audioDMA);
 
 	memset(audioBuffer, 0, sizeof(audioBuffer));
+#ifdef FIXED_ROM_BUFFER
+	romBufferSize = SIZE_CART0;
+	romBuffer = SYS_GetArena2Lo();
+	SYS_SetArena2Lo((void*)((intptr_t) romBuffer + SIZE_CART0));
+#endif
 
 #if !defined(COLOR_16_BIT) && !defined(COLOR_5_6_5)
 #error This pixel format is unsupported. Please use -DCOLOR_16-BIT -DCOLOR_5_6_5
@@ -307,6 +320,11 @@ int main(int argc, char* argv[]) {
 	rotation.readTiltX = _readTiltX;
 	rotation.readTiltY = _readTiltY;
 	rotation.readGyroZ = _readGyroZ;
+
+	stream.videoDimensionsChanged = NULL;
+	stream.postVideoFrame = NULL;
+	stream.postAudioFrame = NULL;
+	stream.postAudioBuffer = _postAudioBuffer;
 
 	struct mGUIRunner runner = {
 		.params = {
@@ -545,6 +563,25 @@ static void _audioDMA(void) {
 	audioBufferSize = 0;
 }
 
+static void _postAudioBuffer(struct mAVStream* stream, blip_t* left, blip_t* right) {
+	UNUSED(stream);
+	int available = blip_samples_avail(left);
+	if (available + audioBufferSize > SAMPLES) {
+		available = SAMPLES - audioBufferSize;
+	}
+	available &= ~((32 / sizeof(struct GBAStereoSample)) - 1); // Force align to 32 bytes
+	if (available > 0) {
+		// These appear to be reversed for AUDIO_InitDMA
+		blip_read_samples(left, &audioBuffer[currentAudioBuffer][audioBufferSize].right, available, true);
+		blip_read_samples(right, &audioBuffer[currentAudioBuffer][audioBufferSize].left, available, true);
+		audioBufferSize += available;
+	}
+	if (audioBufferSize == SAMPLES && !AUDIO_GetDMAEnableFlag()) {
+		_audioDMA();
+		AUDIO_StartDMA();
+	}
+}
+
 static void _drawStart(void) {
 	VIDEO_SetBlack(false);
 
@@ -602,16 +639,16 @@ static uint32_t _pollInput(const struct mInputMap* map) {
 	int y = PAD_StickY(0);
 	int w_x = WPAD_StickX(0, 0);
 	int w_y = WPAD_StickY(0, 0);
-	if (x < -0x20 || w_x < -0x20) {
+	if (x < -ANALOG_DEADZONE || w_x < -ANALOG_DEADZONE) {
 		keys |= 1 << GUI_INPUT_LEFT;
 	}
-	if (x > 0x20 || w_x > 0x20) {
+	if (x > ANALOG_DEADZONE || w_x > ANALOG_DEADZONE) {
 		keys |= 1 << GUI_INPUT_RIGHT;
 	}
-	if (y < -0x20 || w_y <- 0x20) {
+	if (y < -ANALOG_DEADZONE || w_y < -ANALOG_DEADZONE) {
 		keys |= 1 << GUI_INPUT_DOWN;
 	}
-	if (y > 0x20 || w_y > 0x20) {
+	if (y > ANALOG_DEADZONE || w_y > ANALOG_DEADZONE) {
 		keys |= 1 << GUI_INPUT_UP;
 	}
 	return keys;
@@ -656,6 +693,7 @@ void _guiPrepare(void) {
 void _setup(struct mGUIRunner* runner) {
 	runner->core->setPeripheral(runner->core, mPERIPH_ROTATION, &rotation);
 	runner->core->setPeripheral(runner->core, mPERIPH_RUMBLE, &rumble);
+	runner->core->setAVStream(runner->core, &stream);
 
 	_mapKey(&runner->core->inputMap, GCN1_INPUT, PAD_BUTTON_A, GBA_KEY_A);
 	_mapKey(&runner->core->inputMap, GCN1_INPUT, PAD_BUTTON_B, GBA_KEY_B);
@@ -691,10 +729,10 @@ void _setup(struct mGUIRunner* runner) {
 	_mapKey(&runner->core->inputMap, CLASSIC_INPUT, WPAD_CLASSIC_BUTTON_FULL_L, GBA_KEY_L);
 	_mapKey(&runner->core->inputMap, CLASSIC_INPUT, WPAD_CLASSIC_BUTTON_FULL_R, GBA_KEY_R);
 
-	struct mInputAxis desc = { GBA_KEY_RIGHT, GBA_KEY_LEFT, 0x20, -0x20 };
+	struct mInputAxis desc = { GBA_KEY_RIGHT, GBA_KEY_LEFT, ANALOG_DEADZONE, -ANALOG_DEADZONE };
 	mInputBindAxis(&runner->core->inputMap, GCN1_INPUT, 0, &desc);
 	mInputBindAxis(&runner->core->inputMap, CLASSIC_INPUT, 0, &desc);
-	desc = (struct mInputAxis) { GBA_KEY_UP, GBA_KEY_DOWN, 0x20, -0x20 };
+	desc = (struct mInputAxis) { GBA_KEY_UP, GBA_KEY_DOWN, ANALOG_DEADZONE, -ANALOG_DEADZONE };
 	mInputBindAxis(&runner->core->inputMap, GCN1_INPUT, 1, &desc);
 	mInputBindAxis(&runner->core->inputMap, CLASSIC_INPUT, 1, &desc);
 
@@ -774,22 +812,7 @@ void _unpaused(struct mGUIRunner* runner) {
 }
 
 void _drawFrame(struct mGUIRunner* runner, bool faded) {
-	int available = blip_samples_avail(runner->core->getAudioChannel(runner->core, 0));
-	if (available + audioBufferSize > SAMPLES) {
-		available = SAMPLES - audioBufferSize;
-	}
-	available &= ~((32 / sizeof(struct GBAStereoSample)) - 1); // Force align to 32 bytes
-	if (available > 0) {
-		// These appear to be reversed for AUDIO_InitDMA
-		blip_read_samples(runner->core->getAudioChannel(runner->core, 0), &audioBuffer[currentAudioBuffer][audioBufferSize].right, available, true);
-		blip_read_samples(runner->core->getAudioChannel(runner->core, 1), &audioBuffer[currentAudioBuffer][audioBufferSize].left, available, true);
-		audioBufferSize += available;
-	}
-	if (audioBufferSize == SAMPLES && !AUDIO_GetDMAEnableFlag()) {
-		_audioDMA();
-		AUDIO_StartDMA();
-	}
-
+	UNUSED(runner);
 	uint32_t color = 0xFFFFFF3F;
 	if (!faded) {
 		color |= 0xC0;
@@ -977,77 +1000,65 @@ int32_t _readGyroZ(struct mRotationSource* source) {
 }
 
 static s8 WPAD_StickX(u8 chan, u8 right) {
-	float mag = 0.0;
-	float ang = 0.0;
-	WPADData *data = WPAD_Data(chan);
+	struct expansion_t exp;
+	WPAD_Expansion(chan, &exp);
+	struct joystick_t* js = NULL;
 
-	switch (data->exp.type)	{
+	switch (exp.type)	{
 	case WPAD_EXP_NUNCHUK:
 	case WPAD_EXP_GUITARHERO3:
 		if (right == 0) {
-			mag = data->exp.nunchuk.js.mag;
-			ang = data->exp.nunchuk.js.ang;
+			js = &exp.nunchuk.js;
 		}
 		break;
 	case WPAD_EXP_CLASSIC:
 		if (right == 0) {
-			mag = data->exp.classic.ljs.mag;
-			ang = data->exp.classic.ljs.ang;
+			js = &exp.classic.ljs;
 		} else {
-			mag = data->exp.classic.rjs.mag;
-			ang = data->exp.classic.rjs.ang;
+			js = &exp.classic.rjs;
 		}
 		break;
 	default:
 		break;
 	}
 
-	/* calculate X value (angle need to be converted into radian) */
-	if (mag > 1.0) {
-		mag = 1.0;
-	} else if (mag < -1.0) {
-		mag = -1.0;
+	if (!js) {
+		return 0;
 	}
-	double val = mag * sinf(M_PI * ang / 180.0f);
- 
-	return (s8)(val * 128.0f);
+	int centered = (int) js->pos.x - (int) js->center.x;
+	int range = js->max.x - js->min.x;
+	return (centered * 0xFF) / range;
 }
 
 static s8 WPAD_StickY(u8 chan, u8 right) {
-	float mag = 0.0;
-	float ang = 0.0;
-	WPADData *data = WPAD_Data(chan);
+	struct expansion_t exp;
+	WPAD_Expansion(chan, &exp);
+	struct joystick_t* js = NULL;
 
-	switch (data->exp.type) {
+	switch (exp.type)	{
 	case WPAD_EXP_NUNCHUK:
 	case WPAD_EXP_GUITARHERO3:
 		if (right == 0) {
-			mag = data->exp.nunchuk.js.mag;
-			ang = data->exp.nunchuk.js.ang;
+			js = &exp.nunchuk.js;
 		}
 		break;
 	case WPAD_EXP_CLASSIC:
 		if (right == 0) {
-			mag = data->exp.classic.ljs.mag;
-			ang = data->exp.classic.ljs.ang;
+			js = &exp.classic.ljs;
 		} else {
-			mag = data->exp.classic.rjs.mag;
-			ang = data->exp.classic.rjs.ang;
+			js = &exp.classic.rjs;
 		}
 		break;
 	default:
 		break;
 	}
 
-	/* calculate X value (angle need to be converted into radian) */
-	if (mag > 1.0) { 
-		mag = 1.0;
-	} else if (mag < -1.0) {
-		mag = -1.0;
+	if (!js) {
+		return 0;
 	}
-	double val = mag * cosf(M_PI * ang / 180.0f);
- 
-	return (s8)(val * 128.0f);
+	int centered = (int) js->pos.y - (int) js->center.y;
+	int range = js->max.y - js->min.y;
+	return (centered * 0xFF) / range;
 }
 
 void _retraceCallback(u32 count) {

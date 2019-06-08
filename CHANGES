@@ -1,27 +1,114 @@
-0.6.4 (Future):
+0.7.0: (Future)
+Features:
+ - ELF support
+ - Game Boy Camera support
+ - Qt: Set default Game Boy colors
+ - Game Boy Printer support
+ - Super Game Boy support
+ - Customizable autofire speed
+ - Ability to set default Game Boy model
+ - Map viewer
+ - Automatic cheat loading and saving
+ - GameShark and Action Replay button support
+ - AGBPrint support
+ - Debugger: Conditional breakpoints and watchpoints
+ - Ability to select GB/GBC/SGB BIOS on console ports
+ - Optional automatic state saving/loading
+ - Access to ur0 and uma0 partitions on the Vita
+ - Partial support for MBC6, MMM01, TAMA and HuC-1 GB mappers
+ - GBA: ARMIPS/A22i-style and ELF symbol table support
+ - Initial Switch port
 Bugfixes:
- - GBA Video: Mark OAM dirty on reset (fixes mgba.io/i/1062)
+ - GB Audio: Make audio unsigned with bias (fixes mgba.io/i/749)
+ - GB Serialize: Fix audio state loading
+ - GB Video: Fix dot clock timing being slightly wrong
+ - Qt: Fix GL display when loading a game from CLI (fixes mgba.io/i/843)
+ - ARM: Fix MSR when T bit is set
+ - GB Serialize: Fix game title check
+ - GB: Revamp IRQ handling based on new information
+ - GBA Video: Don't mask out high bits of BLDY (fixes mgba.io/i/899)
+ - GB Video: Fix loading states while in mode 3
+ - GBA DMA: Fix invalid DMA reads (fixes mgba.io/i/142)
+ - GBA Video: Add delay when enabling BGs (fixes mgba.io/i/744, mgba.io/i/752)
+ - GB Timer: Minor accuracy improvements
+ - GB Audio: Clock frame events on DIV
+ - GBA Timer: Fix timers sometimes being late (fixes mgba.io/i/1012)
  - GBA Hardware: Fix RTC overriding light sensor (fixes mgba.io/i/1069)
  - GBA Savedata: Fix savedata modified time updating when read-only
  - GB Video: Fix enabling window when LY > WY (fixes mgba.io/i/409)
- - PowerPC: Fix several potential crashes (fixes mgba.io/i/1089)
- - Qt: Fix build with Qt 5.11 (fixes mgba.io/i/1094)
+ - GBA Video: Start timing mid-scanline when skipping BIOS
+ - Core: Fix audio sync breaking when interrupted
+ - Qt: Improve FPS timer stability
  - GBA Serialize: Fix loading channel 3 volume (fixes mgba.io/i/1107)
+ - GBA SIO: Fix unconnected SIOCNT for multi mode (fixes mgba.io/i/1105)
  - GBA BIOS: Fix BitUnPack final byte
  - GB I/O: DMA register is R/W
+ - GB Video: Fix SCX timing
  - GBA Video: Improve sprite cycle counting (fixes mgba.io/i/1126)
+ - GB, GBA Savedata: Fix savestate loading overwriting saves on reset
+ - GBA Video: Make layer disabling work consistently
+ - GB: Fix IRQ disabling on the same T-cycle as an assert
+ - Core: Fix ordering events when scheduling during events
  - GBA: Reset WAITCNT properly
  - GBA Serialize: Fix loading states in Hblank
+ - PSP2: Fix more issues causing poor audio
+ - GBA Memory: Fix Vast Fame support (taizou) (fixes mgba.io/i/1170)
+ - GB, GBA Savedata: Fix unmasking savedata crash
+ - GBA DMA: Fix temporal sorting of DMAs of different priorities
+ - FFmpeg: Fix encoding audio/video queue issues
+ - GB Serialize: Fix IRQ pending/EI pending confusion
+ - GB MBC: Improve multicart detection heuristic (fixes mgba.io/i/1177)
+ - GB Audio: Fix channel 3 reset value
+ - GB Audio: Fix channel 4 initial LFSR
+ - GB, GBA Video: Don't call finishFrame twice in thread proxy
+ - GB Audio: Fix channel 1, 2 and 4 reset timing
+ - Util: Fix wrapping edge cases in RingFIFO
 Misc:
+ - GBA Timer: Use global cycles for timers
+ - GBA: Extend oddly-sized ROMs to full address space (fixes mgba.io/i/722)
+ - All: Make FIXED_ROM_BUFFER an option instead of 3DS-only
+ - Qt: Redo GameController into multiple classes
+ - Test: Restructure test suite into multiple executables
+ - Python: Integrate tests from cinema test suite
+ - Util: Don't build crc32 if the function already exists
+ - GBA: Implement display start DMAs
+ - Qt: Prevent window from being created off-screen
+ - Qt: Add option to disable FPS display
+ - GBA: Improve multiboot image detection
+ - GB MBC: Remove erroneous bank 0 wrapping
+ - GBA Cheats: Allow multiple ROM patches in the same slot
+ - GB: Skip BIOS option now works
+ - Libretro: Add frameskip option
+ - GBA Memory: 64 MiB GBA Video cartridge support
+ - PSP2: Use system enter key by default
+ - 3DS: Remove deprecated CSND interface
+ - Qt: Options to mess around with layer placement
+ - GBA Savedata: Remove ability to disable realistic timing
+ - Qt: Add load alternate save option
+ - GB Audio: Improved audio quality
+ - GB, GBA Audio: Increase max audio volume
+ - GB: Fix VRAM/palette locking (fixes mgba.io/i/1109)
+ - GB Video: Darken colors in GBA mode
  - FFmpeg: Support libswresample (fixes mgba.io/i/1120, mgba.io/b/123)
+ - FFmpeg: Support lossless h.264 encoding
+ - Feature: Added loading savestates from command line
+ - Qt: Allow pausing game at load (fixes mgba.io/i/1129)
+ - Wii: Move audio handling to callbacks (fixes mgba.io/i/803)
+ - Qt: Clean up FPS target UI (fixes mgba.io/i/436)
+ - Core: Remove broken option for whether rewinding restores save games
+ - FFmpeg: Support lossless VP9 encoding
+ - mGUI: Add fast forward toggle
 
-0.6.3: (2017-04-14)
+0.6 beta 1: (2018-09-24)
+- Initial beta for 0.6
+
+0.6.3: (2018-04-14)
 Bugfixes:
  - GB Audio: Revert unsigned audio changes
  - GB Video: Fix bad merge (fixes mgba.io/i/1040)
  - GBA Video: Fix OBJ blending regression (fixes mgba.io/i/1037)
 
-0.6.2: (2017-04-03)
+0.6.2: (2018-04-03)
 Bugfixes:
  - Core: Fix ROM patches not being unloaded when disabled (fixes mgba.io/i/962)
  - 3DS: Fix opening files in directory names with trailing slashes
@@ -89,7 +176,6 @@ Bugfixes:
  - Qt: Fix timezone issues with time overrides
  - Qt: Fix sprite export pausing game indefinitely (fixes mgba.io/i/841)
  - SDL: Fix potential race condition when pressing keys (fixes mgba.io/i/872)
- - GB Audio: Make audio unsigned with bias (fixes mgba.io/i/749)
 Misc:
  - CMake: Fix CPack dependencies for libpng 1.6
  - GBA: Detect hardware for Pokémon FireRed ROM hacks
@@ -125,7 +211,6 @@ Features:
  - Video log recording for testing and bug reporting
  - Debugger: Segment/bank support
  - Debugger: Execution tracing
- - Partial Python scripting support
  - Qt: German translation (by Lothar Serra Mari)
  - Qt: Spanish translation (by Kevin López)
  - Qt: Italian translation (by theheroGAC)
@@ -161,6 +246,8 @@ Bugfixes:
  - LR35902: Fix decoding LD r, $imm and 0-valued immediates (fixes mgba.io/i/735)
  - OpenGL: Fix some shaders causing offset graphics
  - GB Timer: Fix sub-M-cycle DIV reset timing and edge triggering
+ - Qt: Fix window icon being stretched
+ - Qt: Fix data directory path
  - Qt: Fix timing issues on high refresh rate monitors
  - Qt: Fix linking after some windows have been closed
  - Qt: Fix crash when changing audio settings after a game is closed
@@ -256,7 +343,6 @@ Features:
  - Qt: Italian translation (by theheroGAC)
  - Qt: Updated German translation
 Bugfixes:
- - Core: Fix rewinding getting out of sync (fixes mgba.io/i/791)
  - GB Audio: Fix incorrect channel 4 iteration
  - GB Audio: Fix zombie mode bit masking
  - GB Serialize: Fix timer serialization
@@ -272,6 +358,7 @@ Bugfixes:
  - Qt: Fix translation initialization (fixes mgba.io/i/776)
  - Qt: Fix patch loading while a game is running
  - Qt: Fix shader selector on Ubuntu (fixes mgba.io/i/767)
+ - Core: Fix rewinding getting out of sync (fixes mgba.io/i/791)
  - Qt: Fix GL-less build
  - Qt: Fix Software renderer not handling alpha bits properly
  - Qt: Fix screen background improperly stretching
@@ -282,7 +369,7 @@ Misc:
  - GBA Timer: Improve accuracy of timers
  - PSP2: Update toolchain to use vita.cmake
  - Qt: Add language selector
- - Qt: Minor text fixes
+ - Qt: Minor test fixes
  - Qt: Move shader settings into main settings window
  - Qt: Dismiss game crashing/failing dialogs when a new game loads
  - Qt: Properly ship Qt translations

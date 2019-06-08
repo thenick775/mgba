@@ -5,59 +5,80 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "GDBController.h"
 
-#include "GameController.h"
+#include "CoreController.h"
 
 using namespace QGBA;
 
-DebuggerController::DebuggerController(GameController* controller, mDebugger* debugger, QObject* parent)
+DebuggerController::DebuggerController(mDebugger* debugger, QObject* parent)
 	: QObject(parent)
 	, m_debugger(debugger)
-	, m_gameController(controller)
 {
 }
 
 bool DebuggerController::isAttached() {
+	if (!m_gameController) {
+		return false;
+	}
 	return m_gameController->debugger() == m_debugger;
+}
+
+void DebuggerController::setController(std::shared_ptr<CoreController> controller) {
+	if (m_gameController && controller != m_gameController) {
+		m_gameController->disconnect(this);
+		detach();
+	}
+	m_gameController = controller;
+	if (controller) {
+		connect(m_gameController.get(), &CoreController::stopping, [this]() {
+			setController(nullptr);
+		});
+		if (m_autoattach) {
+			m_autoattach = false;
+			attach();
+		}
+	}
 }
 
 void DebuggerController::attach() {
 	if (isAttached()) {
 		return;
 	}
-	if (m_gameController->isLoaded()) {
+	if (m_gameController) {
 		attachInternal();
 		m_gameController->setDebugger(m_debugger);
 		mDebuggerEnter(m_debugger, DEBUGGER_ENTER_ATTACHED, 0);
 	} else {
-		QObject::disconnect(m_autoattach);
-		m_autoattach = connect(m_gameController, &GameController::gameStarted, this, &DebuggerController::attach);
+		m_autoattach = true;
 	}
 }
 
 void DebuggerController::detach() {
-	QObject::disconnect(m_autoattach);
 	if (!isAttached()) {
 		return;
 	}
-	GameController::Interrupter interrupter(m_gameController);
-	shutdownInternal();
-	m_gameController->setDebugger(nullptr);
+	if (m_gameController) {
+		CoreController::Interrupter interrupter(m_gameController);
+		shutdownInternal();
+		m_gameController->setDebugger(nullptr);
+	} else {
+		m_autoattach = false;
+	}
 }
 
 void DebuggerController::breakInto() {
 	if (!isAttached()) {
 		return;
 	}
-	GameController::Interrupter interrupter(m_gameController);
+	CoreController::Interrupter interrupter(m_gameController);
 	mDebuggerEnter(m_debugger, DEBUGGER_ENTER_MANUAL, 0);
 }
 
 void DebuggerController::shutdown() {
-	QObject::disconnect(m_autoattach);
+	m_autoattach = false;
 	if (!isAttached()) {
 		return;
 	}
-	GameController::Interrupter interrupter(m_gameController);
+	CoreController::Interrupter interrupter(m_gameController);
 	shutdownInternal();
 }
 

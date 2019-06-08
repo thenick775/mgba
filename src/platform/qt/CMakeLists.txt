@@ -1,6 +1,6 @@
-if(NOT MSVC)
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-endif()
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(PLATFORM_SRC)
 set(QT_STATIC OFF)
@@ -72,13 +72,15 @@ set(SOURCE_FILES
 	CheatsModel.cpp
 	CheatsView.cpp
 	ConfigController.cpp
+	ColorPicker.cpp
+	CoreManager.cpp
+	CoreController.cpp
 	Display.cpp
 	DisplayGL.cpp
 	DisplayQt.cpp
 	GBAApp.cpp
 	GBAKeyEditor.cpp
 	GIFView.cpp
-	GameController.cpp
 	GamepadAxisEvent.cpp
 	GamepadButtonEvent.cpp
 	GamepadHatEvent.cpp
@@ -89,6 +91,7 @@ set(SOURCE_FILES
 	LoadSaveState.cpp
 	LogController.cpp
 	LogView.cpp
+	MapView.cpp
 	MemoryModel.cpp
 	MemorySearch.cpp
 	MemoryView.cpp
@@ -97,6 +100,9 @@ set(SOURCE_FILES
 	ObjView.cpp
 	OverrideView.cpp
 	PaletteView.cpp
+	PlacementControl.cpp
+	PrinterView.cpp
+	RegisterView.cpp
 	ROMInfo.cpp
 	SavestateButton.cpp
 	SensorView.cpp
@@ -122,11 +128,14 @@ set(UI_FILES
 	IOViewer.ui
 	LoadSaveState.ui
 	LogView.ui
+	MapView.ui
 	MemorySearch.ui
 	MemoryView.ui
 	ObjView.ui
 	OverrideView.ui
 	PaletteView.ui
+	PlacementControl.ui
+	PrinterView.ui
 	ROMInfo.ui
 	SensorView.ui
 	SettingsView.ui
@@ -162,8 +171,11 @@ if(Qt5Multimedia_FOUND)
 	list(APPEND AUDIO_SRC
 		AudioProcessorQt.cpp
 		AudioDevice.cpp)
+	list(APPEND SOURCE_FILES
+		VideoDumper.cpp)
 	if (WIN32 AND QT_STATIC)
-		list(APPEND QT_LIBRARIES qtaudio_windows strmiids)
+		list(APPEND QT_LIBRARIES Qt5::QWindowsAudioPlugin Qt5::DSServicePlugin
+                                 strmiids mfuuid mfplat mf ksguid dxva2 evr d3d9)
 	endif()
 	list(APPEND QT_LIBRARIES Qt5::Multimedia)
 	list(APPEND QT_DEFINES BUILD_QT_MULTIMEDIA)
@@ -257,7 +269,7 @@ endif()
 qt5_wrap_ui(UI_SRC ${UI_FILES})
 
 add_executable(${BINARY_NAME}-qt WIN32 MACOSX_BUNDLE main.cpp ${CMAKE_SOURCE_DIR}/res/mgba.icns ${SOURCE_FILES} ${PLATFORM_SRC} ${UI_SRC} ${AUDIO_SRC} ${RESOURCES})
-set_target_properties(${BINARY_NAME}-qt PROPERTIES MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/res/info.plist.in COMPILE_DEFINITIONS "${FEATURE_DEFINES};${FUNCTION_DEFINES};${OS_DEFINES};${QT_DEFINES}")
+set_target_properties(${BINARY_NAME}-qt PROPERTIES MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/res/info.plist.in COMPILE_DEFINITIONS "${FEATURE_DEFINES};${FUNCTION_DEFINES};${OS_DEFINES};${QT_DEFINES}" COMPILE_OPTIONS "${FEATURE_FLAGS}")
 
 list(APPEND QT_LIBRARIES Qt5::Widgets)
 if(BUILD_GL OR BUILD_GLES2)
@@ -301,10 +313,12 @@ if(APPLE)
 	if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
 		get_target_property(QTCOCOA Qt5::QCocoaIntegrationPlugin LOCATION)
 		get_target_property(COREAUDIO Qt5::CoreAudioPlugin LOCATION)
+		get_target_property(QTAVFSERVICE Qt5::AVFServicePlugin LOCATION)
 		set(BUNDLE_PATH ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.app)
 		target_sources(${BINARY_NAME}-qt PRIVATE "${PLUGINS}")
 		set_source_files_properties("${QTCOCOA}" PROPERTIES MACOSX_PACKAGE_LOCATION Contents/PlugIns)
 		set_source_files_properties("${COREAUDIO}" PROPERTIES MACOSX_PACKAGE_LOCATION Contents/PlugIns)
+		set_source_files_properties("${QTAVFSERVICE}" PROPERTIES MACOSX_PACKAGE_LOCATION Contents/PlugIns)
 		install(CODE "
 		   include(BundleUtilities)
 		   set(BU_CHMOD_BUNDLE_ITEMS ON)
@@ -312,7 +326,7 @@ if(APPLE)
 		   fixup_bundle(\"${BUNDLE_PATH}\"   \"${PLUGINS}\"   \"\")
 		   " COMPONENT ${BINARY_NAME}-qt)
 	else()
-		set(DEPLOY_OPTIONS -p platforms/libqcocoa.dylib,audio/libqtaudio_coreaudio.dylib)
+		set(DEPLOY_OPTIONS -p platforms/libqcocoa.dylib,audio/libqtaudio_coreaudio.dylib,mediaservice/libqavfcamera.dylib)
 		if(NOT CMAKE_INSTALL_NAME_TOOL EQUAL "install_name_tool")
 			set(DEPLOY_OPTIONS ${DEPLOY_OPTIONS} -I "${CMAKE_INSTALL_NAME_TOOL}")
 		endif()
@@ -332,5 +346,13 @@ elseif(WIN32)
 	if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
 		find_program(BASH bash)
 		install(CODE "execute_process(COMMAND \"${BASH}\" \"${CMAKE_SOURCE_DIR}/tools/deploy-win.sh\" \"${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.exe\" \"\${CMAKE_INSTALL_PREFIX}\" \"\$ENV{PWD}\" WORKING_DIRECTORY \"${CMAKE_BINARY_DIR}\")" COMPONENT ${BINARY_NAME}-qt)
+	endif()
+endif()
+
+if(DISTBUILD AND CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+	if(NOT APPLE)
+		add_custom_command(TARGET ${BINARY_NAME}-qt POST_BUILD COMMAND "${OBJCOPY}" --only-keep-debug "$<TARGET_FILE:${BINARY_NAME}-qt>" "$<TARGET_FILE:${BINARY_NAME}-qt>.dSYM")
+		add_custom_command(TARGET ${BINARY_NAME}-qt POST_BUILD COMMAND "${STRIP}" -S "$<TARGET_FILE:${BINARY_NAME}-qt>")
+		install(FILES "$<TARGET_FILE:${BINARY_NAME}-qt>.dSYM" DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT ${BINARY_NAME}-qt-dbg)
 	endif()
 endif()

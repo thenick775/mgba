@@ -258,6 +258,9 @@ void mVideoLoggerRendererFlush(struct mVideoLogger* logger) {
 		0xDEADBEEF,
 	};
 	logger->writeData(logger, &dirty, sizeof(dirty));
+	if (logger->wait) {
+		logger->wait(logger);
+	}
 }
 
 void mVideoLoggerRendererFinishFrame(struct mVideoLogger* logger) {
@@ -682,13 +685,33 @@ void mVideoLogContextDestroy(struct mCore* core, struct mVideoLogContext* contex
 	if (context->initialState) {
 		mappedMemoryFree(context->initialState, context->initialStateSize);
 	}
+
+	size_t i;
+	for (i = 0; i < context->nChannels; ++i) {
+		CircleBufferDeinit(&context->channels[i].buffer);
+#ifdef USE_ZLIB
+		if (context->channels[i].inflating) {
+			inflateEnd(&context->channels[i].inflateStream);
+			context->channels[i].inflating = false;
+		}
+#endif
+	}
+
 	free(context);
 }
 
 void mVideoLogContextRewind(struct mVideoLogContext* context, struct mCore* core) {
 	_readHeader(context);
-	if (core && core->stateSize(core) == context->initialStateSize) {
-		core->loadState(core, context->initialState);
+	if (core) {
+		size_t size = core->stateSize(core);
+		if (size <= context->initialStateSize) {
+			core->loadState(core, context->initialState);
+		} else {
+			void* extendedState = anonymousMemoryMap(size);
+			memcpy(extendedState, context->initialState, context->initialStateSize);
+			core->loadState(core, extendedState);
+			mappedMemoryFree(extendedState, size);
+		}
 	}
 
 	off_t pointer = context->backing->seek(context->backing, 0, SEEK_CUR);

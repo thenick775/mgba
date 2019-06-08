@@ -29,16 +29,6 @@ void AbstractGameList::removeEntries(QList<LibraryEntryRef> items) {
 	}
 }
 
-LibraryLoaderThread::LibraryLoaderThread(QObject* parent)
-	: QThread(parent)
-{
-}
-
-void LibraryLoaderThread::run() {
-	mLibraryLoadDirectory(m_library, m_directory.toUtf8().constData());
-	m_directory = QString();
-}
-
 LibraryController::LibraryController(QWidget* parent, const QString& path, ConfigController* config)
 	: QStackedWidget(parent)
 	, m_config(config)
@@ -47,21 +37,19 @@ LibraryController::LibraryController(QWidget* parent, const QString& path, Confi
 
 	if (!path.isNull()) {
 		// This can return NULL if the library is already open
-		m_library = mLibraryLoad(path.toUtf8().constData());
+		m_library = std::shared_ptr<mLibrary>(mLibraryLoad(path.toUtf8().constData()), mLibraryDestroy);
 	}
 	if (!m_library) {
-		m_library = mLibraryCreateEmpty();
+		m_library = std::shared_ptr<mLibrary>(mLibraryCreateEmpty(), mLibraryDestroy);
 	}
 
-	mLibraryAttachGameDB(m_library, GBAApp::app()->gameDB());
+	mLibraryAttachGameDB(m_library.get(), GBAApp::app()->gameDB());
 
-	m_libraryTree = new LibraryTree(this);
+	m_libraryTree = std::make_unique<LibraryTree>(this);
 	addWidget(m_libraryTree->widget());
 
-	m_libraryGrid = new LibraryGrid(this);
+	m_libraryGrid = std::make_unique<LibraryGrid>(this);
 	addWidget(m_libraryGrid->widget());
-
-	connect(&m_loaderThread, &QThread::finished, this, &LibraryController::refresh, Qt::QueuedConnection);
 
 	setViewStyle(LibraryStyle::STYLE_LIST);
 	refresh();
@@ -69,17 +57,6 @@ LibraryController::LibraryController(QWidget* parent, const QString& path, Confi
 
 LibraryController::~LibraryController() {
 	mLibraryListingDeinit(&m_listing);
-
-	if (m_loaderThread.isRunning()) {
-		m_loaderThread.wait();
-	}
-	if (!m_loaderThread.isRunning() && m_loaderThread.m_library) {
-		m_library = m_loaderThread.m_library;
-		m_loaderThread.m_library = nullptr;
-	}
-	if (m_library) {
-		mLibraryDestroy(m_library);
-	}
 }
 
 void LibraryController::setViewStyle(LibraryStyle newStyle) {
@@ -90,9 +67,9 @@ void LibraryController::setViewStyle(LibraryStyle newStyle) {
 
 	AbstractGameList* newCurrentList = nullptr;
 	if (newStyle == LibraryStyle::STYLE_LIST || newStyle == LibraryStyle::STYLE_TREE) {
-		newCurrentList = m_libraryTree;
+		newCurrentList = m_libraryTree.get();
 	} else {
-		newCurrentList = m_libraryGrid;
+		newCurrentList = m_libraryGrid.get();
 	}
 	newCurrentList->selectEntry(selectedEntry());
 	newCurrentList->setViewStyle(newStyle);
@@ -117,7 +94,7 @@ LibraryEntryRef LibraryController::selectedEntry() {
 VFile* LibraryController::selectedVFile() {
 	LibraryEntryRef entry = selectedEntry();
 	if (entry) {
-		return mLibraryOpenVFile(m_library, entry->entry);
+		return mLibraryOpenVFile(m_library.get(), entry->entry);
 	} else {
 		return nullptr;
 	}
@@ -129,35 +106,26 @@ QPair<QString, QString> LibraryController::selectedPath() {
 }
 
 void LibraryController::addDirectory(const QString& dir) {
-	m_loaderThread.m_directory = dir;
-	m_loaderThread.m_library = m_library;
-	// The m_loaderThread temporarily owns the library
-	m_library = nullptr;
-	m_loaderThread.start();
+	// The worker thread temporarily owns the library
+	std::shared_ptr<mLibrary> library = m_library;
+	m_libraryJob = GBAApp::app()->submitWorkerJob(std::bind(&LibraryController::loadDirectory, this, dir), this, [this, library]() {
+		m_libraryJob = -1;
+		refresh();
+	});
 }
 
 void LibraryController::clear() {
-	if (!m_library) {
-		if (!m_loaderThread.isRunning() && m_loaderThread.m_library) {
-			m_library = m_loaderThread.m_library;
-			m_loaderThread.m_library = nullptr;
-		} else {
-			return;
-		}
+	if (m_libraryJob > 0) {
+		return;
 	}
 
-	mLibraryClear(m_library);
+	mLibraryClear(m_library.get());
 	refresh();
 }
 
 void LibraryController::refresh() {
-	if (!m_library) {
-		if (!m_loaderThread.isRunning() && m_loaderThread.m_library) {
-			m_library = m_loaderThread.m_library;
-			m_loaderThread.m_library = nullptr;
-		} else {
-			return;
-		}
+	if (m_libraryJob > 0) {
+		return;
 	}
 
 	setDisabled(true);
@@ -166,7 +134,7 @@ void LibraryController::refresh() {
 	QList<LibraryEntryRef> newEntries;
 
 	mLibraryListingClear(&m_listing);
-	mLibraryGetEntries(m_library, &m_listing, 0, 0, nullptr);
+	mLibraryGetEntries(m_library.get(), &m_listing, 0, 0, nullptr);
 	for (size_t i = 0; i < mLibraryListingSize(&m_listing); i++) {
 		mLibraryEntry* entry = mLibraryListingGetPointer(&m_listing, i);
 		QString fullpath = QString("%1/%2").arg(entry->base, entry->filename);
@@ -208,6 +176,12 @@ void LibraryController::selectLastBootedGame() {
 	if (m_entries.contains(lastfile)) {
 		selectEntry(m_entries.value(lastfile));
 	}
+}
+
+void LibraryController::loadDirectory(const QString& dir) {
+	// This class can get delted during this function (sigh) so we need to hold onto this
+	std::shared_ptr<mLibrary> library = m_library;
+	mLibraryLoadDirectory(library.get(), dir.toUtf8().constData());
 }
 
 }

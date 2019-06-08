@@ -10,12 +10,29 @@
 #include "feature/gui/gui-runner.h"
 #include "feature/gui/remap.h"
 #include <mgba/internal/gba/gba.h>
+#ifdef M_CORE_GB
+#include <mgba/internal/gb/gb.h>
+#endif
 #include <mgba-util/gui/file-select.h>
 #include <mgba-util/gui/menu.h>
+#include <mgba-util/vfs.h>
 
 #ifndef GUI_MAX_INPUTS
 #define GUI_MAX_INPUTS 7
 #endif
+
+static bool _biosNamed(const char* name) {
+	char ext[PATH_MAX + 1] = {};
+	separatePath(name, NULL, NULL, ext);
+
+	if (strstr(name, "bios")) {
+		return true;
+	}
+	if (!strncmp(ext, "bin", PATH_MAX)) {
+		return true;
+	}
+	return false;
+}
 
 void mGUIShowConfig(struct mGUIRunner* runner, struct GUIMenuItem* extra, size_t nExtra) {
 	struct GUIMenu menu = {
@@ -45,6 +62,26 @@ void mGUIShowConfig(struct mGUIRunner* runner, struct GUIMenuItem* extra, size_t
 		.nStates = 2
 	};
 	*GUIMenuItemListAppend(&menu.items) = (struct GUIMenuItem) {
+		.title = "Autosave state",
+		.data = "autosave",
+		.submenu = 0,
+		.state = true,
+		.validStates = (const char*[]) {
+			"Off", "On"
+		},
+		.nStates = 2
+	};
+	*GUIMenuItemListAppend(&menu.items) = (struct GUIMenuItem) {
+		.title = "Autoload state",
+		.data = "autoload",
+		.submenu = 0,
+		.state = true,
+		.validStates = (const char*[]) {
+			"Off", "On"
+		},
+		.nStates = 2
+	};
+	*GUIMenuItemListAppend(&menu.items) = (struct GUIMenuItem) {
 		.title = "Use BIOS if found",
 		.data = "useBios",
 		.submenu = 0,
@@ -55,9 +92,23 @@ void mGUIShowConfig(struct mGUIRunner* runner, struct GUIMenuItem* extra, size_t
 		.nStates = 2
 	};
 	*GUIMenuItemListAppend(&menu.items) = (struct GUIMenuItem) {
-		.title = "Select BIOS path",
-		.data = "bios",
+		.title = "Select GBA BIOS path",
+		.data = "gba.bios",
 	};
+#ifdef M_CORE_GB
+	*GUIMenuItemListAppend(&menu.items) = (struct GUIMenuItem) {
+		.title = "Select GB BIOS path",
+		.data = "gb.bios",
+	};
+	*GUIMenuItemListAppend(&menu.items) = (struct GUIMenuItem) {
+		.title = "Select GBC BIOS path",
+		.data = "gbc.bios",
+	};
+	*GUIMenuItemListAppend(&menu.items) = (struct GUIMenuItem) {
+		.title = "Select SGB BIOS path",
+		.data = "sgb.bios",
+	};
+#endif
 	size_t i;
 	const char* mapNames[GUI_MAX_INPUTS + 1];
 	if (runner->keySources) {
@@ -88,7 +139,12 @@ void mGUIShowConfig(struct mGUIRunner* runner, struct GUIMenuItem* extra, size_t
 		.data = 0,
 	};
 	enum GUIMenuExitReason reason;
-	char biosPath[256] = "";
+	char gbaBiosPath[256] = "";
+#ifdef M_CORE_GB
+	char gbBiosPath[256] = "";
+	char gbcBiosPath[256] = "";
+	char sgbBiosPath[256] = "";
+#endif
 
 	struct GUIMenuItem* item;
 	for (i = 0; i < GUIMenuItemListSize(&menu.items); ++i) {
@@ -105,8 +161,17 @@ void mGUIShowConfig(struct mGUIRunner* runner, struct GUIMenuItem* extra, size_t
 			break;
 		}
 		if (!strcmp(item->data, "*SAVE")) {
-			if (biosPath[0]) {
-				mCoreConfigSetValue(&runner->config, "bios", biosPath);
+			if (gbaBiosPath[0]) {
+				mCoreConfigSetValue(&runner->config, "gba.bios", gbaBiosPath);
+			}
+			if (gbBiosPath[0]) {
+				mCoreConfigSetValue(&runner->config, "gb.bios", gbBiosPath);
+			}
+			if (gbcBiosPath[0]) {
+				mCoreConfigSetValue(&runner->config, "gbc.bios", gbcBiosPath);
+			}
+			if (sgbBiosPath[0]) {
+				mCoreConfigSetValue(&runner->config, "sgb.bios", sgbBiosPath);
 			}
 			for (i = 0; i < GUIMenuItemListSize(&menu.items); ++i) {
 				item = GUIMenuItemListGetPointer(&menu.items, i);
@@ -130,13 +195,36 @@ void mGUIShowConfig(struct mGUIRunner* runner, struct GUIMenuItem* extra, size_t
 			mGUIRemapKeys(&runner->params, &runner->core->inputMap, &runner->keySources[item->state]);
 			continue;
 		}
-		if (!strcmp(item->data, "bios")) {
+		if (!strcmp(item->data, "gba.bios")) {
 			// TODO: show box if failed
-			if (!GUISelectFile(&runner->params, biosPath, sizeof(biosPath), GBAIsBIOS)) {
-				biosPath[0] = '\0';
+			if (!GUISelectFile(&runner->params, gbaBiosPath, sizeof(gbaBiosPath), _biosNamed, GBAIsBIOS)) {
+				gbaBiosPath[0] = '\0';
 			}
 			continue;
 		}
+#ifdef M_CORE_GB
+		if (!strcmp(item->data, "gb.bios")) {
+			// TODO: show box if failed
+			if (!GUISelectFile(&runner->params, gbBiosPath, sizeof(gbBiosPath), _biosNamed, GBIsBIOS)) {
+				gbBiosPath[0] = '\0';
+			}
+			continue;
+		}
+		if (!strcmp(item->data, "gbc.bios")) {
+			// TODO: show box if failed
+			if (!GUISelectFile(&runner->params, gbcBiosPath, sizeof(gbcBiosPath), _biosNamed, GBIsBIOS)) {
+				gbcBiosPath[0] = '\0';
+			}
+			continue;
+		}
+		if (!strcmp(item->data, "sgb.bios")) {
+			// TODO: show box if failed
+			if (!GUISelectFile(&runner->params, sgbBiosPath, sizeof(sgbBiosPath), _biosNamed, GBIsBIOS)) {
+				sgbBiosPath[0] = '\0';
+			}
+			continue;
+		}
+#endif
 		if (item->validStates) {
 			++item->state;
 			if (item->state >= item->nStates) {

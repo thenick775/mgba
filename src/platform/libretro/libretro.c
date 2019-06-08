@@ -11,10 +11,12 @@
 #include <mgba/core/cheats.h>
 #include <mgba/core/core.h>
 #include <mgba/core/log.h>
+#include <mgba/core/serialize.h>
 #include <mgba/core/version.h>
 #ifdef M_CORE_GB
 #include <mgba/gb/core.h>
 #include <mgba/internal/gb/gb.h>
+#include <mgba/internal/gb/mbc.h>
 #endif
 #ifdef M_CORE_GBA
 #include <mgba/gba/core.h>
@@ -42,6 +44,10 @@ static void _postAudioBuffer(struct mAVStream*, blip_t* left, blip_t* right);
 static void _setRumble(struct mRumble* rumble, int enable);
 static uint8_t _readLux(struct GBALuminanceSource* lux);
 static void _updateLux(struct GBALuminanceSource* lux);
+static void _updateCamera(const uint32_t* buffer, unsigned width, unsigned height, size_t pitch);
+static void _startImage(struct mImageSource*, unsigned w, unsigned h, int colorFormats);
+static void _stopImage(struct mImageSource*);
+static void _requestImage(struct mImageSource*, const void** buffer, size_t* stride, enum mColorFormat* colorFormat);
 
 static struct mCore* core;
 static void* outputBuffer;
@@ -55,6 +61,14 @@ static struct mRumble rumble;
 static struct GBALuminanceSource lux;
 static int luxLevel;
 static struct mLogger logger;
+static struct retro_camera_callback cam;
+static struct mImageSource imageSource;
+static uint32_t* camData = NULL;
+static unsigned camWidth;
+static unsigned camHeight;
+static unsigned imcapWidth;
+static unsigned imcapHeight;
+static size_t camStride;
 
 static void _reloadSettings(void) {
 	struct mCoreOptions opts = {
@@ -63,6 +77,29 @@ static void _reloadSettings(void) {
 	};
 
 	struct retro_variable var;
+	enum GBModel model;
+	const char* modelName;
+
+	var.key = "mgba_gb_model";
+	var.value = 0;
+	if (environCallback(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
+		if (strcmp(var.value, "Game Boy") == 0) {
+			model = GB_MODEL_DMG;
+		} else if (strcmp(var.value, "Super Game Boy") == 0) {
+			model = GB_MODEL_SGB;
+		} else if (strcmp(var.value, "Game Boy Color") == 0) {
+			model = GB_MODEL_CGB;
+		} else if (strcmp(var.value, "Game Boy Advance") == 0) {
+			model = GB_MODEL_AGB;
+		} else {
+			model = GB_MODEL_AUTODETECT;
+		}
+
+		modelName = GBModelToName(model);
+		mCoreConfigSetDefaultValue(&core->config, "gb.model", modelName);
+		mCoreConfigSetDefaultValue(&core->config, "sgb.model", modelName);
+		mCoreConfigSetDefaultValue(&core->config, "cgb.model", modelName);
+	}
 
 	var.key = "mgba_use_bios";
 	var.value = 0;
@@ -76,6 +113,16 @@ static void _reloadSettings(void) {
 		opts.skipBios = strcmp(var.value, "ON") == 0;
 	}
 
+	var.key = "mgba_sgb_borders";
+	var.value = 0;
+	if (environCallback(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
+		if (strcmp(var.value, "ON") == 0) {
+			mCoreConfigSetDefaultIntValue(&core->config, "sgb.borders", true);
+		} else {
+			mCoreConfigSetDefaultIntValue(&core->config, "sgb.borders", false);
+		}
+	}
+
 	var.key = "mgba_idle_optimization";
 	var.value = 0;
 	if (environCallback(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
@@ -86,6 +133,13 @@ static void _reloadSettings(void) {
 		} else if (strcmp(var.value, "Detect and Remove") == 0) {
 			mCoreConfigSetDefaultValue(&core->config, "idleOptimization", "detect");
 		}
+	}
+
+	var.key = "mgba_frameskip";
+	var.value = 0;
+	if (environCallback(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
+		opts.frameskip = strtol(var.value, NULL, 10);
+
 	}
 
 	mCoreConfigLoadDefaults(&core->config, &opts);
@@ -102,9 +156,12 @@ void retro_set_environment(retro_environment_t env) {
 	struct retro_variable vars[] = {
 		{ "mgba_solar_sensor_level", "Solar sensor level; 0|1|2|3|4|5|6|7|8|9|10" },
 		{ "mgba_allow_opposing_directions", "Allow opposing directional input; OFF|ON" },
-		{ "mgba_use_bios", "Use BIOS file if found; ON|OFF" },
-		{ "mgba_skip_bios", "Skip BIOS intro; OFF|ON" },
+		{ "mgba_gb_model", "Game Boy model (requires restart); Autodetect|Game Boy|Super Game Boy|Game Boy Color|Game Boy Advance" },
+		{ "mgba_use_bios", "Use BIOS file if found (requires restart); ON|OFF" },
+		{ "mgba_skip_bios", "Skip BIOS intro (requires restart); OFF|ON" },
+		{ "mgba_sgb_borders", "Use Super Game Boy borders (requires restart); ON|OFF" },
 		{ "mgba_idle_optimization", "Idle loop removal; Remove Known|Detect and Remove|Don't Remove" },
+		{ "mgba_frameskip", "Frameskip; 0|1|2|3|4|5|6|7|8|9|10" },
 		{ 0, 0 }
 	};
 
@@ -144,8 +201,17 @@ void retro_get_system_av_info(struct retro_system_av_info* info) {
 	core->desiredVideoDimensions(core, &width, &height);
 	info->geometry.base_width = width;
 	info->geometry.base_height = height;
-	info->geometry.max_width = width;
-	info->geometry.max_height = height;
+#ifdef M_CORE_GB
+	if (core->platform(core) == PLATFORM_GB) {
+		info->geometry.max_width = 256;
+		info->geometry.max_height = 224;
+	} else
+#endif
+	{
+		info->geometry.max_width = width;
+		info->geometry.max_height = height;
+	}
+
 	info->geometry.aspect_ratio = width / (double) height;
 	info->timing.fps = core->frequency(core) / (float) core->frameCycles(core);
 	info->timing.sample_rate = 32768;
@@ -212,6 +278,10 @@ void retro_init(void) {
 	stream.postAudioFrame = 0;
 	stream.postAudioBuffer = _postAudioBuffer;
 	stream.postVideoFrame = 0;
+
+	imageSource.startRequestImage = _startImage;
+	imageSource.stopRequestImage = _stopImage;
+	imageSource.requestImage = _requestImage;
 }
 
 void retro_deinit(void) {
@@ -222,15 +292,21 @@ void retro_run(void) {
 	uint16_t keys;
 	inputPollCallback();
 
-	struct retro_variable var = {
-		.key = "mgba_allow_opposing_directions",
-		.value = 0
-	};
-
 	bool updated = false;
 	if (environCallback(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated) {
+		struct retro_variable var = {
+			.key = "mgba_allow_opposing_directions",
+			.value = 0
+		};
 		if (environCallback(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
 			((struct GBA*) core->board)->allowOpposingDirections = strcmp(var.value, "yes") == 0;
+		}
+
+		var.key = "mgba_frameskip";
+		var.value = 0;
+		if (environCallback(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
+			mCoreConfigSetUIntValue(&core->config, "frameskip", strtol(var.value, NULL, 10));
+			mCoreLoadConfig(core);
 		}
 	}
 
@@ -273,7 +349,7 @@ void retro_run(void) {
 	videoCallback(outputBuffer, width, height, BYTES_PER_PIXEL * 256);
 }
 
-void static _setupMaps(struct mCore* core) {
+static void _setupMaps(struct mCore* core) {
 #ifdef M_CORE_GBA
 	if (core->platform(core) == PLATFORM_GBA) {
 		struct GBA* gba = core->board;
@@ -391,7 +467,9 @@ bool retro_load_game(const struct retro_game_info* game) {
 	core->init(core);
 	core->setAVStream(core, &stream);
 
-	outputBuffer = malloc(256 * VIDEO_VERTICAL_PIXELS * BYTES_PER_PIXEL);
+	size_t size = 256 * 224 * BYTES_PER_PIXEL;
+	outputBuffer = malloc(size);
+	memset(outputBuffer, 0xFF, size);
 	core->setVideoBuffer(core, outputBuffer, 256);
 
 	core->setAudioBufferSize(core, SAMPLES);
@@ -408,21 +486,61 @@ bool retro_load_game(const struct retro_game_info* game) {
 	core->loadROM(core, rom);
 	core->loadSave(core, save);
 
+	const char* sysDir = 0;
+	const char* biosName = 0;
+	char biosPath[PATH_MAX];
+	environCallback(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &sysDir);
+
 #ifdef M_CORE_GBA
 	if (core->platform(core) == PLATFORM_GBA) {
 		core->setPeripheral(core, mPERIPH_GBA_LUMINANCE, &lux);
+		biosName = "gba_bios.bin";
 
-		const char* sysDir = 0;
-		if (core->opts.useBios && environCallback(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &sysDir)) {
-			char biosPath[PATH_MAX];
-			snprintf(biosPath, sizeof(biosPath), "%s%s%s", sysDir, PATH_SEP, "gba_bios.bin");
-			struct VFile* bios = VFileOpen(biosPath, O_RDONLY);
-			if (bios) {
-				core->loadBIOS(core, bios, 0);
-			}
+	}
+#endif
+
+#ifdef M_CORE_GB
+	if (core->platform(core) == PLATFORM_GB) {
+		memset(&cam, 0, sizeof(cam));
+		cam.height = GBCAM_HEIGHT;
+		cam.width = GBCAM_WIDTH;
+		cam.caps = 1 << RETRO_CAMERA_BUFFER_RAW_FRAMEBUFFER;
+		cam.frame_raw_framebuffer = _updateCamera;
+		core->setPeripheral(core, mPERIPH_IMAGE_SOURCE, &imageSource);
+
+		environCallback(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, &cam);
+		const char* modelName = mCoreConfigGetValue(&core->config, "gb.model");
+		struct GB* gb = core->board;
+
+		if (modelName) {
+			gb->model = GBNameToModel(modelName);
+		} else {
+			GBDetectModel(gb);
+		}
+
+		switch (gb->model) {
+		case GB_MODEL_AGB:
+		case GB_MODEL_CGB:
+			biosName = "gbc_bios.bin";
+			break;
+		case GB_MODEL_SGB:
+			biosName = "sgb_bios.bin";
+			break;
+		case GB_MODEL_DMG:
+		default:
+			biosName = "gb_bios.bin";
+			break;
 		}
 	}
 #endif
+
+	if (core->opts.useBios && sysDir && biosName) {
+		snprintf(biosPath, sizeof(biosPath), "%s%s%s", sysDir, PATH_SEP, biosName);
+		struct VFile* bios = VFileOpen(biosPath, O_RDONLY);
+		if (bios) {
+			core->loadBIOS(core, bios, 0);
+		}
+	}
 
 	core->reset(core);
 	_setupMaps(core);
@@ -443,23 +561,33 @@ void retro_unload_game(void) {
 }
 
 size_t retro_serialize_size(void) {
-	return core->stateSize(core);
+	struct VFile* vfm = VFileMemChunk(NULL, 0);
+	mCoreSaveStateNamed(core, vfm, SAVESTATE_SAVEDATA | SAVESTATE_RTC);
+	size_t size = vfm->size(vfm);
+	vfm->close(vfm);
+	return size;
 }
 
 bool retro_serialize(void* data, size_t size) {
-	if (size != retro_serialize_size()) {
+	struct VFile* vfm = VFileMemChunk(NULL, 0);
+	mCoreSaveStateNamed(core, vfm, SAVESTATE_SAVEDATA | SAVESTATE_RTC);
+	if ((ssize_t) size > vfm->size(vfm)) {
+		size = vfm->size(vfm);
+	} else if ((ssize_t) size < vfm->size(vfm)) {
+		vfm->close(vfm);
 		return false;
 	}
-	core->saveState(core, data);
+	vfm->seek(vfm, 0, SEEK_SET);
+	vfm->read(vfm, data, size);
+	vfm->close(vfm);
 	return true;
 }
 
 bool retro_unserialize(const void* data, size_t size) {
-	if (size != retro_serialize_size()) {
-		return false;
-	}
-	core->loadState(core, data);
-	return true;
+	struct VFile* vfm = VFileFromConstMemory(data, size);
+	bool success = mCoreLoadStateNamed(core, vfm, SAVESTATE_RTC);
+	vfm->close(vfm);
+	return success;
 }
 
 void retro_cheat_reset(void) {
@@ -647,4 +775,67 @@ static uint8_t _readLux(struct GBALuminanceSource* lux) {
 		value += GBA_LUX_LEVELS[luxLevel - 1];
 	}
 	return 0xFF - value;
+}
+
+static void _updateCamera(const uint32_t* buffer, unsigned width, unsigned height, size_t pitch) {
+	if (!camData || width > camWidth || height > camHeight) {
+		if (camData) {
+			free(camData);
+		}
+		unsigned bufPitch = pitch / sizeof(*buffer);
+		unsigned bufHeight = height;
+		if (imcapWidth > bufPitch) {
+			bufPitch = imcapWidth;
+		}
+		if (imcapHeight > bufHeight) {
+			bufHeight = imcapHeight;
+		}
+		camData = malloc(sizeof(*buffer) * bufHeight * bufPitch);
+		memset(camData, 0xFF, sizeof(*buffer) * bufHeight * bufPitch);
+		camWidth = width;
+		camHeight = bufHeight;
+		camStride = bufPitch;
+	}
+	size_t i;
+	for (i = 0; i < height; ++i) {
+		memcpy(&camData[camStride * i], &buffer[pitch * i / sizeof(*buffer)], pitch);
+	}
+}
+
+static void _startImage(struct mImageSource* image, unsigned w, unsigned h, int colorFormats) {
+	UNUSED(image);
+	UNUSED(colorFormats);
+
+	if (camData) {
+		free(camData);
+	}
+	camData = NULL;
+	imcapWidth = w;
+	imcapHeight = h;
+	cam.start();
+}
+
+static void _stopImage(struct mImageSource* image) {
+	UNUSED(image);
+	cam.stop();	
+}
+
+static void _requestImage(struct mImageSource* image, const void** buffer, size_t* stride, enum mColorFormat* colorFormat) {
+	UNUSED(image);
+	if (!camData) {
+		cam.start();
+		*buffer = NULL;
+		return;
+	}
+	size_t offset = 0;
+	if (imcapWidth < camWidth) {
+		offset += (camWidth - imcapWidth) / 2;
+	}
+	if (imcapHeight < camHeight) {
+		offset += (camHeight - imcapHeight) / 2 * camStride;
+	}
+
+	*buffer = &camData[offset];
+	*stride = camStride;
+	*colorFormat = mCOLOR_XRGB8;
 }

@@ -21,7 +21,7 @@ static void _addBreakpoint(struct mCheatDevice* device, struct GBACheatSet* chea
 	if (cheats->hook->reentries > 1) {
 		return;
 	}
-	// TODO: Put back hooks
+	GBASetBreakpoint(device->p->board, &device->d, cheats->hook->address, cheats->hook->mode, &cheats->hook->patchedOpcode);
 }
 
 static void _removeBreakpoint(struct mCheatDevice* device, struct GBACheatSet* cheats) {
@@ -32,7 +32,7 @@ static void _removeBreakpoint(struct mCheatDevice* device, struct GBACheatSet* c
 	if (cheats->hook->reentries > 0) {
 		return;
 	}
-	// TODO: Put back hooks
+	GBAClearBreakpoint(device->p->board, cheats->hook->address, cheats->hook->mode, cheats->hook->patchedOpcode);
 }
 
 static void _patchROM(struct mCheatDevice* device, struct GBACheatSet* cheats) {
@@ -150,14 +150,32 @@ static bool GBACheatAddAutodetect(struct GBACheatSet* set, uint32_t op1, uint32_
 		o2 = op2;
 		if (gsaP > maxProbability) {
 			maxProbability = gsaP;
-			GBACheatSetGameSharkVersion(set, 1);
+			GBACheatSetGameSharkVersion(set, GBA_GS_GSAV1);
 		}
 
 		GBACheatDecryptGameShark(&o1, &o2, GBACheatProActionReplaySeeds);
 		parP = GBACheatProActionReplayProbability(o1, o2);
 		if (parP > maxProbability) {
 			maxProbability = parP;
-			GBACheatSetGameSharkVersion(set, 3);
+			GBACheatSetGameSharkVersion(set, GBA_GS_PARV3);
+		}
+
+		rgsaP = GBACheatGameSharkProbability(op1, op1);
+		if (rgsaP > maxProbability) {
+			maxProbability = rgsaP;
+			GBACheatSetGameSharkVersion(set, GBA_GS_GSAV1_RAW);
+		}
+
+		rparP = GBACheatProActionReplayProbability(op1, op1);
+		if (rparP > maxProbability) {
+			maxProbability = rparP;
+			GBACheatSetGameSharkVersion(set, GBA_GS_PARV3_RAW);
+		}
+
+		if (set->gsaVersion < 3) {
+			return GBACheatAddGameShark(set, op1, op2);
+		} else {
+			return GBACheatAddProActionReplay(set, op1, op2);
 		}
 
 		rgsaP = GBACheatGameSharkProbability(op1, op1);
@@ -308,19 +326,19 @@ static void GBACheatParseDirectives(struct mCheatSet* set, const struct StringLi
 	for (d = 0; d < StringListSize(directives); ++d) {
 		const char* directive = *StringListGetConstPointer(directives, d);
 		if (strcmp(directive, "GSAv1") == 0) {
-			GBACheatSetGameSharkVersion(cheats, 1);
+			GBACheatSetGameSharkVersion(cheats, GBA_GS_GSAV1);
 			continue;
 		}
 		if (strcmp(directive, "GSAv1 raw") == 0) {
-			GBACheatSetGameSharkVersion(cheats, 2);
+			GBACheatSetGameSharkVersion(cheats, GBA_GS_GSAV1_RAW);
 			continue;
 		}
 		if (strcmp(directive, "PARv3") == 0) {
-			GBACheatSetGameSharkVersion(cheats, 3);
+			GBACheatSetGameSharkVersion(cheats, GBA_GS_PARV3);
 			continue;
 		}
 		if (strcmp(directive, "PARv3 raw") == 0) {
-			GBACheatSetGameSharkVersion(cheats, 4);
+			GBACheatSetGameSharkVersion(cheats, GBA_GS_PARV3_RAW);
 			continue;
 		}
 	}

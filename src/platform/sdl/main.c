@@ -13,11 +13,19 @@
 #ifdef USE_EDITLINE
 #include "feature/editline/cli-el-backend.h"
 #endif
+#ifdef ENABLE_SCRIPTING
+#include <mgba/core/scripting.h>
+
+#ifdef ENABLE_PYTHON
+#include "platform/python/engine.h"
+#endif
+#endif
 
 #include <mgba/core/cheats.h>
 #include <mgba/core/core.h>
 #include <mgba/core/config.h>
 #include <mgba/core/input.h>
+#include <mgba/core/serialize.h>
 #include <mgba/core/thread.h>
 #include <mgba/internal/gba/input.h>
 
@@ -36,6 +44,12 @@ static void mSDLDeinit(struct mSDLRenderer* renderer);
 
 static int mSDLRun(struct mSDLRenderer* renderer, struct mArguments* args);
 
+static struct VFile* _state = NULL;
+
+static void _loadState(struct mCoreThread* thread) {
+	mCoreLoadStateNamed(thread->core, _state, SAVESTATE_RTC);
+}
+
 int main(int argc, char** argv) {
 	struct mSDLRenderer renderer = {0};
 
@@ -43,7 +57,6 @@ int main(int argc, char** argv) {
 		.useBios = true,
 		.rewindEnable = true,
 		.rewindBufferCapacity = 600,
-		.rewindSave = true,
 		.audioBuffers = 1024,
 		.videoSync = false,
 		.audioSync = true,
@@ -174,6 +187,14 @@ int mSDLRun(struct mSDLRenderer* renderer, struct mArguments* args) {
 		return 1;
 	}
 	mCoreAutoloadSave(renderer->core);
+	mCoreAutoloadCheats(renderer->core);
+#ifdef ENABLE_SCRIPTING
+	struct mScriptBridge* bridge = mScriptBridgeCreate();
+#ifdef ENABLE_PYTHON
+	mPythonSetup(bridge);
+#endif
+#endif
+
 #ifdef USE_DEBUGGERS
 	struct mDebugger* debugger = mDebuggerCreate(args->debuggerType, renderer->core);
 	if (debugger) {
@@ -185,6 +206,9 @@ int mSDLRun(struct mSDLRenderer* renderer, struct mArguments* args) {
 #endif
 		mDebuggerAttach(debugger, renderer->core);
 		mDebuggerEnter(debugger, DEBUGGER_ENTER_MANUAL, NULL);
+ #ifdef ENABLE_SCRIPTING
+		mScriptBridgeSetDebugger(bridge, debugger);
+#endif
 	}
 #endif
 
@@ -203,10 +227,26 @@ int mSDLRun(struct mSDLRenderer* renderer, struct mArguments* args) {
 	bool didFail = !mCoreThreadStart(&thread);
 	if (!didFail) {
 #if SDL_VERSION_ATLEAST(2, 0, 0)
+		renderer->core->desiredVideoDimensions(renderer->core, &renderer->width, &renderer->height);
+		unsigned width = renderer->width * renderer->ratio;
+		unsigned height = renderer->height * renderer->ratio;
+		if (width != (unsigned) renderer->viewportWidth && height != (unsigned) renderer->viewportHeight) {
+			SDL_SetWindowSize(renderer->window, width, height);
+			renderer->player.windowUpdated = 1;
+		}
 		mSDLSetScreensaverSuspendable(&renderer->events, renderer->core->opts.suspendScreensaver);
 		mSDLSuspendScreensaver(&renderer->events);
 #endif
 		if (mSDLInitAudio(&renderer->audio, &thread)) {
+			if (args->savestate) {
+				struct VFile* state = VFileOpen(args->savestate, O_RDONLY);
+				if (state) {
+					_state = state;
+					mCoreThreadRunFunction(&thread, _loadState);
+					_state = NULL;
+					state->close(state);
+				}
+			}
 			renderer->runloop(renderer, &thread);
 			mSDLPauseAudio(&renderer->audio);
 			if (mCoreThreadHasCrashed(&thread)) {
@@ -227,6 +267,11 @@ int mSDLRun(struct mSDLRenderer* renderer, struct mArguments* args) {
 		printf("Could not run game. Are you sure the file exists and is a compatible game?\n");
 	}
 	renderer->core->unloadROM(renderer->core);
+
+#ifdef ENABLE_SCRIPTING
+	mScriptBridgeDestroy(bridge);
+#endif
+
 	return didFail;
 }
 

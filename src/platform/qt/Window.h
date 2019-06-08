@@ -1,10 +1,9 @@
-/* Copyright (c) 2013-2016 Jeffrey Pfau
+/* Copyright (c) 2013-2017 Jeffrey Pfau
  *
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-#ifndef QGBA_WINDOW
-#define QGBA_WINDOW
+#pragma once
 
 #include <QAction>
 #include <QDateTime>
@@ -13,6 +12,7 @@
 #include <QTimer>
 
 #include <functional>
+#include <memory>
 
 #include <mgba/core/thread.h>
 
@@ -23,14 +23,18 @@ struct mArguments;
 
 namespace QGBA {
 
+class AudioProcessor;
 class ConfigController;
+class CoreController;
+class CoreManager;
 class DebuggerConsoleController;
 class Display;
-class GameController;
 class GDBController;
 class GIFView;
 class LibraryController;
 class LogView;
+class OverrideView;
+class SensorView;
 class ShaderSelector;
 class ShortcutController;
 class VideoView;
@@ -40,10 +44,10 @@ class Window : public QMainWindow {
 Q_OBJECT
 
 public:
-	Window(ConfigController* config, int playerId = 0, QWidget* parent = nullptr);
+	Window(CoreManager* manager, ConfigController* config, int playerId = 0, QWidget* parent = nullptr);
 	virtual ~Window();
 
-	GameController* controller() { return m_controller; }
+	std::shared_ptr<CoreController> controller() { return m_controller; }
 
 	void setConfig(ConfigController*);
 	void argumentsPassed(mArguments*);
@@ -53,13 +57,12 @@ public:
 	void updateMultiplayerStatus(bool canOpenAnother) { m_multiWindow->setEnabled(canOpenAnother); }
 
 signals:
-	void startDrawing(mCoreThread*);
+	void startDrawing();
 	void shutdown();
-	void audioBufferSamplesChanged(int samples);
-	void sampleRateChanged(unsigned samples);
-	void fpsTargetChanged(float target);
+	void paused(bool);
 
 public slots:
+	void setController(CoreController* controller, const QString& fname);
 	void selectROM();
 #ifdef USE_SQLITE3
 	void selectROMInArchive();
@@ -74,6 +77,8 @@ public slots:
 	void reloadConfig();
 	void saveConfig();
 
+	void loadCamImage();
+
 	void replaceROM();
 
 	void multiplayerChanged();
@@ -82,7 +87,6 @@ public slots:
 	void exportSharkport();
 
 	void openSettingsWindow();
-	void openAboutScreen();
 
 	void startVideoLog();
 
@@ -115,22 +119,29 @@ protected:
 	virtual void mouseDoubleClickEvent(QMouseEvent*) override;
 
 private slots:
-	void gameStarted(mCoreThread*, const QString&);
+	void gameStarted();
 	void gameStopped();
 	void gameCrashed(const QString&);
 	void gameFailed();
 	void unimplementedBiosCall(int);
 
+	void reloadAudioDriver();
+	void reloadDisplayDriver();
+
 	void tryMakePortable();
 	void mustRestart();
 
 	void recordFrame();
+	void delimitFrames();
 	void showFPS();
 	void focusCheck();
 
+	void updateFrame();
+
 private:
 	static const int FPS_TIMER_INTERVAL = 2000;
-	static const int FRAME_LIST_SIZE = 120;
+	static const int FRAME_LIST_INTERVAL = 100;
+	static const int FRAME_LIST_SIZE = 40;
 
 	void setupMenu(QMenuBar*);
 	void openStateWindow(LoadSave);
@@ -143,8 +154,8 @@ private:
 
 	void openView(QWidget* widget);
 
-	template <typename T, typename A> std::function<void()> openTView(A arg);
-	template <typename T> std::function<void()> openTView();
+	template <typename T, typename... A> std::function<void()> openTView(A... arg);
+	template <typename T, typename... A> std::function<void()> openControllerTView(A... arg);
 
 	QAction* addControlledAction(QMenu* menu, QAction* action, const QString& name);
 	QAction* addHiddenAction(QMenu* menu, QAction* action, const QString& name);
@@ -154,8 +165,11 @@ private:
 	QString getFilters() const;
 	QString getFiltersArchive() const;
 
-	GameController* m_controller;
-	Display* m_display;
+	CoreManager* m_manager;
+	std::shared_ptr<CoreController> m_controller;
+	std::unique_ptr<AudioProcessor> m_audioProcessor;
+
+	std::unique_ptr<Display> m_display;
 	int m_savedScale;
 	// TODO: Move these to a new class
 	QList<QAction*> m_gameActions;
@@ -175,20 +189,30 @@ private:
 	QPixmap m_logo{":/res/mgba-1024.png"};
 	ConfigController* m_config;
 	InputController m_inputController;
-	QList<QDateTime> m_frameList;
+	QList<int> m_frameList;
+	int m_frameCounter = 0;
 	QTimer m_fpsTimer;
+	QTimer m_frameTimer;
 	QList<QString> m_mruFiles;
 	QMenu* m_mruMenu = nullptr;
 	QMenu* m_videoLayers;
 	QMenu* m_audioChannels;
 	ShortcutController* m_shortcutController;
-	ShaderSelector* m_shaderView;
+#if defined(BUILD_GL) || defined(BUILD_GLES2)
+	std::unique_ptr<ShaderSelector> m_shaderView;
+#endif
 	bool m_fullscreenOnStart = false;
 	QTimer m_focusCheck;
 	bool m_autoresume = false;
 	bool m_wasOpened = false;
+	QString m_pendingPatch;
+	QString m_pendingState;
+	bool m_pendingPause = false;
 
 	bool m_hitUnimplementedBiosCall;
+
+	std::unique_ptr<OverrideView> m_overrideView;
+	std::unique_ptr<SensorView> m_sensorView;
 
 #ifdef USE_FFMPEG
 	VideoView* m_videoView = nullptr;
@@ -207,22 +231,26 @@ private:
 #endif
 };
 
-class WindowBackground : public QLabel {
+class WindowBackground : public QWidget {
 Q_OBJECT
 
 public:
 	WindowBackground(QWidget* parent = 0);
 
+	void setPixmap(const QPixmap& pixmap);
 	void setSizeHint(const QSize& size);
 	virtual QSize sizeHint() const override;
 	void setDimensions(int width, int height);
 	void setLockIntegerScaling(bool lock);
 	void setLockAspectRatio(bool lock);
 
+	const QPixmap& pixmap() const { return m_pixmap; }
+
 protected:
 	virtual void paintEvent(QPaintEvent*) override;
 
 private:
+	QPixmap m_pixmap;
 	QSize m_sizeHint;
 	int m_aspectWidth;
 	int m_aspectHeight;
@@ -231,5 +259,3 @@ private:
 };
 
 }
-
-#endif

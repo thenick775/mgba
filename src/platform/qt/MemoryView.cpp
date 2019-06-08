@@ -6,13 +6,13 @@
 
 #include "MemoryView.h"
 
-#include "GameController.h"
+#include "CoreController.h"
 
 #include <mgba/core/core.h>
 
 using namespace QGBA;
 
-MemoryView::MemoryView(GameController* controller, QWidget* parent)
+MemoryView::MemoryView(std::shared_ptr<CoreController> controller, QWidget* parent)
 	: QWidget(parent)
 	, m_controller(controller)
 {
@@ -42,15 +42,15 @@ MemoryView::MemoryView(GameController* controller, QWidget* parent)
 	connect(m_ui.width16, &QAbstractButton::clicked, [this]() { m_ui.hexfield->setAlignment(2); });
 	connect(m_ui.width32, &QAbstractButton::clicked, [this]() { m_ui.hexfield->setAlignment(4); });
 	connect(m_ui.setAddress, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged),
-	        m_ui.hexfield, static_cast<void (MemoryModel::*)(uint32_t)>(&MemoryModel::jumpToAddress));
+	        this, static_cast<void (MemoryView::*)(uint32_t)>(&MemoryView::jumpToAddress));
 	connect(m_ui.hexfield, &MemoryModel::selectionChanged, this, &MemoryView::updateSelection);
 
-	connect(controller, &GameController::gameStopped, this, &QWidget::close);
+	connect(controller.get(), &CoreController::stopping, this, &QWidget::close);
 
-	connect(controller, &GameController::frameAvailable, this, &MemoryView::update);
-	connect(controller, &GameController::gamePaused, this, &MemoryView::update);
-	connect(controller, &GameController::stateLoaded, this, &MemoryView::update);
-	connect(controller, &GameController::rewound, this, &MemoryView::update);
+	connect(controller.get(), &CoreController::frameAvailable, this, &MemoryView::update);
+	connect(controller.get(), &CoreController::paused, this, &MemoryView::update);
+	connect(controller.get(), &CoreController::stateLoaded, this, &MemoryView::update);
+	connect(controller.get(), &CoreController::rewound, this, &MemoryView::update);
 
 	connect(m_ui.copy, &QAbstractButton::clicked, m_ui.hexfield, &MemoryModel::copy);
 	connect(m_ui.save, &QAbstractButton::clicked, m_ui.hexfield, &MemoryModel::save);
@@ -66,6 +66,7 @@ void MemoryView::setIndex(int index) {
 	size_t nBlocks = core->listMemoryBlocks(core, &blocks);
 	const mCoreMemoryBlock& info = blocks[index];
 
+	m_region = qMakePair(info.start, info.end);
 	m_ui.segments->setValue(-1);
 	m_ui.segments->setVisible(info.maxSegment > 0);
 	m_ui.segments->setMaximum(info.maxSegment);
@@ -86,6 +87,17 @@ void MemoryView::update() {
 	updateStatus();
 }
 
+void MemoryView::jumpToAddress(uint32_t address) {
+	if (address < m_region.first || address >= m_region.second) {
+		m_ui.regions->setCurrentIndex(0);
+		setIndex(0);
+	}
+	if (address < m_region.first || address >= m_region.second) {
+		return;
+	}
+	m_ui.hexfield->jumpToAddress(address);
+}
+
 void MemoryView::updateSelection(uint32_t start, uint32_t end) {
 	m_selection.first = start;
 	m_selection.second = end;
@@ -94,9 +106,6 @@ void MemoryView::updateSelection(uint32_t start, uint32_t end) {
 
 void MemoryView::updateStatus() {
 	int align = m_ui.hexfield->alignment();
-	if (!m_controller->isLoaded()) {
-		return;
-	}
 	mCore* core = m_controller->thread()->core;
 	QByteArray selection(m_ui.hexfield->serialize());
 	QString text(m_ui.hexfield->decodeText(selection));

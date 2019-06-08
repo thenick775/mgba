@@ -5,10 +5,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "DisplayQt.h"
 
+#include "CoreController.h"
+
 #include <QPainter>
 
 #include <mgba/core/core.h>
 #include <mgba/core/thread.h>
+#include <mgba-util/math.h>
 
 using namespace QGBA;
 
@@ -17,10 +20,18 @@ DisplayQt::DisplayQt(QWidget* parent)
 {
 }
 
-void DisplayQt::startDrawing(mCoreThread* context) {
-	context->core->desiredVideoDimensions(context->core, &m_width, &m_height);
+void DisplayQt::startDrawing(std::shared_ptr<CoreController> controller) {
+	QSize size = controller->screenDimensions();
+	m_width = size.width();
+	m_height = size.height();
 	m_backing = std::move(QImage());
 	m_isDrawing = true;
+	m_context = controller;
+}
+
+void DisplayQt::stopDrawing() {
+	m_isDrawing = false;
+	m_context.reset();
 }
 
 void DisplayQt::lockAspectRatio(bool lock) {
@@ -38,8 +49,9 @@ void DisplayQt::filter(bool filter) {
 	update();
 }
 
-void DisplayQt::framePosted(const uint32_t* buffer) {
+void DisplayQt::framePosted() {
 	update();
+	const color_t* buffer = m_context->drawContext();
 	if (const_cast<const QImage&>(m_backing).bits() == reinterpret_cast<const uchar*>(buffer)) {
 		return;
 	}
@@ -53,6 +65,18 @@ void DisplayQt::framePosted(const uint32_t* buffer) {
 	m_backing = QImage(reinterpret_cast<const uchar*>(buffer), m_width, m_height, QImage::Format_ARGB32);
 	m_backing = m_backing.convertToFormat(QImage::Format_RGB32);
 #endif
+}
+
+void DisplayQt::resizeContext() {
+	if (!m_context) {
+		return;
+	}
+	QSize size = m_context->screenDimensions();
+	if (m_width != size.width() || m_height != size.height()) {
+		m_width = size.width();
+		m_height = size.height();
+		m_backing = std::move(QImage());
+	}
 }
 
 void DisplayQt::paintEvent(QPaintEvent*) {

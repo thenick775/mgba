@@ -51,6 +51,7 @@ VideoView::VideoView(QWidget* parent)
 	if (s_acodecMap.empty()) {
 		s_acodecMap["mp3"] = "libmp3lame";
 		s_acodecMap["opus"] = "libopus";
+		s_acodecMap["vorbis"] = "libvorbis";
 		s_acodecMap["uncompressed"] = "pcm_s16le";
 	}
 	if (s_vcodecMap.empty()) {
@@ -99,9 +100,9 @@ VideoView::VideoView(QWidget* parent)
 
 	setPreset({
 		.container = "MKV",
-		.vcodec = "PNG",
+		.vcodec = "h.264",
 		.acodec = "FLAC",
-		.vbr = 0,
+		.vbr = -1,
 		.abr = 0,
 		.dims = QSize(),
 	});
@@ -170,8 +171,8 @@ void VideoView::updatePresets() {
 
 	addPreset(m_ui.presetWebM, {
 		.container = "WebM",
-		.vcodec = "VP8",
-		.acodec = "Vorbis",
+		.vcodec = "VP9",
+		.acodec = "Opus",
 		.vbr = 800,
 		.abr = 128
 	});
@@ -179,9 +180,9 @@ void VideoView::updatePresets() {
 	if (m_nativeWidth && m_nativeHeight) {
 		addPreset(m_ui.presetLossless, {
 			.container = "MKV",
-			.vcodec = "PNG",
+			.vcodec = "h.264",
 			.acodec = "FLAC",
-			.vbr = 0,
+			.vbr = -1,
 			.abr = 0,
 			.dims = QSize(m_nativeWidth, m_nativeHeight)
 		});
@@ -193,6 +194,14 @@ VideoView::~VideoView() {
 	free(m_audioCodecCstr);
 	free(m_videoCodecCstr);
 	free(m_containerCstr);
+}
+
+void VideoView::setController(std::shared_ptr<CoreController> controller) {
+	connect(controller.get(), &CoreController::stopping, this, &VideoView::stopRecording);
+	connect(this, &VideoView::recordingStarted, controller.get(), &CoreController::setAVStream);
+	connect(this, &VideoView::recordingStopped, controller.get(), &CoreController::clearAVStream, Qt::DirectConnection);
+
+	setNativeResolution(controller->screenDimensions());
 }
 
 void VideoView::startRecording() {
@@ -303,7 +312,7 @@ void VideoView::setAudioBitrate(int br, bool manual) {
 }
 
 void VideoView::setVideoBitrate(int br, bool manual) {
-	m_vbr = br * 1000;
+	m_vbr = br >= 0 ? br * 1000 : 0;
 	FFmpegEncoderSetVideo(&m_encoder, m_videoCodecCstr, m_vbr);
 	validateSettings();
 	if (manual) {

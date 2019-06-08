@@ -98,12 +98,13 @@ bool mSDLGLES2Init(struct mSDLRenderer* renderer) {
 	mSDLGLCommonInit(renderer);
 #endif
 
+	size_t size = renderer->width * renderer->height * BYTES_PER_PIXEL;
 #ifndef __APPLE__
-	renderer->outputBuffer = memalign(16, renderer->width * renderer->height * BYTES_PER_PIXEL);
+	renderer->outputBuffer = memalign(16, size);
 #else
-	posix_memalign((void**) &renderer->outputBuffer, 16, renderer->width * renderer->height * BYTES_PER_PIXEL);
+	posix_memalign((void**) &renderer->outputBuffer, 16, size);
 #endif
-	memset(renderer->outputBuffer, 0, renderer->width * renderer->height * BYTES_PER_PIXEL);
+	memset(renderer->outputBuffer, 0, size);
 	renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, renderer->width);
 
 	mGLES2ContextCreate(&renderer->gl2);
@@ -124,7 +125,7 @@ void mSDLGLES2Runloop(struct mSDLRenderer* renderer, void* user) {
 	SDL_Event event;
 	struct VideoBackend* v = &renderer->gl2.d;
 
-	while (context->state < THREAD_EXITING) {
+	while (mCoreThreadIsActive(context)) {
 		while (SDL_PollEvent(&event)) {
 			mSDLHandleEvent(context, &renderer->player, &event);
 #if SDL_VERSION_ATLEAST(2, 0, 0)
@@ -137,10 +138,10 @@ void mSDLGLES2Runloop(struct mSDLRenderer* renderer, void* user) {
 #endif
 		}
 
-		if (mCoreSyncWaitFrameStart(&context->sync)) {
+		if (mCoreSyncWaitFrameStart(&context->impl->sync)) {
 			v->postFrame(v, renderer->outputBuffer);
 		}
-		mCoreSyncWaitFrameEnd(&context->sync);
+		mCoreSyncWaitFrameEnd(&context->impl->sync);
 		v->drawFrame(v);
 #ifdef BUILD_RASPI
 		eglSwapBuffers(renderer->display, renderer->surface);

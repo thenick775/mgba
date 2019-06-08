@@ -102,7 +102,7 @@ static struct mRotationSource rotation;
 static GXRModeObj* vmode;
 static float wAdjust;
 static float hAdjust;
-static float wStretch = 1.0f;
+static float wStretch = 0.9f;
 static float hStretch = 0.9f;
 static float guiScale = GUI_SCALE;
 static Mtx model, view, modelview;
@@ -195,18 +195,21 @@ static void reconfigureScreen(struct mGUIRunner* runner) {
 		break;
 	}
 
-	free(framebuffer[0]);
-	free(framebuffer[1]);
+	vmode->viWidth = 704;
+	vmode->viXOrigin = 8;
 
 	VIDEO_SetBlack(true);
 	VIDEO_Configure(vmode);
 
+	free(framebuffer[0]);
+	free(framebuffer[1]);
+
 	framebuffer[0] = SYS_AllocateFramebuffer(vmode);
 	framebuffer[1] = SYS_AllocateFramebuffer(vmode);
-	VIDEO_ClearFrameBuffer(vmode, framebuffer[0], COLOR_BLACK);
-	VIDEO_ClearFrameBuffer(vmode, framebuffer[1], COLOR_BLACK);
+	VIDEO_ClearFrameBuffer(vmode, MEM_K0_TO_K1(framebuffer[0]), COLOR_BLACK);
+	VIDEO_ClearFrameBuffer(vmode, MEM_K0_TO_K1(framebuffer[1]), COLOR_BLACK);
 
-	VIDEO_SetNextFramebuffer(framebuffer[whichFb]);
+	VIDEO_SetNextFramebuffer(MEM_K0_TO_K1(framebuffer[whichFb]));
 	VIDEO_Flush();
 	VIDEO_WaitVSync();
 	if (vmode->viTVMode & VI_NON_INTERLACE) {
@@ -229,15 +232,6 @@ static void reconfigureScreen(struct mGUIRunner* runner) {
 			double ratio = GBAAudioCalculateRatio(1, audioSampleRate, 1);
 			blip_set_rates(runner->core->getAudioChannel(runner->core, 0), runner->core->frequency(runner->core), 48000 * ratio);
 			blip_set_rates(runner->core->getAudioChannel(runner->core, 1), runner->core->frequency(runner->core), 48000 * ratio);
-
-			runner->core->desiredVideoDimensions(runner->core, &corew, &coreh);
-			int hfactor = vmode->fbWidth / (corew * wAdjust);
-			int vfactor = vmode->efbHeight / (coreh * hAdjust);
-			if (hfactor > vfactor) {
-				scaleFactor = vfactor;
-			} else {
-				scaleFactor = hfactor;
-			}
 		}
 	}
 }
@@ -328,7 +322,7 @@ int main(int argc, char* argv[]) {
 
 	struct mGUIRunner runner = {
 		.params = {
-			720, 480,
+			640, 480,
 			font, "",
 			_drawStart, _drawEnd,
 			_pollInput, _pollCursor,
@@ -478,9 +472,49 @@ int main(int argc, char* argv[]) {
 					"Bilinear (pixelated)",
 				},
 				.nStates = 3
-			}
+			},
+			{
+				.title = "Horizontal stretch",
+				.data = "stretchWidth",
+				.submenu = 0,
+				.state = 7,
+				.validStates = (const char*[]) {
+					"1/2x", "0.6x", "1/3x", "0.7x", "1/4x", "0.8x", "0.9x", "1.0x"
+				},
+				.stateMappings = (const struct GUIVariant[]) {
+					GUI_V_F(0.5f),
+					GUI_V_F(0.6f),
+					GUI_V_F(1.f / 3.f),
+					GUI_V_F(0.7f),
+					GUI_V_F(0.75f),
+					GUI_V_F(0.8f),
+					GUI_V_F(0.9f),
+					GUI_V_F(1.0f),
+				},
+				.nStates = 8
+			},
+			{
+				.title = "Vertical stretch",
+				.data = "stretchHeight",
+				.submenu = 0,
+				.state = 6,
+				.validStates = (const char*[]) {
+					"1/2x", "0.6x", "1/3x", "0.7x", "1/4x", "0.8x", "0.9x", "1.0x"
+				},
+				.stateMappings = (const struct GUIVariant[]) {
+					GUI_V_F(0.5f),
+					GUI_V_F(0.6f),
+					GUI_V_F(1.f / 3.f),
+					GUI_V_F(0.7f),
+					GUI_V_F(0.75f),
+					GUI_V_F(0.8f),
+					GUI_V_F(0.9f),
+					GUI_V_F(1.0f),
+				},
+				.nStates = 8
+			},
 		},
-		.nConfigExtra = 3,
+		.nConfigExtra = 5,
 		.setup = _setup,
 		.teardown = 0,
 		.gameLoaded = _gameLoaded,
@@ -517,14 +551,21 @@ int main(int argc, char* argv[]) {
 	_mapKey(&runner.params.keyMap, WIIMOTE_INPUT, WPAD_BUTTON_DOWN, GUI_INPUT_RIGHT);
 
 	_mapKey(&runner.params.keyMap, CLASSIC_INPUT, WPAD_CLASSIC_BUTTON_A, GUI_INPUT_SELECT);
-	_mapKey(&runner.params.keyMap, CLASSIC_INPUT, WPAD_CLASSIC_BUTTON_Y, GUI_INPUT_SELECT);
 	_mapKey(&runner.params.keyMap, CLASSIC_INPUT, WPAD_CLASSIC_BUTTON_B, GUI_INPUT_BACK);
-	_mapKey(&runner.params.keyMap, CLASSIC_INPUT, WPAD_CLASSIC_BUTTON_X, GUI_INPUT_BACK);
 	_mapKey(&runner.params.keyMap, CLASSIC_INPUT, WPAD_CLASSIC_BUTTON_HOME, GUI_INPUT_CANCEL);
 	_mapKey(&runner.params.keyMap, CLASSIC_INPUT, WPAD_CLASSIC_BUTTON_UP, GUI_INPUT_UP);
 	_mapKey(&runner.params.keyMap, CLASSIC_INPUT, WPAD_CLASSIC_BUTTON_DOWN, GUI_INPUT_DOWN);
 	_mapKey(&runner.params.keyMap, CLASSIC_INPUT, WPAD_CLASSIC_BUTTON_LEFT, GUI_INPUT_LEFT);
 	_mapKey(&runner.params.keyMap, CLASSIC_INPUT, WPAD_CLASSIC_BUTTON_RIGHT, GUI_INPUT_RIGHT);
+
+
+	float stretch = 0;
+	if (mCoreConfigGetFloatValue(&runner.config, "stretchWidth", &stretch)) {
+		wStretch = fminf(1.0f, fmaxf(0.5f, stretch));
+	}
+	if (mCoreConfigGetFloatValue(&runner.config, "stretchHeight", &stretch)) {
+		hStretch = fminf(1.0f, fmaxf(0.5f, stretch));
+	}
 
 	if (argc > 1) {
 		size_t i;
@@ -604,7 +645,7 @@ static void _drawStart(void) {
 static void _drawEnd(void) {
 	GX_CopyDisp(framebuffer[whichFb], GX_TRUE);
 	GX_DrawDone();
-	VIDEO_SetNextFramebuffer(framebuffer[whichFb]);
+	VIDEO_SetNextFramebuffer(MEM_K0_TO_K1(framebuffer[whichFb]));
 	VIDEO_Flush();
 	whichFb = !whichFb;
 
@@ -812,7 +853,7 @@ void _unpaused(struct mGUIRunner* runner) {
 }
 
 void _drawFrame(struct mGUIRunner* runner, bool faded) {
-	UNUSED(runner);
+	runner->core->desiredVideoDimensions(runner->core, &corew, &coreh);
 	uint32_t color = 0xFFFFFF3F;
 	if (!faded) {
 		color |= 0xC0;
@@ -838,9 +879,9 @@ void _drawFrame(struct mGUIRunner* runner, bool faded) {
 	GX_InvalidateTexAll();
 	GX_LoadTexObj(&tex, GX_TEXMAP0);
 
-	GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_TEX0, GX_TEX_ST, GX_S16, 0);
-	s16 vertWidth = TEX_W;
-	s16 vertHeight = TEX_H;
+	GX_SetVtxAttrFmt(GX_VTXFMT0, GX_VA_TEX0, GX_TEX_ST, GX_F32, 0);
+	s16 vertWidth = corew;
+	s16 vertHeight = coreh;
 
 	if (filterMode == FM_LINEAR_2x) {
 		Mtx44 proj;
@@ -850,25 +891,33 @@ void _drawFrame(struct mGUIRunner* runner, bool faded) {
 		GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 		GX_Position2s16(0, TEX_H * 2);
 		GX_Color1u32(0xFFFFFFFF);
-		GX_TexCoord2s16(0, 1);
+		GX_TexCoord2f32(0, 1);
 
 		GX_Position2s16(TEX_W * 2, TEX_H * 2);
 		GX_Color1u32(0xFFFFFFFF);
-		GX_TexCoord2s16(1, 1);
+		GX_TexCoord2f32(1, 1);
 
 		GX_Position2s16(TEX_W * 2, 0);
 		GX_Color1u32(0xFFFFFFFF);
-		GX_TexCoord2s16(1, 0);
+		GX_TexCoord2f32(1, 0);
 
 		GX_Position2s16(0, 0);
 		GX_Color1u32(0xFFFFFFFF);
-		GX_TexCoord2s16(0, 0);
+		GX_TexCoord2f32(0, 0);
 		GX_End();
 
 		GX_SetTexCopySrc(0, 0, TEX_W * 2, TEX_H * 2);
 		GX_SetTexCopyDst(TEX_W * 2, TEX_H * 2, GX_TF_RGB565, GX_FALSE);
 		GX_CopyTex(rescaleTexmem, GX_TRUE);
 		GX_LoadTexObj(&rescaleTex, GX_TEXMAP0);
+	}
+
+	int hfactor = (vmode->fbWidth * wStretch) / (corew * wAdjust);
+	int vfactor = (vmode->efbHeight * hStretch) / (coreh * hAdjust);
+	if (hfactor > vfactor) {
+		scaleFactor = vfactor;
+	} else {
+		scaleFactor = hfactor;
 	}
 
 	if (screenMode == SM_PA) {
@@ -885,19 +934,19 @@ void _drawFrame(struct mGUIRunner* runner, bool faded) {
 	GX_Begin(GX_QUADS, GX_VTXFMT0, 4);
 	GX_Position2s16(0, vertHeight);
 	GX_Color1u32(color);
-	GX_TexCoord2s16(0, 1);
+	GX_TexCoord2f32(0, coreh / (float) TEX_H);
 
 	GX_Position2s16(vertWidth, vertHeight);
 	GX_Color1u32(color);
-	GX_TexCoord2s16(1, 1);
+	GX_TexCoord2f32(corew / (float) TEX_W, coreh / (float) TEX_H);
 
 	GX_Position2s16(vertWidth, 0);
 	GX_Color1u32(color);
-	GX_TexCoord2s16(1, 0);
+	GX_TexCoord2f32(corew / (float) TEX_W, 0);
 
 	GX_Position2s16(0, 0);
 	GX_Color1u32(color);
-	GX_TexCoord2s16(0, 0);
+	GX_TexCoord2f32(0, 0);
 	GX_End();
 }
 
@@ -1026,8 +1075,15 @@ static s8 WPAD_StickX(u8 chan, u8 right) {
 		return 0;
 	}
 	int centered = (int) js->pos.x - (int) js->center.x;
-	int range = js->max.x - js->min.x;
-	return (centered * 0xFF) / range;
+	int range = (int) js->max.x - (int) js->min.x;
+	int value = (centered * 0xFF) / range;
+	if (value > 0x7F) {
+		return 0x7F;
+	}
+	if (value < -0x80) {
+		return -0x80;
+	}
+	return value;
 }
 
 static s8 WPAD_StickY(u8 chan, u8 right) {
@@ -1057,8 +1113,15 @@ static s8 WPAD_StickY(u8 chan, u8 right) {
 		return 0;
 	}
 	int centered = (int) js->pos.y - (int) js->center.y;
-	int range = js->max.y - js->min.y;
-	return (centered * 0xFF) / range;
+	int range = (int) js->max.y - (int) js->min.y;
+	int value = (centered * 0xFF) / range;
+	if (value > 0x7F) {
+		return 0x7F;
+	}
+	if (value < -0x80) {
+		return -0x80;
+	}
+	return value;
 }
 
 void _retraceCallback(u32 count) {

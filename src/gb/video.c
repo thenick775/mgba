@@ -107,7 +107,7 @@ void GBVideoReset(struct GBVideo* video) {
 	video->renderer->oam = &video->oam;
 	memset(&video->palette, 0, sizeof(video->palette));
 
-	if (video->p->model == GB_MODEL_SGB) {
+	if (video->p->model & GB_MODEL_SGB) {
 		video->renderer->sgbCharRam = anonymousMemoryMap(SGB_SIZE_CHAR_RAM);
 		video->renderer->sgbMapRam = anonymousMemoryMap(SGB_SIZE_MAP_RAM);
 		video->renderer->sgbPalRam = anonymousMemoryMap(SGB_SIZE_PAL_RAM);
@@ -224,7 +224,6 @@ void _endMode0(struct mTiming* timing, void* context, uint32_t cyclesLate) {
 	++video->ly;
 	video->p->memory.io[REG_LY] = video->ly;
 	GBRegisterSTAT oldStat = video->stat;
-	video->stat = GBRegisterSTATSetLYC(video->stat, lyc == video->ly);
 	if (video->ly < GB_VIDEO_VERTICAL_PIXELS) {
 		next = GB_VIDEO_MODE_2_LENGTH;
 		video->mode = 2;
@@ -246,6 +245,14 @@ void _endMode0(struct mTiming* timing, void* context, uint32_t cyclesLate) {
 	if (!_statIRQAsserted(video, oldStat) && _statIRQAsserted(video, video->stat)) {
 		video->p->memory.io[REG_IF] |= (1 << GB_IRQ_LCDSTAT);
 	}
+
+	// LYC stat is delayed 1 T-cycle
+	oldStat = video->stat;
+	video->stat = GBRegisterSTATSetLYC(video->stat, lyc == video->ly);
+	if (!_statIRQAsserted(video, oldStat) && _statIRQAsserted(video, video->stat)) {
+		video->p->memory.io[REG_IF] |= (1 << GB_IRQ_LCDSTAT);
+	}
+
 	GBUpdateIRQs(video->p);
 	video->p->memory.io[REG_STAT] = video->stat;
 	mTimingSchedule(timing, &video->modeEvent, (next << video->p->doubleSpeed) - cyclesLate);
@@ -449,10 +456,12 @@ void GBVideoWriteSTAT(struct GBVideo* video, GBRegisterSTAT value) {
 
 void GBVideoWriteLYC(struct GBVideo* video, uint8_t value) {
 	GBRegisterSTAT oldStat = video->stat;
-	video->stat = GBRegisterSTATSetLYC(video->stat, value == video->ly);
-	if (!_statIRQAsserted(video, oldStat) && _statIRQAsserted(video, video->stat)) {
-		video->p->memory.io[REG_IF] |= (1 << GB_IRQ_LCDSTAT);
-		GBUpdateIRQs(video->p);
+	if (GBRegisterLCDCIsEnable(video->p->memory.io[REG_LCDC])) {
+		video->stat = GBRegisterSTATSetLYC(video->stat, value == video->ly);
+		if (!_statIRQAsserted(video, oldStat) && _statIRQAsserted(video, video->stat)) {
+			video->p->memory.io[REG_IF] |= (1 << GB_IRQ_LCDSTAT);
+			GBUpdateIRQs(video->p);
+		}
 	}
 	video->p->memory.io[REG_STAT] = video->stat;
 }
@@ -491,7 +500,7 @@ void GBVideoWritePalette(struct GBVideo* video, uint16_t address, uint8_t value)
 			video->renderer->writePalette(video->renderer, 9 * 4 + 3, video->palette[9 * 4 + 3]);
 			break;
 		}
-	} else if (video->p->model == GB_MODEL_SGB) {
+	} else if (video->p->model & GB_MODEL_SGB) {
 		video->renderer->writeVideoRegister(video->renderer, address, value);
 	} else {
 		switch (address) {

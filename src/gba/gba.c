@@ -138,6 +138,8 @@ void GBAUnloadROM(struct GBA* gba) {
 	gba->memory.rom = NULL;
 	gba->isPristine = false;
 
+	gba->memory.savedata.maskWriteback = false;
+	GBASavedataUnmask(&gba->memory.savedata);
 	GBASavedataDeinit(&gba->memory.savedata);
 	if (gba->memory.savedata.realVf) {
 		gba->memory.savedata.realVf->close(gba->memory.savedata.realVf);
@@ -216,10 +218,6 @@ void GBAReset(struct ARMCore* cpu) {
 	if (gba->pristineRomSize > SIZE_CART0) {
 		GBAMatrixReset(gba);
 	}
-
-	if (!gba->romVf && gba->memory.rom) {
-		GBASkipBIOS(gba);
-	}
 }
 
 void GBASkipBIOS(struct GBA* gba) {
@@ -230,7 +228,8 @@ void GBASkipBIOS(struct GBA* gba) {
 		} else {
 			cpu->gprs[ARM_PC] = BASE_WORKING_RAM;
 		}
-		gba->memory.io[REG_VCOUNT >> 1] = 0x7E;
+		gba->video.vcount = 0x7D;
+		gba->memory.io[REG_VCOUNT >> 1] = 0x7D;
 		gba->memory.io[REG_POSTFLG >> 1] = 1;
 		int currentCycles = 0;
 		ARM_WRITE_PC;
@@ -390,8 +389,6 @@ bool GBALoadROM(struct GBA* gba, struct VFile* vf) {
 	gba->memory.romMask = toPow2(gba->memory.romSize) - 1;
 	gba->memory.mirroring = false;
 	gba->romCrc32 = doCrc32(gba->memory.rom, gba->memory.romSize);
-	GBAHardwareInit(&gba->memory.hw, &((uint16_t*) gba->memory.rom)[GPIO_REG_DATA >> 1]);
-	GBAVFameDetect(&gba->memory.vfame, gba->memory.rom, gba->memory.romSize);
 	if (popcount32(gba->memory.romSize) != 1) {
 		// This ROM is either a bad dump or homebrew. Emulate flash cart behavior.
 #ifndef FIXED_ROM_BUFFER
@@ -406,6 +403,8 @@ bool GBALoadROM(struct GBA* gba, struct VFile* vf) {
 	if (gba->cpu && gba->memory.activeRegion >= REGION_CART0) {
 		gba->cpu->memory.setActiveRegion(gba->cpu, gba->cpu->gprs[ARM_PC]);
 	}
+	GBAHardwareInit(&gba->memory.hw, &((uint16_t*) gba->memory.rom)[GPIO_REG_DATA >> 1]);
+	GBAVFameDetect(&gba->memory.vfame, gba->memory.rom, gba->memory.romSize);
 	// TODO: error check
 	return true;
 }
@@ -525,7 +524,7 @@ void GBADebug(struct GBA* gba, uint16_t flags) {
 		int level = 1 << GBADebugFlagsGetLevel(gba->debugFlags);
 		level &= 0x1F;
 		char oolBuf[0x101];
-		strncpy(oolBuf, gba->debugString, sizeof(gba->debugString));
+		strncpy(oolBuf, gba->debugString, sizeof(oolBuf) - 1);
 		memset(gba->debugString, 0, sizeof(gba->debugString));
 		oolBuf[0x100] = '\0';
 		mLog(_mLOG_CAT_GBA_DEBUG(), level, "%s", oolBuf);

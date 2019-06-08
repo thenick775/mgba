@@ -30,7 +30,7 @@ static void _GBTimerDivIncrement(struct GBTimer* timer, uint32_t cyclesLate) {
 				mTimingSchedule(&timer->p->timing, &timer->irq, 7 - ((timer->p->cpu->executionState - cyclesLate) & 3));
 			}
 		}
-		int timingFactor = 0x3FF >> !timer->p->doubleSpeed;
+		unsigned timingFactor = 0x3FF >> !timer->p->doubleSpeed;
 		if ((timer->internalDiv & timingFactor) == timingFactor) {
 			GBAudioUpdateFrame(&timer->p->audio, &timer->p->timing);
 		}
@@ -80,8 +80,8 @@ void GBTimerDivReset(struct GBTimer* timer) {
 			mTimingSchedule(&timer->p->timing, &timer->irq, 7 - (timer->p->cpu->executionState & 3));
 		}
 	}
-	int timingFactor = 0x200 >> !timer->p->doubleSpeed;
-	if (timer->internalDiv & 0x200) {
+	unsigned timingFactor = 0x400 >> !timer->p->doubleSpeed;
+	if (timer->internalDiv & timingFactor) {
 		GBAudioUpdateFrame(&timer->p->audio, &timer->p->timing);
 	}
 	timer->p->memory.io[REG_DIV] = 0;
@@ -92,6 +92,10 @@ void GBTimerDivReset(struct GBTimer* timer) {
 
 uint8_t GBTimerUpdateTAC(struct GBTimer* timer, GBRegisterTAC tac) {
 	if (GBRegisterTACIsRun(tac)) {
+		timer->nextDiv -= mTimingUntil(&timer->p->timing, &timer->event);
+		mTimingDeschedule(&timer->p->timing, &timer->event);
+		_GBTimerDivIncrement(timer, (timer->p->cpu->executionState + 2) & 3);
+
 		switch (GBRegisterTACGetClock(tac)) {
 		case 0:
 			timer->timaPeriod = 1024 >> 4;
@@ -107,9 +111,6 @@ uint8_t GBTimerUpdateTAC(struct GBTimer* timer, GBRegisterTAC tac) {
 			break;
 		}
 
-		timer->nextDiv -= mTimingUntil(&timer->p->timing, &timer->event);
-		mTimingDeschedule(&timer->p->timing, &timer->event);
-		_GBTimerDivIncrement(timer, (timer->p->cpu->executionState + 2) & 3);
 		timer->nextDiv += GB_DMG_DIV_PERIOD;
 		mTimingSchedule(&timer->p->timing, &timer->event, timer->nextDiv);
 	} else {

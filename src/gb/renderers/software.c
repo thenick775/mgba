@@ -30,7 +30,7 @@ static void GBVideoSoftwareRendererDrawObj(struct GBVideoSoftwareRenderer* rende
 
 static void _clearScreen(struct GBVideoSoftwareRenderer* renderer) {
 	size_t sgbOffset = 0;
-	if (renderer->model == GB_MODEL_SGB) {
+	if (renderer->model & GB_MODEL_SGB) {
 		return;
 	}
 	int y;
@@ -56,7 +56,7 @@ static void _regenerateSGBBorder(struct GBVideoSoftwareRenderer* renderer) {
 	int x, y;
 	for (y = 0; y < 224; ++y) {
 		for (x = 0; x < 256; x += 8) {
-			if (x >= 48 && x < 208 && y >= 40 && y < 104) {
+			if (x >= 48 && x < 208 && y >= 40 && y < 184) {
 				continue;
 			}
 			uint16_t mapData;
@@ -79,16 +79,13 @@ static void _regenerateSGBBorder(struct GBVideoSoftwareRenderer* renderer) {
 			int paletteBase = SGBBgAttributesGetPalette(mapData) * 0x10;
 			int colorSelector;
 
+			int flip = 0;
 			if (SGBBgAttributesIsXFlip(mapData)) {
-				for (i = 0; i < 8; ++i) {
-					colorSelector = (tileData[0] >> i & 0x1) << 0 | (tileData[1] >> i & 0x1) << 1 | (tileData[2] >> i & 0x1) << 2 | (tileData[3] >> i & 0x1) << 3;
-					renderer->outputBuffer[base + i] = renderer->palette[paletteBase | colorSelector];
-				}
-			} else {
-				for (i = 7; i >= 0; --i) {
-					colorSelector = (tileData[0] >> i & 0x1) << 0 | (tileData[1] >> i & 0x1) << 1 | (tileData[2] >> i & 0x1) << 2 | (tileData[3] >> i & 0x1) << 3;
-					renderer->outputBuffer[base + 7 - i] = renderer->palette[paletteBase | colorSelector];
-				}
+				flip = 7;
+			}
+			for (i = 7; i >= 0; --i) {
+				colorSelector = (tileData[0] >> i & 0x1) << 0 | (tileData[1] >> i & 0x1) << 1 | (tileData[2] >> i & 0x1) << 2 | (tileData[3] >> i & 0x1) << 3;
+				renderer->outputBuffer[(base + 7 - i) ^ flip] = renderer->palette[paletteBase | colorSelector];
 			}
 		}
 	}
@@ -221,24 +218,23 @@ static void GBVideoSoftwareRendererDeinit(struct GBVideoRenderer* renderer) {
 	UNUSED(softwareRenderer);
 }
 
-static void GBVideoSoftwareRendererUpdateWindow(struct GBVideoSoftwareRenderer* renderer, bool before, bool after) {
-	if (renderer->lastY >= GB_VIDEO_VERTICAL_PIXELS || after == before) {
+static void GBVideoSoftwareRendererUpdateWindow(struct GBVideoSoftwareRenderer* renderer, bool before, bool after, uint8_t oldWy) {
+	if (renderer->lastY >= GB_VIDEO_VERTICAL_PIXELS || !(after || before)) {
 		return;
 	}
-	if (renderer->lastY >= renderer->wy) {
+	if (renderer->lastY >= oldWy) {
 		if (!after) {
 			renderer->currentWy -= renderer->lastY;
 			renderer->hasWindow = true;
-		} else {
+		} else if (!before) {
 			if (!renderer->hasWindow) {
-				if (renderer->lastY > renderer->wy) {
-					renderer->currentWy = GB_VIDEO_VERTICAL_PIXELS;
-				} else {
-					renderer->currentWy = renderer->lastY - renderer->wy;
-				}
+				renderer->currentWy = renderer->lastY - renderer->wy;
 			} else {
 				renderer->currentWy += renderer->lastY;
 			}
+		} else if (renderer->wy != oldWy) {
+			renderer->currentWy += oldWy - renderer->wy;
+			renderer->hasWindow = true;
 		}
 	}
 }
@@ -249,10 +245,11 @@ static uint8_t GBVideoSoftwareRendererWriteVideoRegister(struct GBVideoRenderer*
 		GBVideoCacheWriteVideoRegister(renderer->cache, address, value);
 	}
 	bool wasWindow = _inWindow(softwareRenderer);
+	uint8_t wy = softwareRenderer->wy;
 	switch (address) {
 	case REG_LCDC:
 		softwareRenderer->lcdc = value;
-		GBVideoSoftwareRendererUpdateWindow(softwareRenderer, wasWindow, _inWindow(softwareRenderer));
+		GBVideoSoftwareRendererUpdateWindow(softwareRenderer, wasWindow, _inWindow(softwareRenderer), wy);
 		break;
 	case REG_SCY:
 		softwareRenderer->scy = value;
@@ -262,11 +259,11 @@ static uint8_t GBVideoSoftwareRendererWriteVideoRegister(struct GBVideoRenderer*
 		break;
 	case REG_WY:
 		softwareRenderer->wy = value;
-		GBVideoSoftwareRendererUpdateWindow(softwareRenderer, wasWindow, _inWindow(softwareRenderer));
+		GBVideoSoftwareRendererUpdateWindow(softwareRenderer, wasWindow, _inWindow(softwareRenderer), wy);
 		break;
 	case REG_WX:
 		softwareRenderer->wx = value;
-		GBVideoSoftwareRendererUpdateWindow(softwareRenderer, wasWindow, _inWindow(softwareRenderer));
+		GBVideoSoftwareRendererUpdateWindow(softwareRenderer, wasWindow, _inWindow(softwareRenderer), wy);
 		break;
 	case REG_BGP:
 		softwareRenderer->lookup[0] = value & 3;
@@ -432,7 +429,7 @@ static void GBVideoSoftwareRendererWriteSGBPacket(struct GBVideoRenderer* render
 static void GBVideoSoftwareRendererWritePalette(struct GBVideoRenderer* renderer, int index, uint16_t value) {
 	struct GBVideoSoftwareRenderer* softwareRenderer = (struct GBVideoSoftwareRenderer*) renderer;
 	color_t color = mColorFrom555(value);
-	if (softwareRenderer->model == GB_MODEL_SGB) {
+	if (softwareRenderer->model & GB_MODEL_SGB) {
 		if (index < 0x10 && index && !(index & 3)) {
 			color = softwareRenderer->palette[0];
 		} else if (index >= 0x40 && !(index & 0xF)) {
@@ -463,7 +460,7 @@ static void GBVideoSoftwareRendererWritePalette(struct GBVideoRenderer* renderer
 	}
 	softwareRenderer->palette[index] = color;
 
-	if (softwareRenderer->model == GB_MODEL_SGB && !index && GBRegisterLCDCIsEnable(softwareRenderer->lcdc)) {
+	if (softwareRenderer->model & GB_MODEL_SGB && !index && GBRegisterLCDCIsEnable(softwareRenderer->lcdc)) {
 		renderer->writePalette(renderer, 0x04, value);
 		renderer->writePalette(renderer, 0x08, value);
 		renderer->writePalette(renderer, 0x0C, value);
@@ -501,9 +498,13 @@ static void GBVideoSoftwareRendererDrawRange(struct GBVideoRenderer* renderer, i
 	}
 	if (GBRegisterLCDCIsBgEnable(softwareRenderer->lcdc) || softwareRenderer->model >= GB_MODEL_CGB) {
 		int wy = softwareRenderer->wy + softwareRenderer->currentWy;
-		if (GBRegisterLCDCIsWindow(softwareRenderer->lcdc) && wy <= y && endX >= softwareRenderer->wx - 7) {
-			if (softwareRenderer->wx - 7 > 0 && !softwareRenderer->d.disableBG) {
-				GBVideoSoftwareRendererDrawBackground(softwareRenderer, maps, startX, softwareRenderer->wx - 7, softwareRenderer->scx - softwareRenderer->offsetScx, softwareRenderer->scy + y - softwareRenderer->offsetScy);
+		int wx = softwareRenderer->wx - 7;
+		if (GBRegisterLCDCIsWindow(softwareRenderer->lcdc) && wy == y && wx <= endX) {
+			softwareRenderer->hasWindow = true;
+		}
+		if (GBRegisterLCDCIsWindow(softwareRenderer->lcdc) && softwareRenderer->hasWindow && wx <= endX) {
+			if (wx > 0 && !softwareRenderer->d.disableBG) {
+				GBVideoSoftwareRendererDrawBackground(softwareRenderer, maps, startX, wx, softwareRenderer->scx - softwareRenderer->offsetScx, softwareRenderer->scy + y - softwareRenderer->offsetScy);
 			}
 
 			maps = &softwareRenderer->d.vram[GB_BASE_MAP];
@@ -528,7 +529,7 @@ static void GBVideoSoftwareRendererDrawRange(struct GBVideoRenderer* renderer, i
 	}
 
 	size_t sgbOffset = 0;
-	if (softwareRenderer->model == GB_MODEL_SGB && softwareRenderer->sgbBorders) {
+	if (softwareRenderer->model & GB_MODEL_SGB && softwareRenderer->sgbBorders) {
 		sgbOffset = softwareRenderer->outputBufferStride * 40 + 48;
 	}
 	color_t* row = &softwareRenderer->outputBuffer[softwareRenderer->outputBufferStride * y + sgbOffset];
@@ -536,7 +537,7 @@ static void GBVideoSoftwareRendererDrawRange(struct GBVideoRenderer* renderer, i
 	int p = 0;
 	switch (softwareRenderer->d.sgbRenderMode) {
 	case 0:
-		if (softwareRenderer->model == GB_MODEL_SGB) {
+		if (softwareRenderer->model & GB_MODEL_SGB) {
 			p = softwareRenderer->d.sgbAttributes[(startX >> 5) + 5 * (y >> 3)];
 			p >>= 6 - ((x / 4) & 0x6);
 			p &= 3;
@@ -546,7 +547,7 @@ static void GBVideoSoftwareRendererDrawRange(struct GBVideoRenderer* renderer, i
 			row[x] = softwareRenderer->palette[p | softwareRenderer->lookup[softwareRenderer->row[x] & 0x7F]];
 		}
 		for (; x + 7 < (endX & ~7); x += 8) {
-			if (softwareRenderer->model == GB_MODEL_SGB) {
+			if (softwareRenderer->model & GB_MODEL_SGB) {
 				p = softwareRenderer->d.sgbAttributes[(x >> 5) + 5 * (y >> 3)];
 				p >>= 6 - ((x / 4) & 0x6);
 				p &= 3;
@@ -561,7 +562,7 @@ static void GBVideoSoftwareRendererDrawRange(struct GBVideoRenderer* renderer, i
 			row[x + 6] = softwareRenderer->palette[p | softwareRenderer->lookup[softwareRenderer->row[x + 6] & 0x7F]];
 			row[x + 7] = softwareRenderer->palette[p | softwareRenderer->lookup[softwareRenderer->row[x + 7] & 0x7F]];
 		}
-		if (softwareRenderer->model == GB_MODEL_SGB) {
+		if (softwareRenderer->model & GB_MODEL_SGB) {
 			p = softwareRenderer->d.sgbAttributes[(x >> 5) + 5 * (y >> 3)];
 			p >>= 6 - ((x / 4) & 0x6);
 			p &= 3;
@@ -678,7 +679,7 @@ static void GBVideoSoftwareRendererFinishFrame(struct GBVideoRenderer* renderer)
 	if (!GBRegisterLCDCIsEnable(softwareRenderer->lcdc)) {
 		_clearScreen(softwareRenderer);
 	}
-	if (softwareRenderer->model == GB_MODEL_SGB) {
+	if (softwareRenderer->model & GB_MODEL_SGB) {
 		switch (softwareRenderer->sgbCommandHeader >> 3) {
 		case SGB_PAL_SET:
 		case SGB_ATTR_SET:
@@ -711,7 +712,10 @@ static void GBVideoSoftwareRendererFinishFrame(struct GBVideoRenderer* renderer)
 
 static void GBVideoSoftwareRendererEnableSGBBorder(struct GBVideoRenderer* renderer, bool enable) {
 	struct GBVideoSoftwareRenderer* softwareRenderer = (struct GBVideoSoftwareRenderer*) renderer;
-	if (softwareRenderer->model == GB_MODEL_SGB) {
+	if (softwareRenderer->model & GB_MODEL_SGB) {
+		if (enable == softwareRenderer->sgbBorders) {
+			return;
+		}
 		softwareRenderer->sgbBorders = enable;
 		if (softwareRenderer->sgbBorders && !renderer->sgbRenderMode) {
 			_regenerateSGBBorder(softwareRenderer);

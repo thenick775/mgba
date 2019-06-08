@@ -31,6 +31,7 @@ void TilePainter::resizeEvent(QResizeEvent* event) {
 	if (width() / m_size != m_backing.width() / m_size || m_backing.height() != calculatedHeight) {
 		m_backing = QPixmap(width(), calculatedHeight);
 		m_backing.fill(Qt::transparent);
+		emit needsRedraw();
 	}
 }
 
@@ -59,8 +60,15 @@ void TilePainter::setTileCount(int tiles) {
 		int w = width() / m_size;
 		int h = (tiles + w - 1) * m_size / w;
 		setMinimumSize(m_size, h - (h % m_size));
-		resizeEvent(nullptr);
+	} else {		
+		int w = minimumSize().width() / m_size;
+		if (!w) {
+			w = 1;
+		}
+		int h = (tiles + w - 1) * m_size / w;
+		setMinimumSize(w * m_size, h - (h % m_size));
 	}
+	resizeEvent(nullptr);
 }
 
 void TilePainter::setTileMagnification(int mag) {

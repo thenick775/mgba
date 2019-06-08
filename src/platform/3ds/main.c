@@ -103,6 +103,7 @@ static C3D_RenderTarget* upscaleBuffer;
 static C3D_Tex upscaleBufferTex;
 
 static aptHookCookie cookie;
+static bool core2;
 
 extern bool allocateRomBuffer(void);
 
@@ -194,7 +195,9 @@ static void _drawStart(void) {
 	C3D_FrameBegin(flags);
 	ctrStartFrame();
 
+	C3D_FrameDrawOn(bottomScreen[doubleBuffer]);
 	C3D_RenderTargetClear(bottomScreen[doubleBuffer], C3D_CLEAR_COLOR, 0, 0);
+	C3D_FrameDrawOn(topScreen[doubleBuffer]);
 	C3D_RenderTargetClear(topScreen[doubleBuffer], C3D_CLEAR_COLOR, 0, 0);
 }
 
@@ -250,9 +253,7 @@ static void _resetCamera(struct m3DSImageSource* imageSource) {
 }
 
 static void _setup(struct mGUIRunner* runner) {
-	bool n3ds = false;
-	APT_CheckNew3DS(&n3ds);
-	if (n3ds) {
+	if (core2) {
 		mCoreConfigSetDefaultIntValue(&runner->config, "threadedVideo", 1);
 		mCoreLoadForeignConfig(runner->core, &runner->config);
 	}
@@ -744,6 +745,10 @@ static void _postAudioBuffer(struct mAVStream* stream, blip_t* left, blip_t* rig
 	}
 }
 
+THREAD_ENTRY _core2Test(void* context) {
+	UNUSED(context);
+}
+
 int main() {
 	rotation.d.sample = _sampleRotation;
 	rotation.d.readTiltX = _readTiltX;
@@ -943,6 +948,12 @@ int main() {
 
 	APT_SetAppCpuTimeLimit(20);
 	runner.autosave.thread = threadCreate(mGUIAutosaveThread, &runner.autosave, 0x4000, 0x1F, 1, true);
+
+	Thread thread2;
+	if (ThreadCreate(&thread2, _core2Test, NULL) == 0) {
+		core2 = true;
+		ThreadJoin(thread2);
+	}
 
 	mGUIInit(&runner, "3ds");
 

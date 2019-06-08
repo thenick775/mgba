@@ -25,18 +25,17 @@
 #include <vita2d.h>
 
 static void _drawStart(void) {
-	vita2d_set_vblank_wait(false);
+	static int vcount = 0;
+	extern bool frameLimiter;
+	int oldVCount = vcount;
+	vcount = sceDisplayGetVcount();
+	vita2d_set_vblank_wait(frameLimiter && vcount + 1 >= oldVCount);
 	vita2d_start_drawing();
 	vita2d_clear_screen();
 }
 
 static void _drawEnd(void) {
-	static int vcount = 0;
-	extern bool frameLimiter;
-	int oldVCount = vcount;
 	vita2d_end_drawing();
-	vcount = sceDisplayGetVcount();
-	vita2d_set_vblank_wait(frameLimiter && vcount + 1 >= oldVCount);
 	vita2d_swap_buffers();
 }
 
@@ -160,7 +159,8 @@ int main() {
 		.unpaused = mPSP2Unpaused,
 		.incrementScreenMode = mPSP2IncrementScreenMode,
 		.setFrameLimiter = mPSP2SetFrameLimiter,
-		.pollGameInput = mPSP2PollInput
+		.pollGameInput = mPSP2PollInput,
+		.running = mPSP2SystemPoll
 	};
 
 	sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, SCE_TOUCH_SAMPLING_STATE_START);

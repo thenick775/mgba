@@ -185,12 +185,12 @@ CoreController::CoreController(mCore* core, QObject* parent)
 			message = QString().vsprintf(format, args);
 			QMetaObject::invokeMethod(controller, "statusPosted", Q_ARG(const QString&, message));
 		}
+		message = QString().vsprintf(format, args);
+		QMetaObject::invokeMethod(controller, "logPosted", Q_ARG(int, level), Q_ARG(int, category), Q_ARG(const QString&, message));
 		if (level == mLOG_FATAL) {
 			mCoreThreadMarkCrashed(controller->thread());
 			QMetaObject::invokeMethod(controller, "crashed", Q_ARG(const QString&, QString().vsprintf(format, args)));
 		}
-		message = QString().vsprintf(format, args);
-		QMetaObject::invokeMethod(controller, "logPosted", Q_ARG(int, level), Q_ARG(int, category), Q_ARG(const QString&, message));
 	};
 }
 
@@ -245,6 +245,10 @@ void CoreController::loadConfig(ConfigController* config) {
 	m_autosave = config->getOption("autosave", false).toInt();
 	m_autoload = config->getOption("autoload", true).toInt();
 	m_autofireThreshold = config->getOption("autofireThreshold", m_autofireThreshold).toInt();
+	m_fastForwardVolume = config->getOption("fastForwardVolume", -1).toInt();
+	m_fastForwardMute = config->getOption("fastForwardMute", -1).toInt();
+	mCoreConfigCopyValue(&m_threadContext.core->config, config->config(), "volume");
+	mCoreConfigCopyValue(&m_threadContext.core->config, config->config(), "mute");
 	mCoreLoadForeignConfig(m_threadContext.core, config->config());
 	if (hasStarted()) {
 		updateFastForward();
@@ -430,13 +434,21 @@ void CoreController::rewind(int states) {
 }
 
 void CoreController::setFastForward(bool enable) {
+	if (m_fastForward == enable) {
+		return;
+	}
 	m_fastForward = enable;
 	updateFastForward();
+	emit fastForwardChanged(enable);
 }
 
 void CoreController::forceFastForward(bool enable) {
+	if (m_fastForwardForced == enable) {
+		return;
+	}
 	m_fastForwardForced = enable;
 	updateFastForward();
+	emit fastForwardChanged(enable || m_fastForward);
 }
 
 void CoreController::loadState(int slot) {
@@ -810,14 +822,53 @@ void CoreController::finishFrame() {
 
 void CoreController::updateFastForward() {
 	if (m_fastForward || m_fastForwardForced) {
+		if (m_fastForwardVolume >= 0) {
+			m_threadContext.core->opts.volume = m_fastForwardVolume;
+		}
+		if (m_fastForwardMute >= 0) {
+			m_threadContext.core->opts.mute = m_fastForwardMute;
+		}
 		if (m_fastForwardRatio > 0) {
 			m_threadContext.impl->sync.fpsTarget = m_fpsTarget * m_fastForwardRatio;
 		} else {
 			setSync(false);
 		}
 	} else {
+		if (!mCoreConfigGetIntValue(&m_threadContext.core->config, "volume", &m_threadContext.core->opts.volume)) {
+			m_threadContext.core->opts.volume = 0x100;
+		}
+		int fakeBool = 0;
+		mCoreConfigGetIntValue(&m_threadContext.core->config, "mute", &fakeBool);
+		m_threadContext.core->opts.mute = fakeBool;
 		m_threadContext.impl->sync.fpsTarget = m_fpsTarget;
 		setSync(true);
+	}
+	// XXX: Have a way of just updating volume
+	switch (platform()) {
+#ifdef M_CORE_GBA
+	case PLATFORM_GBA: {
+		GBA* gba = static_cast<GBA*>(m_threadContext.core->board);
+		if (m_threadContext.core->opts.mute) {
+			gba->audio.masterVolume = 0;
+		} else {
+			gba->audio.masterVolume = m_threadContext.core->opts.volume;
+		}
+		break;
+	}
+#endif
+#ifdef M_CORE_GB
+	case PLATFORM_GB: {
+		GB* gb = static_cast<GB*>(m_threadContext.core->board);
+		if (m_threadContext.core->opts.mute) {
+			gb->audio.masterVolume = 0;
+		} else {
+			gb->audio.masterVolume = m_threadContext.core->opts.volume;
+		}
+		break;
+	}
+#endif
+	default:
+		break;
 	}
 }
 

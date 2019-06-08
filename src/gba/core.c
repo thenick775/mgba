@@ -239,6 +239,11 @@ static void _GBACoreLoadConfig(struct mCore* core, const struct mCoreConfig* con
 		}
 	}
 
+	int fakeBool = 0;
+	mCoreConfigGetIntValue(config, "allowOpposingDirections", &fakeBool);
+	gba->allowOpposingDirections = fakeBool;
+
+	mCoreConfigCopyValue(&core->config, config, "allowOpposingDirections");
 	mCoreConfigCopyValue(&core->config, config, "gba.bios");
 
 #ifndef DISABLE_THREADING
@@ -439,7 +444,7 @@ static void _GBACoreReset(struct mCore* core) {
 #endif
 
 	ARMReset(core->cpu);
-	if (core->opts.skipBios && gba->isPristine) {
+	if (core->opts.skipBios && (gba->romVf || gba->memory.rom)) {
 		GBASkipBIOS(core->board);
 	}
 }

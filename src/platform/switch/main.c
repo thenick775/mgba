@@ -75,6 +75,13 @@ static GLuint tex;
 
 static color_t* frameBuffer;
 static struct mAVStream stream;
+static struct mSwitchRumble {
+	struct mRumble d;
+	int up;
+	int down;
+	HidVibrationValue value;
+} rumble;
+static struct mRotationSource rotation = {0};
 static int audioBufferActive;
 static struct GBAStereoSample audioBuffer[N_BUFFERS][SAMPLES] __attribute__((__aligned__(0x1000)));
 static AudioOutBuffer audoutBuffer[N_BUFFERS];
@@ -82,65 +89,75 @@ static int enqueuedBuffers;
 static bool frameLimiter = true;
 static unsigned framecount = 0;
 static unsigned framecap = 10;
+static u32 vibrationDeviceHandles[4];
+static HidVibrationValue vibrationStop = { .freq_low = 160.f, .freq_high = 320.f };
+
+static enum ScreenMode {
+	SM_PA,
+	SM_AF,
+	SM_SF,
+	SM_MAX
+} screenMode = SM_PA;
 
 static bool initEgl() {
-    s_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    if (!s_display) {
-        goto _fail0;
-    }
+	s_display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+	if (!s_display) {
+		goto _fail0;
+	}
 
-    eglInitialize(s_display, NULL, NULL);
+	eglInitialize(s_display, NULL, NULL);
 
-    EGLConfig config;
-    EGLint numConfigs;
-    static const EGLint attributeList[] = {
-        EGL_RED_SIZE, 1,
-        EGL_GREEN_SIZE, 1,
-        EGL_BLUE_SIZE, 1,
-        EGL_NONE
-    };
-    eglChooseConfig(s_display, attributeList, &config, 1, &numConfigs);
-    if (!numConfigs) {
-        goto _fail1;
-    }
+	EGLConfig config;
+	EGLint numConfigs;
+	static const EGLint attributeList[] = {
+		EGL_RED_SIZE, 1,
+		EGL_GREEN_SIZE, 1,
+		EGL_BLUE_SIZE, 1,
+		EGL_NONE
+	};
+	eglChooseConfig(s_display, attributeList, &config, 1, &numConfigs);
+	if (!numConfigs) {
+		goto _fail1;
+	}
 
-    s_surface = eglCreateWindowSurface(s_display, config, "", NULL);
-    if (!s_surface) {
-        goto _fail1;
-    }
+	s_surface = eglCreateWindowSurface(s_display, config, nwindowGetDefault(), NULL);
+	if (!s_surface) {
+		goto _fail1;
+	}
 
 	EGLint contextAttributeList[] = {
 		EGL_CONTEXT_CLIENT_VERSION, 3,
 		EGL_NONE
 	};
-    s_context = eglCreateContext(s_display, config, EGL_NO_CONTEXT, contextAttributeList);
-    if (!s_context) {
-        goto _fail2;
-    }
+	s_context = eglCreateContext(s_display, config, EGL_NO_CONTEXT, contextAttributeList);
+	if (!s_context) {
+		goto _fail2;
+	}
 
-    eglMakeCurrent(s_display, s_surface, s_surface, s_context);
-    return true;
+	eglMakeCurrent(s_display, s_surface, s_surface, s_context);
+	return true;
 
 _fail2:
-    eglDestroySurface(s_display, s_surface);
-    s_surface = NULL;
+	eglDestroySurface(s_display, s_surface);
+	s_surface = NULL;
 _fail1:
-    eglTerminate(s_display);
-    s_display = NULL;
+	eglTerminate(s_display);
+	s_display = NULL;
 _fail0:
-    return false;
+	return false;
 }
 
 static void deinitEgl() {
-    if (s_display) {
-        if (s_context) {
-            eglDestroyContext(s_display, s_context);
-        }
-        if (s_surface) {
-            eglDestroySurface(s_display, s_surface);
-        }
-        eglTerminate(s_display);
-    }
+	if (s_display) {
+		eglMakeCurrent(s_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+		if (s_context) {
+			eglDestroyContext(s_display, s_context);
+		}
+		if (s_surface) {
+			eglDestroySurface(s_display, s_surface);
+		}
+		eglTerminate(s_display);
+	}
 }
 
 static void _mapKey(struct mInputMap* map, uint32_t binding, int nativeKey, enum GBAKey key) {
@@ -226,7 +243,14 @@ static void _setup(struct mGUIRunner* runner) {
 	_mapKey(&runner->core->inputMap, AUTO_INPUT, KEY_R, GBA_KEY_R);
 
 	runner->core->setVideoBuffer(runner->core, frameBuffer, 256);
+	runner->core->setPeripheral(runner->core, mPERIPH_RUMBLE, &rumble.d);
+	runner->core->setPeripheral(runner->core, mPERIPH_ROTATION, &rotation);
 	runner->core->setAVStream(runner->core, &stream);
+
+	unsigned mode;
+	if (mCoreConfigGetUIntValue(&runner->config, "screenMode", &mode) && mode < SM_MAX) {
+		screenMode = mode;
+	}
 }
 
 static void _gameLoaded(struct mGUIRunner* runner) {
@@ -237,6 +261,23 @@ static void _gameLoaded(struct mGUIRunner* runner) {
 	blip_set_rates(runner->core->getAudioChannel(runner->core, 1), runner->core->frequency(runner->core), samplerate * ratio);
 
 	mCoreConfigGetUIntValue(&runner->config, "fastForwardCap", &framecap);
+
+	unsigned mode;
+	if (mCoreConfigGetUIntValue(&runner->config, "screenMode", &mode) && mode < SM_MAX) {
+		screenMode = mode;
+	}
+
+	rumble.up = 0;
+	rumble.down = 0;
+}
+
+static void _gameUnloaded(struct mGUIRunner* runner) {
+	HidVibrationValue values[4];
+	memcpy(&values[0], &vibrationStop, sizeof(rumble.value));
+	memcpy(&values[1], &vibrationStop, sizeof(rumble.value));
+	memcpy(&values[2], &vibrationStop, sizeof(rumble.value));
+	memcpy(&values[3], &vibrationStop, sizeof(rumble.value));
+	hidSendVibrationValues(vibrationDeviceHandles, values, 4);
 }
 
 static void _drawTex(struct mGUIRunner* runner, unsigned width, unsigned height, bool faded) {
@@ -247,11 +288,26 @@ static void _drawTex(struct mGUIRunner* runner, unsigned width, unsigned height,
 	glBindVertexArray(vao);
 	float aspectX = width / (float) runner->params.width;
 	float aspectY = height / (float) runner->params.height;
-	float max;
-	if (aspectX > aspectY) {
-		max = floor(1.0 / aspectX);
-	} else {
-		max = floor(1.0 / aspectY);
+	float max = 1.f;
+	switch (screenMode) {
+	case SM_PA:
+		if (aspectX > aspectY) {
+			max = floor(1.0 / aspectX);
+		} else {
+			max = floor(1.0 / aspectY);
+		}
+		break;
+	case SM_AF:
+		if (aspectX > aspectY) {
+			max = 1.0 / aspectX;
+		} else {
+			max = 1.0 / aspectY;
+		}
+		break;
+	case SM_SF:
+		aspectX = 1.0;
+		aspectY = 1.0;
+		break;
 	}
 
 	aspectX *= max;
@@ -299,6 +355,24 @@ static void _drawFrame(struct mGUIRunner* runner, bool faded) {
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
 	_drawTex(runner, width, height, faded);
+
+	HidVibrationValue values[4];
+	if (rumble.up) {
+		rumble.value.amp_low = rumble.up / (float) (rumble.up + rumble.down);
+		rumble.value.amp_high = rumble.up / (float) (rumble.up + rumble.down);
+		memcpy(&values[0], &rumble.value, sizeof(rumble.value));
+		memcpy(&values[1], &rumble.value, sizeof(rumble.value));
+		memcpy(&values[2], &rumble.value, sizeof(rumble.value));
+		memcpy(&values[3], &rumble.value, sizeof(rumble.value));
+	} else {
+		memcpy(&values[0], &vibrationStop, sizeof(rumble.value));
+		memcpy(&values[1], &vibrationStop, sizeof(rumble.value));
+		memcpy(&values[2], &vibrationStop, sizeof(rumble.value));
+		memcpy(&values[3], &vibrationStop, sizeof(rumble.value));
+	}
+	hidSendVibrationValues(vibrationDeviceHandles, values, 4);
+	rumble.up = 0;
+	rumble.down = 0;
 }
 
 static void _drawScreenshot(struct mGUIRunner* runner, const color_t* pixels, unsigned width, unsigned height, bool faded) {
@@ -313,6 +387,12 @@ static uint16_t _pollGameInput(struct mGUIRunner* runner) {
 	return _pollInput(&runner->core->inputMap);
 }
 
+static void _incrementScreenMode(struct mGUIRunner* runner) {
+	UNUSED(runner);
+	screenMode = (screenMode + 1) % SM_MAX;
+	mCoreConfigSetUIntValue(&runner->config, "screenMode", screenMode);
+}
+
 static void _setFrameLimiter(struct mGUIRunner* runner, bool limit) {
 	UNUSED(runner);
 	if (!frameLimiter && limit) {
@@ -324,6 +404,7 @@ static void _setFrameLimiter(struct mGUIRunner* runner, bool limit) {
 		}
 	}
 	frameLimiter = limit;
+	eglSwapInterval(s_surface, limit);
 }
 
 static bool _running(struct mGUIRunner* runner) {
@@ -353,6 +434,36 @@ static void _postAudioBuffer(struct mAVStream* stream, blip_t* left, blip_t* rig
 	audioBufferActive += 1;
 	audioBufferActive %= N_BUFFERS;
 	++enqueuedBuffers;
+}
+
+void _setRumble(struct mRumble* rumble, int enable) {
+	struct mSwitchRumble* sr = (struct mSwitchRumble*) rumble;
+	if (enable) {
+		++sr->up;
+	} else {
+		++sr->down;
+	}
+}
+
+int32_t _readTiltX(struct mRotationSource* source) {
+	UNUSED(source);
+	SixAxisSensorValues sixaxis;
+	hidSixAxisSensorValuesRead(&sixaxis, CONTROLLER_P1_AUTO, 1);
+	return sixaxis.accelerometer.x * 3e8f;
+}
+
+int32_t _readTiltY(struct mRotationSource* source) {
+	UNUSED(source);
+	SixAxisSensorValues sixaxis;
+	hidSixAxisSensorValuesRead(&sixaxis, CONTROLLER_P1_AUTO, 1);
+	return sixaxis.accelerometer.y * -3e8f;
+}
+
+int32_t _readGyroZ(struct mRotationSource* source) {
+	UNUSED(source);
+	SixAxisSensorValues sixaxis;
+	hidSixAxisSensorValuesRead(&sixaxis, CONTROLLER_P1_AUTO, 1);
+	return sixaxis.gyroscope.z * -1.1e9f;
 }
 
 static int _batteryState(void) {
@@ -455,6 +566,24 @@ int main(int argc, char* argv[]) {
 	glEnableVertexAttribArray(offsetLocation);
 	glBindVertexArray(0);
 
+	rumble.d.setRumble = _setRumble;
+	rumble.value.freq_low = 120.0;
+	rumble.value.freq_high = 180.0;
+	hidInitializeVibrationDevices(&vibrationDeviceHandles[0], 2, CONTROLLER_HANDHELD, TYPE_HANDHELD | TYPE_JOYCON_PAIR);
+	hidInitializeVibrationDevices(&vibrationDeviceHandles[2], 2, CONTROLLER_PLAYER_1, TYPE_HANDHELD | TYPE_JOYCON_PAIR);
+
+	u32 handles[4];
+	hidGetSixAxisSensorHandles(&handles[0], 2, CONTROLLER_PLAYER_1, TYPE_JOYCON_PAIR);
+	hidGetSixAxisSensorHandles(&handles[2], 1, CONTROLLER_PLAYER_1, TYPE_PROCONTROLLER);
+	hidGetSixAxisSensorHandles(&handles[3], 1, CONTROLLER_HANDHELD, TYPE_HANDHELD);
+	hidStartSixAxisSensor(handles[0]);
+	hidStartSixAxisSensor(handles[1]);
+	hidStartSixAxisSensor(handles[2]);
+	hidStartSixAxisSensor(handles[3]);
+	rotation.readTiltX = _readTiltX;
+	rotation.readTiltY = _readTiltY;
+	rotation.readGyroZ = _readGyroZ;
+
 	stream.videoDimensionsChanged = NULL;
 	stream.postVideoFrame = NULL;
 	stream.postAudioFrame = NULL;
@@ -519,29 +648,59 @@ int main(int argc, char* argv[]) {
 		},
 		.configExtra = (struct GUIMenuItem[]) {
 			{
+				.title = "Screen mode",
+				.data = "screenMode",
+				.submenu = 0,
+				.state = SM_PA,
+				.validStates = (const char*[]) {
+					"Pixel-Accurate",
+					"Aspect-Ratio Fit",
+					"Stretched",
+				},
+				.nStates = 3
+			},
+			{
 				.title = "Fast forward cap",
 				.data = "fastForwardCap",
 				.submenu = 0,
 				.state = 7,
 				.validStates = (const char*[]) {
-					"3", "4", "5", "6", "7", "8", "9",
+					"2", "3", "4", "5", "6", "7", "8", "9",
 					"10", "11", "12", "13", "14", "15",
 					"20", "30"
 				},
-				.nStates = 15
+				.stateMappings = (const struct GUIVariant[]) {
+					GUI_V_U(2),
+					GUI_V_U(3),
+					GUI_V_U(4),
+					GUI_V_U(5),
+					GUI_V_U(6),
+					GUI_V_U(7),
+					GUI_V_U(8),
+					GUI_V_U(9),
+					GUI_V_U(10),
+					GUI_V_U(11),
+					GUI_V_U(12),
+					GUI_V_U(13),
+					GUI_V_U(14),
+					GUI_V_U(15),
+					GUI_V_U(20),
+					GUI_V_U(30),
+				},
+				.nStates = 16
 			},
 		},
-		.nConfigExtra = 1,
+		.nConfigExtra = 2,
 		.setup = _setup,
 		.teardown = NULL,
 		.gameLoaded = _gameLoaded,
-		.gameUnloaded = NULL,
+		.gameUnloaded = _gameUnloaded,
 		.prepareForFrame = _prepareForFrame,
 		.drawFrame = _drawFrame,
 		.drawScreenshot = _drawScreenshot,
-		.paused = NULL,
+		.paused = _gameUnloaded,
 		.unpaused = _gameLoaded,
-		.incrementScreenMode = NULL,
+		.incrementScreenMode = _incrementScreenMode,
 		.setFrameLimiter = _setFrameLimiter,
 		.pollGameInput = _pollGameInput,
 		.running = _running
@@ -568,14 +727,25 @@ int main(int argc, char* argv[]) {
 		mGUIRunloop(&runner);
 	}
 
+	mGUIDeinit(&runner);
+
+	audoutStopAudioOut();
+	GUIFontDestroy(font);
+
 	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
 	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	glDeleteBuffers(1, &pbo);
 
 	glDeleteTextures(1, &tex);
 	glDeleteBuffers(1, &vbo);
 	glDeleteProgram(program);
 	glDeleteVertexArrays(1, &vao);
+
+	hidStopSixAxisSensor(handles[0]);
+	hidStopSixAxisSensor(handles[1]);
+	hidStopSixAxisSensor(handles[2]);
+	hidStopSixAxisSensor(handles[3]);
 
 	psmExit();
 	audoutExit();

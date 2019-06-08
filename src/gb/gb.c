@@ -30,6 +30,7 @@ static const uint8_t _knownHeader[4] = { 0xCE, 0xED, 0x66, 0x66};
 #define DMG_2_BIOS_CHECKSUM 0x59C8598E
 #define MGB_BIOS_CHECKSUM 0xE6920754
 #define SGB_BIOS_CHECKSUM 0xEC8A83B9
+#define SGB2_BIOS_CHECKSUM 0X53D0DD63
 #define CGB_BIOS_CHECKSUM 0x41884E46
 
 mLOG_DEFINE_CATEGORY(GB, "GB", "gb");
@@ -201,7 +202,7 @@ void GBResizeSram(struct GB* gb, size_t size) {
 		if (gb->memory.sram == (void*) -1) {
 			gb->memory.sram = NULL;
 		}
-	} else {
+	} else if (size) {
 		uint8_t* newSram = anonymousMemoryMap(size);
 		if (gb->memory.sram) {
 			if (size > gb->sramSize) {
@@ -249,7 +250,11 @@ void GBSramClean(struct GB* gb, uint32_t frameCount) {
 }
 
 void GBSavedataMask(struct GB* gb, struct VFile* vf, bool writeback) {
+	struct VFile* oldVf = gb->sramVf;
 	GBSramDeinit(gb);
+	if (oldVf && oldVf != gb->sramRealVf) {
+		oldVf->close(oldVf);
+	}
 	gb->sramVf = vf;
 	gb->sramMaskWriteback = writeback;
 	gb->memory.sram = vf->map(vf, gb->sramSize, MAP_READ);
@@ -396,6 +401,7 @@ bool GBIsBIOS(struct VFile* vf) {
 	case DMG_2_BIOS_CHECKSUM:
 	case MGB_BIOS_CHECKSUM:
 	case SGB_BIOS_CHECKSUM:
+	case SGB2_BIOS_CHECKSUM:
 	case CGB_BIOS_CHECKSUM:
 		return true;
 	default:
@@ -584,6 +590,9 @@ void GBDetectModel(struct GB* gb) {
 		case SGB_BIOS_CHECKSUM:
 			gb->model = GB_MODEL_SGB;
 			break;
+		case SGB2_BIOS_CHECKSUM:
+			gb->model = GB_MODEL_SGB2;
+			break;
 		case CGB_BIOS_CHECKSUM:
 			gb->model = GB_MODEL_CGB;
 			break;
@@ -621,7 +630,7 @@ void GBDetectModel(struct GB* gb) {
 }
 
 void GBUpdateIRQs(struct GB* gb) {
-	int irqs = gb->memory.ie & gb->memory.io[REG_IF];
+	int irqs = gb->memory.ie & gb->memory.io[REG_IF] & 0x1F;
 	if (!irqs) {
 		gb->cpu->irqPending = false;
 		return;
@@ -714,7 +723,7 @@ static void _enableInterrupts(struct mTiming* timing, void* user, uint32_t cycle
 
 void GBHalt(struct LR35902Core* cpu) {
 	struct GB* gb = (struct GB*) cpu->master;
-	if (!(gb->memory.ie & gb->memory.io[REG_IF])) {
+	if (!(gb->memory.ie & gb->memory.io[REG_IF] & 0x1F)) {
 		cpu->cycles = cpu->nextEvent;
 		cpu->halted = true;
 	} else if (gb->model < GB_MODEL_CGB) {

@@ -43,6 +43,18 @@ SettingsView::SettingsView(ConfigController* controller, InputController* inputC
 
 	reloadConfig();
 
+	connect(m_ui.volume, static_cast<void (QSlider::*)(int)>(&QSlider::valueChanged), [this](int v) {
+		if (v < m_ui.volumeFf->value()) {
+			m_ui.volumeFf->setValue(v);
+		}
+	});
+
+	connect(m_ui.mute, &QAbstractButton::toggled, [this](bool e) {
+		if (e) {
+			m_ui.muteFf->setChecked(e);
+		}
+	});
+
 	if (m_ui.savegamePath->text().isEmpty()) {
 		m_ui.savegameSameDir->setChecked(true);
 	}
@@ -166,12 +178,22 @@ SettingsView::SettingsView(ConfigController* controller, InputController* inputC
 	m_ui.cameraDriver->addItem(tr("None (Still Image)"), static_cast<int>(InputController::CameraDriver::NONE));
 	if (cameraDriver.isNull() || cameraDriver.toInt() == static_cast<int>(InputController::CameraDriver::NONE)) {
 		m_ui.cameraDriver->setCurrentIndex(m_ui.cameraDriver->count() - 1);
+		m_ui.camera->setEnabled(false);
 	}
 
 #ifdef BUILD_QT_MULTIMEDIA
 	m_ui.cameraDriver->addItem(tr("Qt Multimedia"), static_cast<int>(InputController::CameraDriver::QT_MULTIMEDIA));
 	if (!cameraDriver.isNull() && cameraDriver.toInt() == static_cast<int>(InputController::CameraDriver::QT_MULTIMEDIA)) {
 		m_ui.cameraDriver->setCurrentIndex(m_ui.cameraDriver->count() - 1);
+		m_ui.camera->setEnabled(true);
+	}
+	QList<QPair<QByteArray, QString>> cameras = inputController->listCameras();
+	QByteArray currentCamera = m_controller->getQtOption("camera").toByteArray();
+	for (const auto& camera : cameras) {
+		m_ui.camera->addItem(camera.second, camera.first);
+		if (camera.first == currentCamera) {
+			m_ui.camera->setCurrentIndex(m_ui.camera->count() - 1);
+		}
 	}
 #endif
 
@@ -333,12 +355,13 @@ void SettingsView::updateConfig() {
 	saveSetting("videoSync", m_ui.videoSync);
 	saveSetting("audioSync", m_ui.audioSync);
 	saveSetting("frameskip", m_ui.frameskip);
-	saveSetting("fpsTarget", m_ui.fpsTarget);
 	saveSetting("autofireThreshold", m_ui.autofireThreshold);
 	saveSetting("lockAspectRatio", m_ui.lockAspectRatio);
 	saveSetting("lockIntegerScaling", m_ui.lockIntegerScaling);
 	saveSetting("volume", m_ui.volume);
 	saveSetting("mute", m_ui.mute);
+	saveSetting("fastForwardVolume", m_ui.volumeFf);
+	saveSetting("fastForwardMute", m_ui.muteFf);
 	saveSetting("rewindEnable", m_ui.rewind);
 	saveSetting("rewindBufferCapacity", m_ui.rewindCapacity);
 	saveSetting("resampleVideo", m_ui.resampleVideo);
@@ -363,6 +386,13 @@ void SettingsView::updateConfig() {
 		saveSetting("fastForwardRatio", "-1");
 	} else {
 		saveSetting("fastForwardRatio", m_ui.fastForwardRatio);
+	}
+
+	double nativeFps = double(GBA_ARM7TDMI_FREQUENCY) / double(VIDEO_TOTAL_LENGTH);
+	if (nativeFps - m_ui.fpsTarget->value() < 0.0001) {
+		m_controller->setOption("fpsTarget", QVariant(nativeFps));
+	} else {
+		saveSetting("fpsTarget", m_ui.fpsTarget);
 	}
 
 	switch (m_ui.idleOptimization->currentIndex() + IDLE_LOOP_IGNORE) {
@@ -408,6 +438,12 @@ void SettingsView::updateConfig() {
 	if (cameraDriver != m_controller->getQtOption("cameraDriver")) {
 		m_controller->setQtOption("cameraDriver", cameraDriver);
 		emit cameraDriverChanged();
+	}
+
+	QVariant camera = m_ui.camera->itemData(m_ui.camera->currentIndex());
+	if (camera != m_controller->getQtOption("camera")) {
+		m_controller->setQtOption("camera", camera);
+		emit cameraChanged(camera.toByteArray());
 	}
 
 	QLocale language = m_ui.languages->itemData(m_ui.languages->currentIndex()).toLocale();
@@ -460,8 +496,10 @@ void SettingsView::reloadConfig() {
 	loadSetting("autofireThreshold", m_ui.autofireThreshold);
 	loadSetting("lockAspectRatio", m_ui.lockAspectRatio);
 	loadSetting("lockIntegerScaling", m_ui.lockIntegerScaling);
-	loadSetting("volume", m_ui.volume);
-	loadSetting("mute", m_ui.mute);
+	loadSetting("volume", m_ui.volume, 0x100);
+	loadSetting("mute", m_ui.mute, false);
+	loadSetting("fastForwardVolume", m_ui.volumeFf, m_ui.volume->value());
+	loadSetting("fastForwardMute", m_ui.muteFf, m_ui.mute->isChecked());
 	loadSetting("rewindEnable", m_ui.rewind);
 	loadSetting("rewindBufferCapacity", m_ui.rewindCapacity);
 	loadSetting("resampleVideo", m_ui.resampleVideo);
@@ -592,9 +630,9 @@ void SettingsView::loadSetting(const char* key, QLineEdit* field) {
 	field->setText(option);
 }
 
-void SettingsView::loadSetting(const char* key, QSlider* field) {
+void SettingsView::loadSetting(const char* key, QSlider* field, int defaultVal) {
 	QString option = loadSetting(key);
-	field->setValue(option.toInt());
+	field->setValue(option.isNull() ? defaultVal : option.toInt());
 }
 
 void SettingsView::loadSetting(const char* key, QSpinBox* field) {

@@ -81,7 +81,6 @@ Window::Window(CoreManager* manager, ConfigController* config, int playerId, QWi
 	setAcceptDrops(true);
 	setAttribute(Qt::WA_DeleteOnClose);
 	updateTitle();
-	reloadDisplayDriver();
 
 	m_logo.setDevicePixelRatio(m_screenWidget->devicePixelRatio());
 	m_logo = m_logo; // Free memory left over in old pixmap
@@ -138,13 +137,11 @@ Window::Window(CoreManager* manager, ConfigController* config, int playerId, QWi
 
 	connect(this, &Window::shutdown, m_logView, &QWidget::hide);
 	connect(&m_fpsTimer, &QTimer::timeout, this, &Window::showFPS);
-	connect(&m_frameTimer, &QTimer::timeout, this, &Window::delimitFrames);
 	connect(&m_focusCheck, &QTimer::timeout, this, &Window::focusCheck);
 	connect(&m_inputController, &InputController::profileLoaded, m_shortcutController, &ShortcutController::loadProfile);
 
 	m_log.setLevels(mLOG_WARN | mLOG_ERROR | mLOG_FATAL);
 	m_fpsTimer.setInterval(FPS_TIMER_INTERVAL);
-	m_frameTimer.setInterval(FRAME_LIST_INTERVAL);
 	m_focusCheck.setInterval(200);
 
 	m_shortcutController->setConfigController(m_config);
@@ -240,8 +237,10 @@ void Window::reloadConfig() {
 		}
 		m_display->resizeContext();
 	}
-	m_display->lockAspectRatio(opts->lockAspectRatio);
-	m_display->filter(opts->resampleVideo);
+	if (m_display) {
+		m_display->lockAspectRatio(opts->lockAspectRatio);
+		m_display->filter(opts->resampleVideo);
+	}
 
 	m_inputController.setScreensaverSuspendable(opts->suspendScreensaver);
 }
@@ -364,6 +363,22 @@ void Window::selectSave(bool temporary) {
 	}
 }
 
+void Window::selectState(bool load) {
+	QStringList formats{"*.ss0", "*.ss1", "*.ss2", "*.ss3", "*.ss4", "*.ss5", "*.ss6", "*.ss7", "*.ss8", "*.ss9"};
+	QString filter = tr("mGBA savestate files (%1)").arg(formats.join(QChar(' ')));
+	if (load) {
+		QString filename = GBAApp::app()->getOpenFileName(this, tr("Select savestate"), filter);
+		if (!filename.isEmpty()) {
+			m_controller->loadState(filename);
+		}
+	} else {
+		QString filename = GBAApp::app()->getSaveFileName(this, tr("Select savestate"), filter);
+		if (!filename.isEmpty()) {
+			m_controller->saveState(filename);
+		}
+	}
+}
+
 void Window::multiplayerChanged() {
 	if (!m_controller) {
 		return;
@@ -426,6 +441,7 @@ void Window::openSettingsWindow() {
 	connect(settingsWindow, &SettingsView::displayDriverChanged, this, &Window::reloadDisplayDriver);
 	connect(settingsWindow, &SettingsView::audioDriverChanged, this, &Window::reloadAudioDriver);
 	connect(settingsWindow, &SettingsView::cameraDriverChanged, this, &Window::mustRestart);
+	connect(settingsWindow, &SettingsView::cameraChanged, &m_inputController, &InputController::setCamera);
 	connect(settingsWindow, &SettingsView::languageChanged, this, &Window::mustRestart);
 	connect(settingsWindow, &SettingsView::pathsChanged, this, &Window::reloadConfig);
 #ifdef USE_SQLITE3
@@ -555,9 +571,8 @@ void Window::resizeEvent(QResizeEvent* event) {
 	if (m_screenWidget->width() % size.width() == 0 && m_screenWidget->height() % size.height() == 0 &&
 	    m_screenWidget->width() / size.width() == m_screenWidget->height() / size.height()) {
 		factor = m_screenWidget->width() / size.width();
-	} else {
-		m_savedScale = 0;
 	}
+	m_savedScale = factor;
 	for (QMap<int, QAction*>::iterator iter = m_frameSizes.begin(); iter != m_frameSizes.end(); ++iter) {
 		bool enableSignals = iter.value()->blockSignals(true);
 		iter.value()->setChecked(iter.key() == factor);
@@ -586,9 +601,7 @@ void Window::showEvent(QShowEvent* event) {
 		enterFullScreen();
 		m_fullscreenOnStart = false;
 	}
-	if (m_display) {
-		reloadDisplayDriver();
-	}
+	reloadDisplayDriver();
 }
 
 void Window::closeEvent(QCloseEvent* event) {
@@ -600,6 +613,7 @@ void Window::closeEvent(QCloseEvent* event) {
 		m_config->setOption("width", VIDEO_HORIZONTAL_PIXELS * m_savedScale);
 	}
 	saveConfig();
+	m_display.reset();
 	QMainWindow::closeEvent(event);
 }
 
@@ -688,8 +702,12 @@ void Window::gameStarted() {
 	if (m_savedScale > 0) {
 		resizeFrame(size * m_savedScale);
 	}
+	if (!m_display) {
+		reloadDisplayDriver();
+	}
 	attachWidget(m_display.get());
 	m_display->setMinimumSize(size);
+	setFocus();
 
 #ifndef Q_OS_MAC
 	if (isFullScreen()) {
@@ -763,18 +781,24 @@ void Window::gameStopped() {
 	m_screenWidget->setLockAspectRatio(true);
 	m_screenWidget->setPixmap(m_logo);
 	m_screenWidget->unsetCursor();
+	if (m_display) {
 #ifdef M_CORE_GB
-	m_display->setMinimumSize(GB_VIDEO_HORIZONTAL_PIXELS, GB_VIDEO_VERTICAL_PIXELS);
+		m_display->setMinimumSize(GB_VIDEO_HORIZONTAL_PIXELS, GB_VIDEO_VERTICAL_PIXELS);
 #elif defined(M_CORE_GBA)
-	m_display->setMinimumSize(VIDEO_HORIZONTAL_PIXELS, VIDEO_VERTICAL_PIXELS);
+		m_display->setMinimumSize(VIDEO_HORIZONTAL_PIXELS, VIDEO_VERTICAL_PIXELS);
 #endif
+	}
 
 	m_videoLayers->clear();
 	m_audioChannels->clear();
 
 	m_fpsTimer.stop();
-	m_frameTimer.stop();
 	m_focusCheck.stop();
+
+	if (m_audioProcessor) {
+		m_audioProcessor->stop();
+		m_audioProcessor.reset();
+	}
 
 	emit paused(false);
 }
@@ -883,6 +907,7 @@ void Window::reloadAudioDriver() {
 	m_audioProcessor->requestSampleRate(opts->sampleRate);
 	m_audioProcessor->start();
 	connect(m_controller.get(), &CoreController::stopping, m_audioProcessor.get(), &AudioProcessor::stop);
+	connect(m_controller.get(), &CoreController::fastForwardChanged, m_audioProcessor.get(), &AudioProcessor::inputParametersChanged);
 }
 
 void Window::tryMakePortable() {
@@ -903,19 +928,8 @@ void Window::mustRestart() {
 }
 
 void Window::recordFrame() {
-	if (m_frameList.isEmpty()) {
-		m_frameList.append(1);
-	} else {
-		++m_frameList.back();
-	}
-}
-
-void Window::delimitFrames() {
-	if (m_frameList.size() >= FRAME_LIST_SIZE) {
-		m_frameCounter -= m_frameList.takeAt(0);
-	}
-	m_frameCounter += m_frameList.back();
-	m_frameList.append(0);
+	m_frameList.append(m_frameTimer.nsecsElapsed());
+	m_frameTimer.restart();
 }
 
 void Window::showFPS() {
@@ -923,7 +937,12 @@ void Window::showFPS() {
 		updateTitle();
 		return;
 	}
-	float fps = m_frameCounter * 10000.f / (FRAME_LIST_INTERVAL * (m_frameList.size() - 1));
+	qint64 total = 0;
+	for (qint64 t : m_frameList) {
+		total += t;
+	}
+	double fps = (m_frameList.size() * 1e10) / total;
+	m_frameList.clear();
 	fps = round(fps) / 10.f;
 	updateTitle(fps);
 }
@@ -1055,12 +1074,24 @@ void Window::setupMenu(QMenuBar* menubar) {
 	m_nonMpActions.append(loadState);
 	addControlledAction(fileMenu, loadState, "loadState");
 
+	QAction* loadStateFile = new QAction(tr("Load state file..."), fileMenu);
+	connect(loadStateFile, &QAction::triggered, [this]() { this->selectState(true); });
+	m_gameActions.append(loadStateFile);
+	m_nonMpActions.append(loadStateFile);
+	addControlledAction(fileMenu, loadStateFile, "loadStateFile");
+
 	QAction* saveState = new QAction(tr("&Save state"), fileMenu);
 	saveState->setShortcut(tr("Shift+F10"));
 	connect(saveState, &QAction::triggered, [this]() { this->openStateWindow(LoadSave::SAVE); });
 	m_gameActions.append(saveState);
 	m_nonMpActions.append(saveState);
 	addControlledAction(fileMenu, saveState, "saveState");
+
+	QAction* saveStateFile = new QAction(tr("Save state file..."), fileMenu);
+	connect(saveStateFile, &QAction::triggered, [this]() { this->selectState(false); });
+	m_gameActions.append(saveStateFile);
+	m_nonMpActions.append(saveStateFile);
+	addControlledAction(fileMenu, saveStateFile, "saveStateFile");
 
 	QMenu* quickLoadMenu = fileMenu->addMenu(tr("Quick load"));
 	QMenu* quickSaveMenu = fileMenu->addMenu(tr("Quick save"));
@@ -1076,7 +1107,7 @@ void Window::setupMenu(QMenuBar* menubar) {
 	addControlledAction(quickLoadMenu, quickLoad, "quickLoad");
 
 	QAction* quickSave = new QAction(tr("Save recent"), quickSaveMenu);
-	connect(quickLoad, &QAction::triggered, [this] {
+	connect(quickSave, &QAction::triggered, [this] {
 		m_controller->saveState();
 	});
 	m_gameActions.append(quickSave);
@@ -1159,7 +1190,7 @@ void Window::setupMenu(QMenuBar* menubar) {
 	fileMenu->addSeparator();
 #endif
 
-	QAction* about = new QAction(tr("About"), fileMenu);
+	QAction* about = new QAction(tr("About..."), fileMenu);
 	connect(about, &QAction::triggered, openTView<AboutScreen>());
 	fileMenu->addAction(about);
 
@@ -1363,7 +1394,9 @@ void Window::setupMenu(QMenuBar* menubar) {
 	ConfigOption* lockAspectRatio = m_config->addOption("lockAspectRatio");
 	lockAspectRatio->addBoolean(tr("Lock aspect ratio"), avMenu);
 	lockAspectRatio->connect([this](const QVariant& value) {
-		m_display->lockAspectRatio(value.toBool());
+		if (m_display) {
+			m_display->lockAspectRatio(value.toBool());
+		}
 		if (m_controller) {
 			m_screenWidget->setLockAspectRatio(value.toBool());
 		}
@@ -1373,7 +1406,9 @@ void Window::setupMenu(QMenuBar* menubar) {
 	ConfigOption* lockIntegerScaling = m_config->addOption("lockIntegerScaling");
 	lockIntegerScaling->addBoolean(tr("Force integer scaling"), avMenu);
 	lockIntegerScaling->connect([this](const QVariant& value) {
-		m_display->lockIntegerScaling(value.toBool());
+		if (m_display) {
+			m_display->lockIntegerScaling(value.toBool());
+		}
 		if (m_controller) {
 			m_screenWidget->setLockIntegerScaling(value.toBool());
 		}
@@ -1383,7 +1418,9 @@ void Window::setupMenu(QMenuBar* menubar) {
 	ConfigOption* resampleVideo = m_config->addOption("resampleVideo");
 	resampleVideo->addBoolean(tr("Bilinear filtering"), avMenu);
 	resampleVideo->connect([this](const QVariant& value) {
-		m_display->filter(value.toBool());
+		if (m_display) {
+			m_display->filter(value.toBool());
+		}
 	}, this);
 	m_config->updateOption("resampleVideo");
 
@@ -1610,6 +1647,16 @@ void Window::setupMenu(QMenuBar* menubar) {
 		reloadConfig();
 	}, this);
 
+	ConfigOption* volumeFf = m_config->addOption("fastForwardVolume");
+	volumeFf->connect([this](const QVariant& value) {
+		reloadConfig();
+	}, this);
+
+	ConfigOption* muteFf = m_config->addOption("fastForwardMute");
+	muteFf->connect([this](const QVariant& value) {
+		reloadConfig();
+	}, this);
+
 	ConfigOption* rewindEnable = m_config->addOption("rewindEnable");
 	rewindEnable->connect([this](const QVariant& value) {
 		reloadConfig();
@@ -1645,7 +1692,6 @@ void Window::setupMenu(QMenuBar* menubar) {
 	showFps->connect([this](const QVariant& value) {
 		if (!value.toInt()) {
 			m_fpsTimer.stop();
-			m_frameTimer.stop();
 			updateTitle();
 		} else if (m_controller) {
 			m_fpsTimer.start();
@@ -1810,7 +1856,7 @@ void Window::focusCheck() {
 void Window::updateFrame() {
 	QSize size = m_controller->screenDimensions();
 	QImage currentImage(reinterpret_cast<const uchar*>(m_controller->drawContext()), size.width(), size.height(),
-	                    256 * BYTES_PER_PIXEL, QImage::Format_RGBX8888);
+	                    size.width() * BYTES_PER_PIXEL, QImage::Format_RGBX8888);
 	QPixmap pixmap;
 	pixmap.convertFromImage(currentImage);
 	m_screenWidget->setPixmap(pixmap);

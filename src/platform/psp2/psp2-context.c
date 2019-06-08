@@ -25,6 +25,7 @@
 #include <mgba-util/vfs.h>
 #include <mgba-util/platform/psp2/sce-vfs.h>
 
+#include <psp2/appmgr.h>
 #include <psp2/audioout.h>
 #include <psp2/camera.h>
 #include <psp2/ctrl.h>
@@ -37,6 +38,9 @@
 
 #define RUMBLE_PWM 8
 #define CDRAM_ALIGN 0x40000
+
+mLOG_DECLARE_CATEGORY(GUI_PSP2);
+mLOG_DEFINE_CATEGORY(GUI_PSP2, "Vita", "gui.psp2");
 
 static enum ScreenMode {
 	SM_BACKDROP,
@@ -97,18 +101,23 @@ void mPSP2MapKey(struct mInputMap* map, int pspKey, int key) {
 static THREAD_ENTRY _audioThread(void* context) {
 	struct mPSP2AudioContext* audio = (struct mPSP2AudioContext*) context;
 	uint32_t zeroBuffer[PSP2_SAMPLES] = {0};
+	void* buffer = zeroBuffer;
 	int audioPort = sceAudioOutOpenPort(SCE_AUDIO_OUT_PORT_TYPE_MAIN, PSP2_SAMPLES, 48000, SCE_AUDIO_OUT_MODE_STEREO);
 	while (audio->running) {
 		MutexLock(&audio->mutex);
-		void* buffer;
+		if (buffer != zeroBuffer) {
+			// Can only happen in successive iterations
+			audio->samples -= PSP2_SAMPLES;
+			ConditionWake(&audio->cond);
+		}
 		if (audio->samples >= PSP2_SAMPLES) {
 			buffer = &audio->buffer[audio->readOffset];
-			audio->samples -= PSP2_SAMPLES;
 			audio->readOffset += PSP2_SAMPLES;
 			if (audio->readOffset >= PSP2_AUDIO_BUFFER_SIZE) {
 				audio->readOffset = 0;
 			}
-			ConditionWake(&audio->cond);
+			// Don't mark samples as read until the next loop iteration to prevent
+			// writing to the buffer while being read (see above)
 		} else {
 			buffer = zeroBuffer;
 		}
@@ -280,6 +289,13 @@ uint16_t mPSP2PollInput(struct mGUIRunner* runner) {
 
 void mPSP2SetFrameLimiter(struct mGUIRunner* runner, bool limit) {
 	UNUSED(runner);
+	if (!frameLimiter && limit) {
+		MutexLock(&audioContext.mutex);
+		while (audioContext.samples) {
+			ConditionWait(&audioContext.cond, &audioContext.mutex);
+		}
+		MutexUnlock(&audioContext.mutex);
+	}
 	frameLimiter = limit;
 }
 
@@ -308,7 +324,7 @@ void mPSP2Setup(struct mGUIRunner* runner) {
 	tex = vita2d_create_empty_texture_format(256, toPow2(height), SCE_GXM_TEXTURE_FORMAT_X8U8U8U8_1BGR);
 	screenshot = vita2d_create_empty_texture_format(256, toPow2(height), SCE_GXM_TEXTURE_FORMAT_X8U8U8U8_1BGR);
 
-	outputBuffer = vita2d_texture_get_datap(tex);
+	outputBuffer = anonymousMemoryMap(256 * toPow2(height) * 4);
 	runner->core->setVideoBuffer(runner->core, outputBuffer, 256);
 	runner->core->setAudioBufferSize(runner->core, PSP2_SAMPLES);
 
@@ -442,6 +458,7 @@ void mPSP2Teardown(struct mGUIRunner* runner) {
 	CircleBufferDeinit(&rumble.history);
 	vita2d_free_texture(tex);
 	vita2d_free_texture(screenshot);
+	mappedMemoryFree(outputBuffer, 256 * 256 * 4);
 	frameLimiter = true;
 }
 
@@ -509,6 +526,8 @@ void _drawTex(vita2d_texture* t, unsigned width, unsigned height, bool faded) {
 void mPSP2Draw(struct mGUIRunner* runner, bool faded) {
 	unsigned width, height;
 	runner->core->desiredVideoDimensions(runner->core, &width, &height);
+	void* texpixels = vita2d_texture_get_datap(tex);
+	memcpy(texpixels, outputBuffer, 256 * height * 4);
 	_drawTex(tex, width, height, faded);
 }
 
@@ -525,6 +544,18 @@ void mPSP2DrawScreenshot(struct mGUIRunner* runner, const uint32_t* pixels, unsi
 void mPSP2IncrementScreenMode(struct mGUIRunner* runner) {
 	screenMode = (screenMode + 1) % SM_MAX;
 	mCoreConfigSetUIntValue(&runner->config, "screenMode", screenMode);
+}
+
+bool mPSP2SystemPoll(struct mGUIRunner* runner) {
+	SceAppMgrSystemEvent event;
+	if (sceAppMgrReceiveSystemEvent(&event) < 0) {
+		return true;
+	}
+	if (event.systemEvent == SCE_APPMGR_SYSTEMEVENT_ON_RESUME) {
+		mLOG(GUI_PSP2, INFO, "Suspend detected, reloading save");
+		mCoreAutoloadSave(runner->core);
+	}
+	return true;
 }
 
 __attribute__((noreturn, weak)) void __assert_func(const char* file, int line, const char* func, const char* expr) {

@@ -64,7 +64,7 @@ void GBSerialize(struct GB* gb, struct GBSerializedState* state) {
 	GBTimerSerialize(&gb->timer, state);
 	GBAudioSerialize(&gb->audio, state);
 
-	if (gb->model == GB_MODEL_SGB) {
+	if (gb->model & GB_MODEL_SGB) {
 		GBSGBSerialize(gb, state);
 	}
 }
@@ -113,7 +113,7 @@ bool GBDeserialize(struct GB* gb, const struct GBSerializedState* state) {
 		error = true;
 	}
 	LOAD_16LE(check16, 0, &state->video.x);
-	if (check16 < 0 || check16 > GB_VIDEO_HORIZONTAL_PIXELS) {
+	if (check16 < -7 || check16 > GB_VIDEO_HORIZONTAL_PIXELS) {
 		mLOG(GB_STATE, WARN, "Savestate is corrupted: video x is out of range");
 		error = true;
 	}
@@ -138,7 +138,7 @@ bool GBDeserialize(struct GB* gb, const struct GBSerializedState* state) {
 	if (error) {
 		return false;
 	}
-	gb->timing.root = NULL;
+	mTimingClear(&gb->timing);
 	LOAD_32LE(gb->timing.masterCycles, 0, &state->masterCycles);
 
 	gb->cpu->a = state->cpu.a;
@@ -187,7 +187,7 @@ bool GBDeserialize(struct GB* gb, const struct GBSerializedState* state) {
 	GBTimerDeserialize(&gb->timer, state);
 	GBAudioDeserialize(&gb->audio, state);
 
-	if (gb->model == GB_MODEL_SGB && canSgb) {
+	if (gb->model & GB_MODEL_SGB && canSgb) {
 		GBSGBDeserialize(gb, state);
 	}
 

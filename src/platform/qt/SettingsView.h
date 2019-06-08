@@ -38,6 +38,7 @@ signals:
 	void audioDriverChanged();
 	void displayDriverChanged();
 	void cameraDriverChanged();
+	void cameraChanged(const QByteArray&);
 	void pathsChanged();
 	void languageChanged();
 	void libraryCleared();
@@ -72,7 +73,7 @@ private:
 	void loadSetting(const char* key, QComboBox*);
 	void loadSetting(const char* key, QDoubleSpinBox*);
 	void loadSetting(const char* key, QLineEdit*);
-	void loadSetting(const char* key, QSlider*);
+	void loadSetting(const char* key, QSlider*, int defaultVal = 0);
 	void loadSetting(const char* key, QSpinBox*);
 	QString loadSetting(const char* key);
 };

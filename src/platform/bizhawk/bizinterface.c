@@ -182,7 +182,7 @@ EXP bizctx* BizCreate(const void* bios, const void* data, int length, const over
 
 	ctx->gba->luminanceSource = &ctx->lumasource; // ??
 	ctx->gba->idleOptimization = IDLE_LOOP_IGNORE; // ??
-	ctx->gba->realisticTiming = TRUE; // ??
+	//ctx->gba->realisticTiming = TRUE; // ??
 	ctx->gba->keyCallback = &ctx->keysource; // ??
 
 	ctx->keysource.readKeys = GetKeys;

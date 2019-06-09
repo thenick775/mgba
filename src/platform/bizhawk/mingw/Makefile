@@ -35,69 +35,83 @@ DEST_32 = ../../../../../output/dll
 DEST_64 = ../../../../../output/dll
 
 SRCS = \
-	$(ROOT_DIR)/core/config.c \
+	$(ROOT_DIR)/core/cache-set.c \
 	$(ROOT_DIR)/core/cheats.c \
+	$(ROOT_DIR)/core/config.c \
 	$(ROOT_DIR)/core/core.c \
 	$(ROOT_DIR)/core/directories.c \
 	$(ROOT_DIR)/core/input.c \
 	$(ROOT_DIR)/core/interface.c \
 	$(ROOT_DIR)/core/library.c \
-	$(ROOT_DIR)/core/log.c \
-	$(ROOT_DIR)/core/rewind.c \
-	$(ROOT_DIR)/core/serialize.c \
-	$(ROOT_DIR)/core/timing.c \
 	$(ROOT_DIR)/core/lockstep.c \
+	$(ROOT_DIR)/core/log.c \
+	$(ROOT_DIR)/core/map-cache.c \
+	$(ROOT_DIR)/core/mem-search.c \
+	$(ROOT_DIR)/core/rewind.c \
+	$(ROOT_DIR)/core/scripting.c \
+	$(ROOT_DIR)/core/serialize.c \
 	$(ROOT_DIR)/core/sync.c \
 	$(ROOT_DIR)/core/thread.c \
 	$(ROOT_DIR)/core/tile-cache.c \
-	$(ROOT_DIR)/arm/debugger/debugger.c \
-	$(ROOT_DIR)/arm/debugger/memory-debugger.c \
+	$(ROOT_DIR)/core/timing.c \
+	$(ROOT_DIR)/lr35902/decoder.c \
+	$(ROOT_DIR)/lr35902/isa-lr35902.c \
+	$(ROOT_DIR)/lr35902/lr35902.c \
 	$(ROOT_DIR)/arm/arm.c \
 	$(ROOT_DIR)/arm/decoder-arm.c \
 	$(ROOT_DIR)/arm/decoder-thumb.c \
 	$(ROOT_DIR)/arm/decoder.c \
 	$(ROOT_DIR)/arm/isa-arm.c \
 	$(ROOT_DIR)/arm/isa-thumb.c \
+	$(ROOT_DIR)/gb/audio.c \
 	$(ROOT_DIR)/gba/audio.c \
 	$(ROOT_DIR)/gba/bios.c \
 	$(ROOT_DIR)/gba/cheats.c \
-	$(ROOT_DIR)/gba/cheats/codebreaker.c \
-	$(ROOT_DIR)/gba/cheats/gameshark.c \
-	$(ROOT_DIR)/gba/cheats/parv3.c \
 	$(ROOT_DIR)/gba/core.c \
 	$(ROOT_DIR)/gba/dma.c \
 	$(ROOT_DIR)/gba/gba.c \
 	$(ROOT_DIR)/gba/hardware.c \
 	$(ROOT_DIR)/gba/hle-bios.c \
+	$(ROOT_DIR)/gba/input.c \
 	$(ROOT_DIR)/gba/io.c \
+	$(ROOT_DIR)/gba/matrix.c \
 	$(ROOT_DIR)/gba/memory.c \
 	$(ROOT_DIR)/gba/overrides.c \
+	$(ROOT_DIR)/gba/savedata.c \
+	$(ROOT_DIR)/gba/serialize.c \
+	$(ROOT_DIR)/gba/sharkport.c \
+	$(ROOT_DIR)/gba/sio.c \
+	$(ROOT_DIR)/gba/timer.c \
+	$(ROOT_DIR)/gba/vfame.c \
+	$(ROOT_DIR)/gba/video.c \
+	$(ROOT_DIR)/gba/cheats/codebreaker.c \
+	$(ROOT_DIR)/gba/cheats/gameshark.c \
+	$(ROOT_DIR)/gba/cheats/parv3.c \
+	$(ROOT_DIR)/gba/renderers/cache-set.c \
 	$(ROOT_DIR)/gba/renderers/software-bg.c \
 	$(ROOT_DIR)/gba/renderers/software-mode0.c \
 	$(ROOT_DIR)/gba/renderers/software-obj.c \
 	$(ROOT_DIR)/gba/renderers/video-software.c \
-	$(ROOT_DIR)/gba/renderers/tile-cache.c \
-	$(ROOT_DIR)/gba/savedata.c \
-	$(ROOT_DIR)/gba/serialize.c \
-	$(ROOT_DIR)/gba/sio.c \
-	$(ROOT_DIR)/gba/timer.c \
+	$(ROOT_DIR)/gba/sio/joybus.c \
 	$(ROOT_DIR)/gba/sio/lockstep.c \
-	$(ROOT_DIR)/gba/video.c \
-	$(ROOT_DIR)/gba/vfame.c \
-	$(ROOT_DIR)/gb/audio.c \
 	$(ROOT_DIR)/third-party/blip_buf/blip_buf.c \
 	$(ROOT_DIR)/third-party/inih/ini.c \
 	$(ROOT_DIR)/util/circle-buffer.c \
 	$(ROOT_DIR)/util/configuration.c \
 	$(ROOT_DIR)/util/crc32.c \
+	$(ROOT_DIR)/util/elf-read.c \
+	$(ROOT_DIR)/util/formatting.c \
+	$(ROOT_DIR)/util/gui.c \
+	$(ROOT_DIR)/util/hash.c \
 	$(ROOT_DIR)/util/patch-fast.c \
 	$(ROOT_DIR)/util/patch-ips.c \
 	$(ROOT_DIR)/util/patch-ups.c \
 	$(ROOT_DIR)/util/patch.c \
-	$(ROOT_DIR)/util/formatting.c \
-	$(ROOT_DIR)/util/hash.c \
+	$(ROOT_DIR)/util/png-io.c \
+	$(ROOT_DIR)/util/ring-fifo.c \
 	$(ROOT_DIR)/util/string.c \
 	$(ROOT_DIR)/util/table.c \
+	$(ROOT_DIR)/util/text-codec.c \
 	$(ROOT_DIR)/util/vfs.c \
 	$(ROOT_DIR)/util/vfs/vfs-mem.c \
 	$(ROOT_DIR)/platform/windows/memory.c \

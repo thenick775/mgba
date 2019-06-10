@@ -178,11 +178,8 @@ EXP bizctx* BizCreate(const void* bios, const void* data, int length, const over
 	ctx->core->loadSave(ctx->core, ctx->sramvf);
 
 	mCoreSetRTC(ctx->core, &ctx->rtcsource);
-	ctx->gba->rotationSource = &ctx->rotsource;
-
-	ctx->gba->luminanceSource = &ctx->lumasource; // ??
+	
 	ctx->gba->idleOptimization = IDLE_LOOP_IGNORE; // ??
-	//ctx->gba->realisticTiming = TRUE; // ??
 	ctx->gba->keyCallback = &ctx->keysource; // ??
 
 	ctx->keysource.readKeys = GetKeys;
@@ -194,6 +191,9 @@ EXP bizctx* BizCreate(const void* bios, const void* data, int length, const over
 	ctx->lumasource.readLuminance = GetLight;
 	ctx->rtcsource.sample = TimeCB;
 	ctx->rtcsource.unixTime = GetTime;
+	
+	ctx->core->setPeripheral(ctx->core, mPERIPH_ROTATION, &ctx->rotsource);
+	ctx->core->setPeripheral(ctx->core, mPERIPH_GBA_LUMINANCE, &ctx->lumasource);
 
 	if (bios)
 	{
@@ -277,26 +277,21 @@ struct MemoryAreas
 	const void* oam;
 	const void* rom;
 	const void* sram;
-	uint32_t sram_size;
+	size_t sram_size;
 };
-
-EXP int BizGetSaveRamSize(bizctx* ctx)
-{
-	return GBASavedataSize(&ctx->gba->memory.savedata);
-}
 
 EXP void BizGetMemoryAreas(bizctx* ctx, struct MemoryAreas* dst)
 {
-	dst->bios = ctx->gba->memory.bios;
-	dst->wram = ctx->gba->memory.wram;
-	dst->iwram = ctx->gba->memory.iwram;
+	size_t sizeOut;
+	dst->bios = ctx->core->getMemoryBlock(ctx->core, REGION_BIOS, &sizeOut);
+	dst->wram = ctx->core->getMemoryBlock(ctx->core, REGION_WORKING_RAM, &sizeOut);
+	dst->iwram = ctx->core->getMemoryBlock(ctx->core, REGION_WORKING_IRAM, &sizeOut);
 	dst->mmio = ctx->gba->memory.io;
-	dst->palram = ctx->gba->video.palette;
-	dst->vram = ctx->gba->video.renderer->vram;
-	dst->oam = ctx->gba->video.oam.raw;
-	dst->rom = ctx->gba->memory.rom;
-	dst->sram = ctx->sram; //gba->memory.savedata.data;
-	dst->sram_size = BizGetSaveRamSize(ctx);
+	dst->palram = ctx->core->getMemoryBlock(ctx->core, REGION_PALETTE_RAM, &sizeOut);
+	dst->vram = ctx->core->getMemoryBlock(ctx->core, REGION_VRAM, &sizeOut);
+	dst->oam = ctx->core->getMemoryBlock(ctx->core, REGION_OAM, &sizeOut);
+	dst->rom = ctx->core->getMemoryBlock(ctx->core, REGION_CART0, &sizeOut);
+	dst->sram = ctx->core->getMemoryBlock(ctx->core, REGION_CART_SRAM_MIRROR, &dst->sram_size);
 }
 
 EXP int BizGetSaveRam(bizctx* ctx, void* data, int size)

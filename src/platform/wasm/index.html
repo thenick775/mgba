@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+  <head>
+    <meta charset="utf-8">
+    <title>mGBA</title>
+    <style>
+      #canvas {
+        image-rendering: crisp-edges;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="canvas"></canvas>
+    <script type="text/javascript">
+      var Module = {
+        canvas: (function() { return document.getElementById('canvas'); })(),
+        preRun: function() {
+          var xhr = new XMLHttpRequest();
+          xhr.addEventListener("load", function(e) {
+            var buffer = xhr.response;
+            FS.writeFile('rom.bin', new Uint8Array(buffer));
+            Module._loadGame();
+          });
+          xhr.responseType = "arraybuffer";
+          xhr.open("GET", "rom.bin");
+          xhr.send();
+       }
+     };
+    </script>
+    <script src="mgba.js"></script>
+  </body>
+</html>

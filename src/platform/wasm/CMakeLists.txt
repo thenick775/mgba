@@ -1,0 +1,4 @@
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s FULL_ES2=1 -s USE_SDL=2 -s TOTAL_MEMORY=67108864")
+add_executable(${BINARY_NAME}.js main.c memory.c ../sdl/sdl-audio.c ../sdl/sdl-events.c)
+set_target_properties(${BINARY_NAME}.js PROPERTIES COMPILE_DEFINITIONS "${OS_DEFINES};${FEATURE_DEFINES};${FUNCTION_DEFINES}" COMPILE_OPTIONS "-s;USE_SDL=2" OUTPUT_NAME ${BINARY_NAME})
+target_link_libraries(${BINARY_NAME}.js ${BINARY_NAME} ${OS_LIB})

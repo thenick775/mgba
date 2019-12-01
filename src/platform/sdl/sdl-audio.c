@@ -139,6 +139,9 @@ static void _mSDLAudioCallback(void* context, Uint8* data, int len) {
 		audioContext->sync->audioHighWater = audioContext->samples + audioContext->resampler.highWaterMark + audioContext->resampler.lowWaterMark + (audioContext->samples >> 6);
 		audioContext->sync->audioHighWater *= sampleRate / (fauxClock * audioContext->obtainedSpec.freq);
 	}
+#ifdef __EMSCRIPTEN__
+	fauxClock = GBAAudioCalculateRatio(1, 60, 1);
+#endif
 	mAudioResamplerSetSource(&audioContext->resampler, buffer, sampleRate / fauxClock, true);
 	mAudioResamplerProcess(&audioContext->resampler);
 	if (audioContext->sync) {

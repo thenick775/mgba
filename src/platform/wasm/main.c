@@ -94,7 +94,6 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(void) {
 
 	core->reset(core);
 	SDL_SetWindowSize(window, w, h);
-	mSDLInitAudio(&audio, NULL);
 	audio.core = core;
 	mSDLResumeAudio(&audio);
 	return true;
@@ -104,6 +103,7 @@ int main() {
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS);
 	window = SDL_CreateWindow(projectName, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 16, 16, SDL_WINDOW_OPENGL);
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+	mSDLInitAudio(&audio, NULL);
 	emscripten_set_main_loop(testLoop, 0, 1);
 	return 0;
 }

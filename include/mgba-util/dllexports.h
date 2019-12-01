@@ -6,7 +6,10 @@
 #ifndef MGBA_EXPORT_H
 #define MGBA_EXPORT_H
 
-#if defined(BUILD_STATIC) || !defined(_MSC_VER) || defined(MGBA_STANDALONE)
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#define MGBA_EXPORT EMSCRIPTEN_KEEPALIVE
+#elif defined(BUILD_STATIC) || !defined(_MSC_VER) || defined(MGBA_STANDALONE)
 #define MGBA_EXPORT
 #else
 #ifdef MGBA_DLL

@@ -28,10 +28,8 @@ static SDL_Texture* tex = NULL;
 static void handleKeypress(const struct SDL_KeyboardEvent* event) {
 	int key = -1;
 	if (!(event->keysym.mod & ~(KMOD_NUM | KMOD_CAPS))) {
-		printf("!!\n");
 		key = mInputMapKey(&core->inputMap, SDL_BINDING_KEY, event->keysym.sym);
 	}
-	printf("%i %i\n", event->keysym.sym, key);
 	if (key != -1) {
 		if (event->type == SDL_KEYDOWN) {
 			core->addKeys(core, 1 << key);

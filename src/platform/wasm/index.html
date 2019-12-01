@@ -11,21 +11,23 @@
   <body>
     <canvas id="canvas"></canvas>
     <script type="text/javascript">
+      function loadBuffer(buffer) {
+        FS.writeFile('rom.bin', new Uint8Array(buffer));
+        Module._loadGame();
+      }
+
+      function loadFile(romFile) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+          loadBuffer(e.target.result);
+        }
+        reader.readAsArrayBuffer(romFile);
+      };
       var Module = {
         canvas: (function() { return document.getElementById('canvas'); })(),
-        preRun: function() {
-          var xhr = new XMLHttpRequest();
-          xhr.addEventListener("load", function(e) {
-            var buffer = xhr.response;
-            FS.writeFile('rom.bin', new Uint8Array(buffer));
-            Module._loadGame();
-          });
-          xhr.responseType = "arraybuffer";
-          xhr.open("GET", "rom.bin");
-          xhr.send();
-       }
-     };
+      };
     </script>
+    <input type="file" onchange="loadFile(this.files[0]);"/>
     <script src="mgba.js"></script>
   </body>
 </html> 

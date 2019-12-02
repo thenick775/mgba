@@ -52,8 +52,17 @@ void testLoop() {
 	if (core) {
 		core->runFrame(core);
 
+		unsigned w, h;
+		core->desiredVideoDimensions(core, &w, &h);
+
+		SDL_Rect rect = {
+			.x = 0,
+			.y = 0,
+			.w = w,
+			.h = h
+		};
 		SDL_UnlockTexture(tex);
-		SDL_RenderCopy(renderer, tex, 0, 0);
+		SDL_RenderCopy(renderer, tex, &rect, &rect);
 		SDL_RenderPresent(renderer);
 
 		int stride;
@@ -96,6 +105,8 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	core->setVideoBuffer(core, buffer, stride / BYTES_PER_PIXEL);
 
 	core->reset(core);
+
+	core->desiredVideoDimensions(core, &w, &h);
 	SDL_SetWindowSize(window, w, h);
 	audio.core = core;
 	mSDLResumeAudio(&audio);

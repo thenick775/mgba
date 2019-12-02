@@ -27,6 +27,9 @@ struct HandleMappingTuple {
 DECLARE_VECTOR(HandleMappingList, struct HandleMappingTuple);
 DEFINE_VECTOR(HandleMappingList, struct HandleMappingTuple);
 #endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 struct VFileFD {
 	struct VFile d;
@@ -253,9 +256,10 @@ static bool _vfdSync(struct VFile* vf, void* buffer, size_t size) {
 #elif defined(HAVE_FUTIMES)
 	futimes(vfd->fd, NULL);
 #endif
+	int ret = 0;
 	if (buffer && size) {
 #ifdef _POSIX_MAPPED_FILES
-		return msync(buffer, size, MS_ASYNC) == 0;
+		ret = msync(buffer, size, MS_ASYNC);
 #else
 		off_t pos = lseek(vfd->fd, 0, SEEK_CUR);
 		lseek(vfd->fd, 0, SEEK_SET);
@@ -266,7 +270,13 @@ static bool _vfdSync(struct VFile* vf, void* buffer, size_t size) {
 		}
 #endif
 	}
-	return fsync(vfd->fd) == 0;
+	if (ret == 0) {
+		ret = fsync(vfd->fd);
+	}
+#ifdef __EMSCRIPTEN__
+	EM_ASM(FS.syncfs(function (err) { assert(!err); }));
+#endif
+	return ret == 0;
 #else
 	HANDLE h = (HANDLE) _get_osfhandle(vfd->fd);
 	FILETIME ft;

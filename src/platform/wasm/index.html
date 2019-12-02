@@ -24,6 +24,17 @@
         reader.readAsArrayBuffer(romFile);
       }
 
+      function saveFile(a) {
+        var save = mGBA.getSave();
+        a.download = mGBA.saveName;
+        var blob = new Blob([save], { type: 'application/octet-stream' });
+        a.href = URL.createObjectURL(blob);
+        setTimeout(function() {
+          URL.revokeObjectURL(a.href);
+          a.href = '#';
+        }, 0);
+      }
+
       var Module = {
         canvas: (function() { return document.getElementById('canvas'); })(),
         onRuntimeInitialized: function() {
@@ -32,6 +43,7 @@
       };
     </script>
     <input type="file" onchange="loadFile(this.files[0]);"/>
+    <a href="#" onclick="saveFile(this)">Download savedata</a>
     <span id="version"></span>
     <script src="mgba.js"></script>
   </body>

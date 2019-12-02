@@ -28,7 +28,11 @@ static SDL_Texture* tex = NULL;
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
 static struct mLogger logCtx = { .log = _log };
 
-static void handleKeypress(const struct SDL_KeyboardEvent* event) {
+static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
+	if (event->keysym.sym == SDLK_TAB) {
+		emscripten_set_main_loop_timing(event->type == SDL_KEYDOWN ? EM_TIMING_SETTIMEOUT : EM_TIMING_RAF, 0);
+		return;
+	}
 	int key = -1;
 	if (!(event->keysym.mod & ~(KMOD_NUM | KMOD_CAPS))) {
 		key = mInputMapKey(&core->inputMap, SDL_BINDING_KEY, event->keysym.sym);
@@ -42,12 +46,20 @@ static void handleKeypress(const struct SDL_KeyboardEvent* event) {
 	}
 }
 
+static void handleKeypress(const struct SDL_KeyboardEvent* event) {
+	UNUSED(event);
+	// Nothing here yet
+}
+
 void testLoop() {
 	union SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 		switch (event.type) {
 		case SDL_KEYDOWN:
 		case SDL_KEYUP:
+			if (core) {
+				handleKeypressCore(&event.key);
+			}
 			handleKeypress(&event.key);
 			break;
 		};

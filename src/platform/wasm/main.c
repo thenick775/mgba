@@ -18,7 +18,7 @@ static struct mCore* core = NULL;
 static color_t* buffer = NULL;
 static struct mSDLAudio audio = {
 	.sampleRate = 48000,
-	.samples = 512	
+	.samples = 512
 };
 
 static SDL_Window* window = NULL;
@@ -63,20 +63,25 @@ void testLoop() {
 	}
 }
 
-EMSCRIPTEN_KEEPALIVE bool loadGame(void) {
+EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
+	printf("%p\n", name);
 	if (core) {
 		core->deinit(core);
 		core = NULL;
 	}
-	core = mCoreFind("rom.bin");
+	core = mCoreFind(name);
 	if (!core) {
 		return false;
 	}
 	core->init(core);
+	core->opts.savegamePath = strdup("/data/saves");
+	core->opts.savestatePath = strdup("/data/states");
 
-	mCoreLoadFile(core, "rom.bin");
+	mCoreLoadFile(core, name);
 	mCoreConfigInit(&core->config, "wasm");
 	mInputMapInit(&core->inputMap, &GBAInputInfo);
+	mDirectorySetMapOptions(&core->dirs, &core->opts);
+	mCoreAutoloadSave(core);
 	mSDLInitBindingsGBA(&core->inputMap);
 
 	unsigned w, h;
@@ -97,11 +102,43 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(void) {
 	return true;
 }
 
+EMSCRIPTEN_KEEPALIVE void setupConstants(void) {
+	EM_ASM({
+		mGBA.version.gitCommit = UTF8ToString($0);
+		mGBA.version.gitShort = UTF8ToString($1);
+		mGBA.version.gitBranch = UTF8ToString($2);
+		mGBA.version.gitRevision = $3;
+		mGBA.version.binaryName = UTF8ToString($4);
+		mGBA.version.projectName = UTF8ToString($5);
+		mGBA.version.projectVersion = UTF8ToString($6);
+	}, gitCommit, gitCommitShort, gitBranch, gitRevision, binaryName, projectName, projectVersion);
+}
+
+EM_JS(void, jsSetup, (void), {
+	mGBA = {
+		loadFile: cwrap('loadGame', 'number', ['string']),
+		version: {}
+	}
+});
+
+CONSTRUCTOR(premain) {
+	jsSetup();
+	setupConstants();
+}
+
 int main() {
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS);
 	window = SDL_CreateWindow(projectName, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 16, 16, SDL_WINDOW_OPENGL);
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 	mSDLInitAudio(&audio, NULL);
+
+	EM_ASM(
+		FS.mkdir('/data');
+		FS.mount(IDBFS, {}, '/data');
+		FS.mkdir('/data/saves');
+		FS.mkdir('/data/states');
+		FS.syncfs(true, function (err) {});
+	);
 	emscripten_set_main_loop(testLoop, 0, 1);
 	return 0;
 }

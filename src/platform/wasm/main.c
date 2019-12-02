@@ -25,6 +25,9 @@ static SDL_Window* window = NULL;
 static SDL_Renderer* renderer = NULL;
 static SDL_Texture* tex = NULL;
 
+static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
+static struct mLogger logCtx = { .log = _log };
+
 static void handleKeypress(const struct SDL_KeyboardEvent* event) {
 	int key = -1;
 	if (!(event->keysym.mod & ~(KMOD_NUM | KMOD_CAPS))) {
@@ -113,6 +116,15 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	return true;
 }
 
+void _log(struct mLogger* logger, int category, enum mLogLevel level, const char* format, va_list args) {
+	UNUSED(logger);
+	UNUSED(category);
+	UNUSED(level);
+	UNUSED(format);
+	UNUSED(args);
+}
+
+
 EMSCRIPTEN_KEEPALIVE void setupConstants(void) {
 	EM_ASM({
 		mGBA.version.gitCommit = UTF8ToString($0);
@@ -138,6 +150,8 @@ CONSTRUCTOR(premain) {
 }
 
 int main() {
+	mLogSetDefaultLogger(&logCtx);
+
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS);
 	window = SDL_CreateWindow(projectName, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 16, 16, SDL_WINDOW_OPENGL);
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);

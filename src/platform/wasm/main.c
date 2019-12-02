@@ -88,7 +88,6 @@ void testLoop() {
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
-	printf("%p\n", name);
 	if (core) {
 		core->deinit(core);
 		core = NULL;
@@ -151,7 +150,22 @@ EMSCRIPTEN_KEEPALIVE void setupConstants(void) {
 
 EM_JS(void, jsSetup, (void), {
 	mGBA = {
-		loadFile: cwrap('loadGame', 'number', ['string']),
+		loadFile: (function() {
+			var loadGame = cwrap('loadGame', 'number', ['string']);
+			return function(name) {
+				if (loadGame(name)) {
+					var arr = name.split('.');
+					arr.pop();
+					mGBA.gameName = name;
+					mGBA.saveName = arr.join('.') + '.sav';
+					return true;
+				}
+				return false;
+			}
+		})(),
+		getSave: function() {
+			return FS.readFile('/data/saves/' + mGBA.saveName);
+		},
 		version: {}
 	}
 });

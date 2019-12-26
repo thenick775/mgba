@@ -134,6 +134,7 @@ This will produce a `build-win32` directory with the build products. Replace `mg
 - mgba/ubuntu:focal
 - mgba/ubuntu:groovy
 - mgba/vita
+- mgba/wasm
 - mgba/wii
 - mgba/windows:w32
 - mgba/windows:w64

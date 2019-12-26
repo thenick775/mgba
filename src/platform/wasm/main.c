@@ -137,41 +137,20 @@ void _log(struct mLogger* logger, int category, enum mLogLevel level, const char
 
 
 EMSCRIPTEN_KEEPALIVE void setupConstants(void) {
-	EM_ASM({
-		mGBA.version.gitCommit = UTF8ToString($0);
-		mGBA.version.gitShort = UTF8ToString($1);
-		mGBA.version.gitBranch = UTF8ToString($2);
-		mGBA.version.gitRevision = $3;
-		mGBA.version.binaryName = UTF8ToString($4);
-		mGBA.version.projectName = UTF8ToString($5);
-		mGBA.version.projectVersion = UTF8ToString($6);
-	}, gitCommit, gitCommitShort, gitBranch, gitRevision, binaryName, projectName, projectVersion);
+	EM_ASM(({
+		Module.version = {
+			gitCommit: UTF8ToString($0),
+			gitShort: UTF8ToString($1),
+			gitBranch: UTF8ToString($2),
+			gitRevision: $3,
+			binaryName: UTF8ToString($4),
+			projectName: UTF8ToString($5),
+			projectVersion: UTF8ToString($6)
+		};
+	}), gitCommit, gitCommitShort, gitBranch, gitRevision, binaryName, projectName, projectVersion);
 }
 
-EM_JS(void, jsSetup, (void), {
-	mGBA = {
-		loadFile: (function() {
-			var loadGame = cwrap('loadGame', 'number', ['string']);
-			return function(name) {
-				if (loadGame(name)) {
-					var arr = name.split('.');
-					arr.pop();
-					mGBA.gameName = name;
-					mGBA.saveName = arr.join('.') + '.sav';
-					return true;
-				}
-				return false;
-			}
-		})(),
-		getSave: function() {
-			return FS.readFile('/data/saves/' + mGBA.saveName);
-		},
-		version: {}
-	}
-});
-
 CONSTRUCTOR(premain) {
-	jsSetup();
 	setupConstants();
 }
 

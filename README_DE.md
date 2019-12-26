@@ -133,6 +133,7 @@ Dieser Befehl erzeugt ein Verzeichnis `build-win32` mit den erzeugten Programmda
 - mgba/ubuntu:focal
 - mgba/ubuntu:groovy
 - mgba/vita
+- mgba/wasm
 - mgba/wii
 - mgba/windows:w32
 - mgba/windows:w64

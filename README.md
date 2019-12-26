@@ -144,6 +144,7 @@ After starting the Docker container, it will produce a `build-win32` directory w
 - mgba/ubuntu:focal
 - mgba/ubuntu:groovy
 - mgba/vita
+- mgba/wasm
 - mgba/wii
 - mgba/windows:w32
 - mgba/windows:w64

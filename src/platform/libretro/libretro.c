@@ -297,7 +297,18 @@ void retro_run(void) {
 			.value = 0
 		};
 		if (environCallback(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value) {
-			((struct GBA*) core->board)->allowOpposingDirections = strcmp(var.value, "yes") == 0;
+			struct GBA* gba = core->board;
+			struct GB* gb = core->board;
+			switch (core->platform(core)) {
+			case PLATFORM_GBA:
+				gba->allowOpposingDirections = strcmp(var.value, "yes") == 0;
+				break;
+			case PLATFORM_GB:
+				gb->allowOpposingDirections = strcmp(var.value, "yes") == 0;
+				break;
+			default:
+				break;
+			}
 		}
 
 		var.key = "mgba_frameskip";
@@ -489,6 +500,7 @@ bool retro_load_game(const struct retro_game_info* game) {
 	core->setPeripheral(core, mPERIPH_RUMBLE, &rumble);
 
 	savedata = anonymousMemoryMap(SIZE_CART_FLASH1M);
+	memset(savedata, 0xFF, SIZE_CART_FLASH1M);
 	struct VFile* save = VFileFromMemory(savedata, SIZE_CART_FLASH1M);
 
 	_reloadSettings();

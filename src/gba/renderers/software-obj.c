@@ -143,7 +143,7 @@
 		renderer->row[outX] |= FLAG_OBJWIN; \
 	}
 
-int GBAVideoSoftwareRendererPreprocessSprite(struct GBAVideoSoftwareRenderer* renderer, struct GBAObj* sprite, int y) {
+int GBAVideoSoftwareRendererPreprocessSprite(struct GBAVideoSoftwareRenderer* renderer, struct GBAObj* sprite, int index, int y) {
 	int width = GBAVideoObjSizes[GBAObjAttributesAGetShape(sprite->a) * 4 + GBAObjAttributesBGetSize(sprite->b)][0];
 	int height = GBAVideoObjSizes[GBAObjAttributesAGetShape(sprite->a) * 4 + GBAObjAttributesBGetSize(sprite->b)][1];
 	int start = renderer->start;
@@ -165,7 +165,7 @@ int GBAVideoSoftwareRendererPreprocessSprite(struct GBAVideoSoftwareRenderer* re
 	}
 
 	int objwinSlowPath = GBARegisterDISPCNTIsObjwinEnable(renderer->dispcnt) && GBAWindowControlGetBlendEnable(renderer->objwin.packed) != GBAWindowControlIsBlendEnable(renderer->currentWindow.packed);
-	int variant = renderer->target1Obj &&
+	int variant = (renderer->target1Obj || GBAObjAttributesAGetMode(sprite->a) == OBJ_MODE_SEMITRANSPARENT) &&
 	              GBAWindowControlIsBlendEnable(renderer->currentWindow.packed) &&
 	              (renderer->blendEffect == BLEND_BRIGHTEN || renderer->blendEffect == BLEND_DARKEN);
 	if (GBAObjAttributesAGetMode(sprite->a) == OBJ_MODE_SEMITRANSPARENT || objwinSlowPath) {
@@ -175,6 +175,7 @@ int GBAVideoSoftwareRendererPreprocessSprite(struct GBAVideoSoftwareRenderer* re
 		target2 |= renderer->bg[2].target2;
 		target2 |= renderer->bg[3].target2;
 		if (target2) {
+			renderer->forceTarget1 = true;
 			flags |= FLAG_REBLEND;
 			variant = 0;
 		} else {
@@ -183,10 +184,16 @@ int GBAVideoSoftwareRendererPreprocessSprite(struct GBAVideoSoftwareRenderer* re
 	}
 
 	color_t* palette = &renderer->normalPalette[0x100];
+	if (renderer->d.highlightAmount && renderer->d.highlightOBJ[index]) {
+		palette = &renderer->highlightPalette[0x100];
+	}
 	color_t* objwinPalette = palette;
 
 	if (variant) {
 		palette = &renderer->variantPalette[0x100];
+		if (renderer->d.highlightAmount && renderer->d.highlightOBJ[index]) {
+			palette = &renderer->highlightVariantPalette[0x100];
+		}
 		if (GBAWindowControlIsBlendEnable(renderer->objwin.packed)) {
 			objwinPalette = palette;
 		}
@@ -299,8 +306,8 @@ int GBAVideoSoftwareRendererPreprocessSprite(struct GBAVideoSoftwareRenderer* re
 				SPRITE_TRANSFORMED_LOOP(256, NORMAL);
 			}
 		}
-		if (end == VIDEO_HORIZONTAL_PIXELS && x + totalWidth > VIDEO_HORIZONTAL_PIXELS) {
-			renderer->spriteCyclesRemaining -= (x + totalWidth - VIDEO_HORIZONTAL_PIXELS) * 2;
+		if (end == GBA_VIDEO_HORIZONTAL_PIXELS && x + totalWidth > GBA_VIDEO_HORIZONTAL_PIXELS) {
+			renderer->spriteCyclesRemaining -= (x + totalWidth - GBA_VIDEO_HORIZONTAL_PIXELS) * 2;
 		}
 	} else {
 		int outX = x >= start ? x : start;
@@ -359,8 +366,8 @@ int GBAVideoSoftwareRendererPreprocessSprite(struct GBAVideoSoftwareRenderer* re
 				SPRITE_NORMAL_LOOP(256, NORMAL);
 			}
 		}
-		if (end == VIDEO_HORIZONTAL_PIXELS && x + width > VIDEO_HORIZONTAL_PIXELS) {
-			renderer->spriteCyclesRemaining -= x + width - VIDEO_HORIZONTAL_PIXELS;
+		if (end == GBA_VIDEO_HORIZONTAL_PIXELS && x + width > GBA_VIDEO_HORIZONTAL_PIXELS) {
+			renderer->spriteCyclesRemaining -= x + width - GBA_VIDEO_HORIZONTAL_PIXELS;
 		}
 	}
 	return 1;

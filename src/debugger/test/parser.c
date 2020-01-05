@@ -56,6 +56,12 @@ M_TEST_DEFINE(parseLexError) {
 	assert_int_equal(tree->token.type, TOKEN_ERROR_TYPE);
 }
 
+M_TEST_DEFINE(parseError) {
+	PARSE("1 2");
+
+	assert_int_equal(tree->token.type, TOKEN_ERROR_TYPE);
+}
+
 M_TEST_DEFINE(parseSimpleExpression) {
 	PARSE("1+2");
 
@@ -108,11 +114,35 @@ M_TEST_DEFINE(parseParentheticalAddMultplyExpression) {
 	assert_int_equal(tree->rhs->token.uintValue, 3);
 }
 
+M_TEST_DEFINE(parseIsolatedOperator) {
+	PARSE("+");
+
+	assert_int_equal(tree->token.type, TOKEN_OPERATOR_TYPE);
+	assert_int_equal(tree->lhs->token.type, TOKEN_ERROR_TYPE);
+	assert_int_equal(tree->rhs->token.type, TOKEN_ERROR_TYPE);
+}
+
+M_TEST_DEFINE(parseUnaryChainedOperator) {
+	PARSE("1+*2");
+
+	assert_int_equal(tree->token.type, TOKEN_OPERATOR_TYPE);
+	assert_int_equal(tree->token.operatorValue, OP_ADD);
+	assert_int_equal(tree->lhs->token.type, TOKEN_UINT_TYPE);
+	assert_int_equal(tree->lhs->token.uintValue, 1);
+	assert_int_equal(tree->rhs->token.type, TOKEN_OPERATOR_TYPE);
+	assert_int_equal(tree->rhs->token.operatorValue, OP_DEREFERENCE);
+	assert_int_equal(tree->rhs->rhs->token.type, TOKEN_UINT_TYPE);
+	assert_int_equal(tree->rhs->rhs->token.uintValue, 2);
+}
+
 M_TEST_SUITE_DEFINE(Parser,
 	cmocka_unit_test_setup_teardown(parseEmpty, parseSetup, parseTeardown),
 	cmocka_unit_test_setup_teardown(parseInt, parseSetup, parseTeardown),
 	cmocka_unit_test_setup_teardown(parseLexError, parseSetup, parseTeardown),
+	cmocka_unit_test_setup_teardown(parseError, parseSetup, parseTeardown),
 	cmocka_unit_test_setup_teardown(parseSimpleExpression, parseSetup, parseTeardown),
 	cmocka_unit_test_setup_teardown(parseAddMultplyExpression, parseSetup, parseTeardown),
 	cmocka_unit_test_setup_teardown(parseParentheticalExpression, parseSetup, parseTeardown),
-	cmocka_unit_test_setup_teardown(parseParentheticalAddMultplyExpression, parseSetup, parseTeardown))
+	cmocka_unit_test_setup_teardown(parseParentheticalAddMultplyExpression, parseSetup, parseTeardown),
+	cmocka_unit_test_setup_teardown(parseIsolatedOperator, parseSetup, parseTeardown),
+	cmocka_unit_test_setup_teardown(parseUnaryChainedOperator, parseSetup, parseTeardown))

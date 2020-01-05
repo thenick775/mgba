@@ -11,6 +11,7 @@
 #include "GBAApp.h"
 #include "GBAKeyEditor.h"
 #include "InputController.h"
+#include "RotatedHeaderView.h"
 #include "ShaderSelector.h"
 #include "ShortcutView.h"
 
@@ -24,9 +25,10 @@ using namespace QGBA;
 QList<enum GBModel> SettingsView::s_gbModelList;
 #endif
 
-SettingsView::SettingsView(ConfigController* controller, InputController* inputController, ShortcutController* shortcutController, QWidget* parent)
+SettingsView::SettingsView(ConfigController* controller, InputController* inputController, ShortcutController* shortcutController, LogController* logController, QWidget* parent)
 	: QDialog(parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint | Qt::WindowCloseButtonHint)
 	, m_controller(controller)
+	, m_logModel(logController)
 {
 	m_ui.setupUi(this);
 
@@ -53,6 +55,10 @@ SettingsView::SettingsView(ConfigController* controller, InputController* inputC
 		if (e) {
 			m_ui.muteFf->setChecked(e);
 		}
+	});
+
+	connect(m_ui.nativeGB, &QAbstractButton::pressed, [this]() {
+		m_ui.fpsTarget->setValue(double(GBA_ARM7TDMI_FREQUENCY) / double(VIDEO_TOTAL_LENGTH));
 	});
 
 	if (m_ui.savegamePath->text().isEmpty()) {
@@ -303,6 +309,18 @@ SettingsView::SettingsView(ConfigController* controller, InputController* inputC
 		}
 	}
 
+	m_ui.loggingView->setModel(&m_logModel);
+	m_ui.loggingView->setHorizontalHeader(new RotatedHeaderView(Qt::Horizontal));
+	m_ui.loggingView->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+	m_ui.loggingView->verticalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+
+	connect(m_ui.logFileBrowse, &QAbstractButton::pressed, [this] () {
+		QString path = GBAApp::app()->getSaveFileName(this, "Select log file");
+		if (!path.isNull()) {
+			m_ui.logFile->setText(path);
+		}
+	});
+
 	ShortcutView* shortcutView = new ShortcutView();
 	shortcutView->setController(shortcutController);
 	shortcutView->setInputController(inputController);
@@ -348,9 +366,9 @@ void SettingsView::updateConfig() {
 	saveSetting("gbc.bios", m_ui.gbcBios);
 	saveSetting("sgb.bios", m_ui.sgbBios);
 	saveSetting("sgb.borders", m_ui.sgbBorders);
+	saveSetting("useCgbColors", m_ui.useCgbColors);
 	saveSetting("useBios", m_ui.useBios);
 	saveSetting("skipBios", m_ui.skipBios);
-	saveSetting("audioBuffers", m_ui.audioBufferSize);
 	saveSetting("sampleRate", m_ui.sampleRate);
 	saveSetting("videoSync", m_ui.videoSync);
 	saveSetting("audioSync", m_ui.audioSync);
@@ -358,6 +376,8 @@ void SettingsView::updateConfig() {
 	saveSetting("autofireThreshold", m_ui.autofireThreshold);
 	saveSetting("lockAspectRatio", m_ui.lockAspectRatio);
 	saveSetting("lockIntegerScaling", m_ui.lockIntegerScaling);
+	saveSetting("interframeBlending", m_ui.interframeBlending);
+	saveSetting("showOSD", m_ui.showOSD);
 	saveSetting("volume", m_ui.volume);
 	saveSetting("mute", m_ui.mute);
 	saveSetting("fastForwardVolume", m_ui.volumeFf);
@@ -368,6 +388,7 @@ void SettingsView::updateConfig() {
 	saveSetting("allowOpposingDirections", m_ui.allowOpposingDirections);
 	saveSetting("suspendScreensaver", m_ui.suspendScreensaver);
 	saveSetting("pauseOnFocusLost", m_ui.pauseOnFocusLost);
+	saveSetting("pauseOnMinimize", m_ui.pauseOnMinimize);
 	saveSetting("savegamePath", m_ui.savegamePath);
 	saveSetting("savestatePath", m_ui.savestatePath);
 	saveSetting("screenshotPath", m_ui.screenshotPath);
@@ -381,6 +402,16 @@ void SettingsView::updateConfig() {
 	saveSetting("cheatAutosave", m_ui.cheatAutosave);
 	saveSetting("autoload", m_ui.autoload);
 	saveSetting("autosave", m_ui.autosave);
+	saveSetting("logToFile", m_ui.logToFile);
+	saveSetting("logToStdout", m_ui.logToStdout);
+	saveSetting("logFile", m_ui.logFile);
+	saveSetting("useDiscordPresence", m_ui.useDiscordPresence);
+	saveSetting("gba.audioHle", m_ui.audioHle);
+
+	if (m_ui.audioBufferSize->currentText().toInt() > 8192) {
+		m_ui.audioBufferSize->setCurrentText("8192");
+	}
+	saveSetting("audioBuffers", m_ui.audioBufferSize);
 
 	if (m_ui.fastForwardUnbounded->isChecked()) {
 		saveSetting("fastForwardRatio", "-1");
@@ -389,10 +420,16 @@ void SettingsView::updateConfig() {
 	}
 
 	double nativeFps = double(GBA_ARM7TDMI_FREQUENCY) / double(VIDEO_TOTAL_LENGTH);
-	if (nativeFps - m_ui.fpsTarget->value() < 0.0001) {
+	if (fabs(nativeFps - m_ui.fpsTarget->value()) < 0.0001) {
 		m_controller->setOption("fpsTarget", QVariant(nativeFps));
 	} else {
 		saveSetting("fpsTarget", m_ui.fpsTarget);
+	}
+
+	if (m_ui.fastForwardHeldUnbounded->isChecked()) {
+		saveSetting("fastForwardHeldRatio", "-1");
+	} else {
+		saveSetting("fastForwardHeldRatio", m_ui.fastForwardHeldRatio);
 	}
 
 	switch (m_ui.idleOptimization->currentIndex() + IDLE_LOOP_IGNORE) {
@@ -435,9 +472,12 @@ void SettingsView::updateConfig() {
 	}
 
 	QVariant cameraDriver = m_ui.cameraDriver->itemData(m_ui.cameraDriver->currentIndex());
-	if (cameraDriver != m_controller->getQtOption("cameraDriver")) {
+	QVariant oldCameraDriver = m_controller->getQtOption("cameraDriver");
+	if (cameraDriver != oldCameraDriver) {
 		m_controller->setQtOption("cameraDriver", cameraDriver);
+		if (cameraDriver.toInt() != static_cast<int>(InputController::CameraDriver::NONE) || !oldCameraDriver.isNull()) {
 		emit cameraDriverChanged();
+	}
 	}
 
 	QVariant camera = m_ui.camera->itemData(m_ui.camera->currentIndex());
@@ -451,6 +491,19 @@ void SettingsView::updateConfig() {
 		m_controller->setQtOption("language", language.bcp47Name());
 		emit languageChanged();
 	}
+
+	int videoScale = m_controller->getOption("videoScale", 1).toInt();
+	int hwaccelVideo = m_controller->getOption("hwaccelVideo").toInt();
+	if (videoScale != m_ui.videoScale->value() || hwaccelVideo != m_ui.hwaccelVideo->currentIndex()) {
+		emit videoRendererChanged();
+	}
+	saveSetting("videoScale", m_ui.videoScale);
+	saveSetting("hwaccelVideo", m_ui.hwaccelVideo->currentIndex());
+
+	m_logModel.save(m_controller);
+	m_logModel.logger()->setLogFile(m_ui.logFile->text());
+	m_logModel.logger()->logToFile(m_ui.logToFile->isChecked());
+	m_logModel.logger()->logToStdout(m_ui.logToStdout->isChecked());
 
 #ifdef M_CORE_GB
 	GBModel modelGB = s_gbModelList[m_ui.gbModel->currentIndex()];
@@ -485,6 +538,7 @@ void SettingsView::reloadConfig() {
 	loadSetting("gbc.bios", m_ui.gbcBios);
 	loadSetting("sgb.bios", m_ui.sgbBios);
 	loadSetting("sgb.borders", m_ui.sgbBorders, true);
+	loadSetting("useCgbColors", m_ui.useCgbColors, true);
 	loadSetting("useBios", m_ui.useBios);
 	loadSetting("skipBios", m_ui.skipBios);
 	loadSetting("audioBuffers", m_ui.audioBufferSize);
@@ -496,6 +550,8 @@ void SettingsView::reloadConfig() {
 	loadSetting("autofireThreshold", m_ui.autofireThreshold);
 	loadSetting("lockAspectRatio", m_ui.lockAspectRatio);
 	loadSetting("lockIntegerScaling", m_ui.lockIntegerScaling);
+	loadSetting("interframeBlending", m_ui.interframeBlending);
+	loadSetting("showOSD", m_ui.showOSD, true);
 	loadSetting("volume", m_ui.volume, 0x100);
 	loadSetting("mute", m_ui.mute, false);
 	loadSetting("fastForwardVolume", m_ui.volumeFf, m_ui.volume->value());
@@ -506,6 +562,7 @@ void SettingsView::reloadConfig() {
 	loadSetting("allowOpposingDirections", m_ui.allowOpposingDirections);
 	loadSetting("suspendScreensaver", m_ui.suspendScreensaver);
 	loadSetting("pauseOnFocusLost", m_ui.pauseOnFocusLost);
+	loadSetting("pauseOnMinimize", m_ui.pauseOnMinimize);
 	loadSetting("savegamePath", m_ui.savegamePath);
 	loadSetting("savestatePath", m_ui.savestatePath);
 	loadSetting("screenshotPath", m_ui.screenshotPath);
@@ -518,6 +575,11 @@ void SettingsView::reloadConfig() {
 	loadSetting("cheatAutosave", m_ui.cheatAutosave, true);
 	loadSetting("autoload", m_ui.autoload, true);
 	loadSetting("autosave", m_ui.autosave, false);
+	loadSetting("logToFile", m_ui.logToFile);
+	loadSetting("logToStdout", m_ui.logToStdout);
+	loadSetting("logFile", m_ui.logFile);
+	loadSetting("useDiscordPresence", m_ui.useDiscordPresence);
+	loadSetting("gba.audioHle", m_ui.audioHle);
 
 	m_ui.libraryStyle->setCurrentIndex(loadSetting("libraryStyle").toInt());
 
@@ -529,6 +591,16 @@ void SettingsView::reloadConfig() {
 		m_ui.fastForwardUnbounded->setChecked(false);
 		m_ui.fastForwardRatio->setEnabled(true);
 		m_ui.fastForwardRatio->setValue(fastForwardRatio);
+	}
+
+	double fastForwardHeldRatio = loadSetting("fastForwardHeldRatio").toDouble();
+	if (fastForwardHeldRatio <= 0) {
+		m_ui.fastForwardHeldUnbounded->setChecked(true);
+		m_ui.fastForwardHeldRatio->setEnabled(false);
+	} else {
+		m_ui.fastForwardHeldUnbounded->setChecked(false);
+		m_ui.fastForwardHeldRatio->setEnabled(true);
+		m_ui.fastForwardHeldRatio->setValue(fastForwardHeldRatio);
 	}
 
 	QString idleOptimization = loadSetting("idleOptimization");
@@ -557,6 +629,8 @@ void SettingsView::reloadConfig() {
 	m_ui.saveStateSave->setChecked(saveState & SAVESTATE_SAVEDATA);
 	m_ui.saveStateCheats->setChecked(saveState & SAVESTATE_CHEATS);
 
+	m_logModel.reset();
+
 #ifdef M_CORE_GB
 	QString modelGB = m_controller->getOption("gb.model");
 	if (!modelGB.isNull()) {
@@ -579,6 +653,14 @@ void SettingsView::reloadConfig() {
 		m_ui.cgbModel->setCurrentIndex(index >= 0 ? index : 0);
 	}
 #endif
+
+	int hwaccelVideo = m_controller->getOption("hwaccelVideo", 0).toInt();
+	m_ui.hwaccelVideo->setCurrentIndex(hwaccelVideo);
+
+	connect(m_ui.videoScale, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), [this](int value) {
+		m_ui.videoScaleSize->setText(tr("(%1×%2)").arg(GBA_VIDEO_HORIZONTAL_PIXELS * value).arg(GBA_VIDEO_VERTICAL_PIXELS * value));
+	});
+	loadSetting("videoScale", m_ui.videoScale, 1);
 }
 
 void SettingsView::saveSetting(const char* key, const QAbstractButton* field) {
@@ -635,9 +717,9 @@ void SettingsView::loadSetting(const char* key, QSlider* field, int defaultVal) 
 	field->setValue(option.isNull() ? defaultVal : option.toInt());
 }
 
-void SettingsView::loadSetting(const char* key, QSpinBox* field) {
+void SettingsView::loadSetting(const char* key, QSpinBox* field, int defaultVal) {
 	QString option = loadSetting(key);
-	field->setValue(option.toInt());
+	field->setValue(option.isNull() ? defaultVal : option.toInt());
 }
 
 QString SettingsView::loadSetting(const char* key) {

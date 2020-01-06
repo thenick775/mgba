@@ -546,6 +546,7 @@ static void _GBACoreReset(struct mCore* core) {
 #endif
 
 	GBAOverrideApplyDefaults(gba, gbacore->overrides);
+
 #if !defined(MINIMAL_CORE) || MINIMAL_CORE < 2
 	if (!gba->biosVf && core->opts.useBios) {
 		struct VFile* bios = NULL;

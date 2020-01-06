@@ -858,14 +858,10 @@ static void _drawScanline(struct GBAVideoSoftwareRenderer* renderer, int y) {
 				int drawn = GBAVideoSoftwareRendererPreprocessSprite(renderer, &sprite->obj, sprite->index, localY);
 				spriteLayers |= drawn << GBAObjAttributesCGetPriority(sprite->obj.c);
 			}
-			renderer->end = 0;
-			if ((y < sprite->y && (sprite->endY - 256 < 0 || y >= sprite->endY - 256)) || y >= sprite->endY) {
-				continue;
+			if (renderer->spriteCyclesRemaining <= 0) {
+				break;
 			}
-				if (localY < sprite->y) {
-					localY = sprite->y;
-				}
-				}
+		}
 	}
 
 	unsigned priority;
@@ -962,6 +958,6 @@ static void _updatePalettes(struct GBAVideoSoftwareRenderer* renderer) {
 		for (i = 0; i < 512; ++i) {
 			renderer->highlightPalette[i] = _mix(0x10 - highlightAmount, renderer->normalPalette[i], highlightAmount, renderer->d.highlightColor);
 			renderer->highlightVariantPalette[i] = _mix(0x10 - highlightAmount, renderer->variantPalette[i], highlightAmount, renderer->d.highlightColor);
-}
+		}
 	}
 }

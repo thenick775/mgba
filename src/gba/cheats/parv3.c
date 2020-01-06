@@ -346,6 +346,7 @@ bool GBACheatAddProActionReplay(struct GBACheatSet* set, uint32_t op1, uint32_t 
 		GBACheatSetGameSharkVersion(set, GBA_GS_PARV3);
 	// Fall through
 	case GBA_GS_PARV3:
+		GBACheatDecryptGameShark(&o1, &o2, set->gsaSeeds);
 	// Fall through
 	case GBA_GS_PARV3_RAW:
 		return GBACheatAddProActionReplayRaw(set, o1, o2);

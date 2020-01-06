@@ -634,7 +634,7 @@ void CoreController::yankPak() {
 	switch (platform()) {
 #ifdef M_CORE_GBA
 	case PLATFORM_GBA:
-	GBAYankROM(static_cast<GBA*>(m_threadContext.core->board));
+		GBAYankROM(static_cast<GBA*>(m_threadContext.core->board));
 		break;
 #endif
 #ifdef M_CORE_GB
@@ -642,7 +642,7 @@ void CoreController::yankPak() {
 		GBYankROM(static_cast<GB*>(m_threadContext.core->board));
 		break;
 #endif
-}
+	}
 }
 
 void CoreController::addKey(int key) {
@@ -772,7 +772,7 @@ void CoreController::endPrint() {
 void CoreController::attachBattleChipGate() {
 	if (platform() != PLATFORM_GBA) {
 		return;
-}
+	}
 	Interrupter interrupter(this);
 	clearMultiplayerController();
 	GBASIOBattlechipGateCreate(&m_battlechip);
@@ -922,13 +922,13 @@ void CoreController::updateFastForward() {
 		// If we aren't holding the fast forward button
 		// then use the non "(held)" ratio
 		if(!m_fastForward) {
-		if (m_fastForwardRatio > 0) {
-			m_threadContext.impl->sync.fpsTarget = m_fpsTarget * m_fastForwardRatio;
+			if (m_fastForwardRatio > 0) {
+				m_threadContext.impl->sync.fpsTarget = m_fpsTarget * m_fastForwardRatio;
 				setSync(true);
+			}	else {
+				setSync(false);
+			}
 		} else {
-			setSync(false);
-		}
-	} else {
 			// If we are holding the fast forward button,
 			// then use the held ratio
 			if (m_fastForwardHeldRatio > 0) {
@@ -950,24 +950,6 @@ void CoreController::updateFastForward() {
 	}
 
 	m_threadContext.core->reloadConfigOption(m_threadContext.core, NULL, NULL);
-		}
-		break;
-	}
-#endif
-#ifdef M_CORE_GB
-	case PLATFORM_GB: {
-		GB* gb = static_cast<GB*>(m_threadContext.core->board);
-		if (m_threadContext.core->opts.mute) {
-			gb->audio.masterVolume = 0;
-		} else {
-			gb->audio.masterVolume = m_threadContext.core->opts.volume;
-		}
-		break;
-	}
-#endif
-	default:
-		break;
-	}
 }
 
 CoreController::Interrupter::Interrupter(CoreController* parent, bool fromThread)

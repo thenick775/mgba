@@ -152,7 +152,7 @@ void mLogFilterReset(struct mLogFilter* filter, const char* category) {
 	int cat = mLogCategoryById(category);
 	if (cat >= 0) {
 		TableRemove(&filter->levels, cat);
-}
+	}
 }
 
 bool mLogFilterTest(const struct mLogFilter* filter, int category, enum mLogLevel level) {
@@ -171,8 +171,8 @@ int mLogFilterLevels(const struct mLogFilter* filter , int category) {
 	const char* cat = mLogCategoryId(category);
 	if (cat) {
 		value = (intptr_t) HashTableLookup(&filter->categories, cat);
-		}
-	return value;
 	}
+	return value;
+}
 
 mLOG_DEFINE_CATEGORY(STATUS, "Status", "core.status")

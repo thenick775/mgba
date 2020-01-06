@@ -215,9 +215,9 @@ void mGUIInit(struct mGUIRunner* runner, const char* port) {
 		struct VDir* dir = VDirOpen(lastPath);
 		if (dir) {
 			dir->close(dir);
-		strncpy(runner->params.currentPath, lastPath, PATH_MAX - 1);
-		runner->params.currentPath[PATH_MAX - 1] = '\0';
-	}
+			strncpy(runner->params.currentPath, lastPath, PATH_MAX - 1);
+			runner->params.currentPath[PATH_MAX - 1] = '\0';
+		}
 	}
 
 #ifndef DISABLE_THREADING

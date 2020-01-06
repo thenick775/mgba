@@ -177,24 +177,6 @@ static bool GBACheatAddAutodetect(struct GBACheatSet* set, uint32_t op1, uint32_
 		} else {
 			return GBACheatAddProActionReplay(set, op1, op2);
 		}
-
-		rgsaP = GBACheatGameSharkProbability(op1, op1);
-		if (rgsaP > maxProbability) {
-			maxProbability = rgsaP;
-			GBACheatSetGameSharkVersion(set, 2);
-		}
-
-		rparP = GBACheatProActionReplayProbability(op1, op1);
-		if (rparP > maxProbability) {
-			maxProbability = rparP;
-			GBACheatSetGameSharkVersion(set, 4);
-		}
-
-		if (set->gsaVersion < 3) {
-			return GBACheatAddGameShark(set, op1, op2);
-		} else {
-			return GBACheatAddProActionReplay(set, op1, op2);
-		}
 		break;
 	case 1:
 	case 2:

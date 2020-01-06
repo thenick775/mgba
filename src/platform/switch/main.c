@@ -265,7 +265,7 @@ static void _setup(struct mGUIRunner* runner) {
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, tex);
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 256, 256, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	runner->core->setVideoBuffer(runner->core, frameBuffer, 256);
+		runner->core->setVideoBuffer(runner->core, frameBuffer, 256);
 		usePbo = true;
 	}
 
@@ -276,7 +276,6 @@ static void _setup(struct mGUIRunner* runner) {
 	if (runner->core->platform(runner->core) == PLATFORM_GBA && useLightSensor) {
 		runner->core->setPeripheral(runner->core, mPERIPH_GBA_LUMINANCE, &lightSensor.d);
 	}
-}
 
 	unsigned mode;
 	if (mCoreConfigGetUIntValue(&runner->config, "screenMode", &mode) && mode < SM_MAX) {
@@ -419,13 +418,13 @@ static void _prepareForFrame(struct mGUIRunner* runner) {
 	}
 
 	if (usePbo) {
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
-	frameBuffer = glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, 256 * 256 * 4, GL_MAP_WRITE_BIT);
-	if (frameBuffer) {
-		runner->core->setVideoBuffer(runner->core, frameBuffer, 256);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
+		frameBuffer = glMapBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, 256 * 256 * 4, GL_MAP_WRITE_BIT);
+		if (frameBuffer) {
+			runner->core->setVideoBuffer(runner->core, frameBuffer, 256);
+		}
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	}
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-}
 }
 
 static void _drawFrame(struct mGUIRunner* runner, bool faded) {
@@ -439,12 +438,12 @@ static void _drawFrame(struct mGUIRunner* runner, bool faded) {
 
 	glActiveTexture(GL_TEXTURE0);
 	if (usePbo) {
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
-	glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo);
+		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 
-	glBindTexture(GL_TEXTURE_2D, tex);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, height, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+		glBindTexture(GL_TEXTURE_2D, tex);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 256, height, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 	} else if (!interframeBlending) {
 		glBindTexture(GL_TEXTURE_2D, tex);
 	}
@@ -865,7 +864,7 @@ int main(int argc, char* argv[]) {
 				.validStates = (const char*[]) {
 					"Off",
 					"On",
-		},
+				},
 				.nStates = 2
 			},
 			{

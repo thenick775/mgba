@@ -476,8 +476,8 @@ void SettingsView::updateConfig() {
 	if (cameraDriver != oldCameraDriver) {
 		m_controller->setQtOption("cameraDriver", cameraDriver);
 		if (cameraDriver.toInt() != static_cast<int>(InputController::CameraDriver::NONE) || !oldCameraDriver.isNull()) {
-		emit cameraDriverChanged();
-	}
+			emit cameraDriverChanged();
+		}
 	}
 
 	QVariant camera = m_ui.camera->itemData(m_ui.camera->currentIndex());

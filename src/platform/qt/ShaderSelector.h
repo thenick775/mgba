@@ -7,8 +7,6 @@
 
 #if defined(BUILD_GL) || defined(BUILD_GLES2)
 
-#if defined(BUILD_GL) || defined(BUILD_GLES2)
-
 #include <QDialog>
 
 #include "ui_ShaderSelector.h"
@@ -57,7 +55,5 @@ private:
 };
 
 }
-
-#endif
 
 #endif

@@ -369,7 +369,7 @@ void mPSP2Setup(struct mGUIRunner* runner) {
 	int fakeBool;
 	if (mCoreConfigGetIntValue(&runner->config, "sgb.borderCrop", &fakeBool)) {
 		sgbCrop = fakeBool;
-}
+	}
 }
 
 void mPSP2LoadROM(struct mGUIRunner* runner) {
@@ -480,7 +480,7 @@ void mPSP2Unpaused(struct mGUIRunner* runner) {
 	int fakeBool;
 	if (mCoreConfigGetIntValue(&runner->config, "interframeBlending", &fakeBool)) {
 		interframeBlending = fakeBool;
-}
+	}
 
 	if (mCoreConfigGetIntValue(&runner->config, "sgb.borderCrop", &fakeBool)) {
 		sgbCrop = fakeBool;
@@ -591,7 +591,7 @@ void mPSP2Draw(struct mGUIRunner* runner, bool faded) {
 		void* oldTexpixels = vita2d_texture_get_datap(oldTex);
 		memcpy(oldTexpixels, texpixels, 256 * height * 4);
 		_drawTex(oldTex, width, height, faded, false);
-}
+	}
 	memcpy(texpixels, outputBuffer, 256 * height * 4);
 	_drawTex(tex, width, height, faded, interframeBlending);
 }

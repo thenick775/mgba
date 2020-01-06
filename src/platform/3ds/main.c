@@ -382,7 +382,7 @@ static void _gameLoaded(struct mGUIRunner* runner) {
 	int fakeBool;
 	if (mCoreConfigGetIntValue(&runner->config, "interframeBlending", &fakeBool)) {
 		interframeBlending = fakeBool;
-}
+	}
 
 	if (mCoreConfigGetIntValue(&runner->config, "sgb.borderCrop", &fakeBool)) {
 		sgbCrop = fakeBool;
@@ -530,7 +530,7 @@ static void _drawTex(struct mCore* core, bool faded, bool both) {
 	if (both) {
 		color = _setupTex(activeOutputTexture ^ 1, faded);
 		ctrAddRectEx(color & 0x7FFFFFFF, x, y, w, h, 0, 0, corew, coreh, 0);
-		}
+	}
 	ctrFlushBatch();
 
 	innerw = corew;
@@ -850,18 +850,18 @@ int main() {
 	int i;
 	for (i = 0; i < 2; ++i) {
 		if (!C3D_TexInitVRAM(&outputTexture[i], 256, 256, GPU_RGB565)) {
-		_cleanup();
-		return 1;
-	}
+			_cleanup();
+			return 1;
+		}
 		C3D_TexSetWrap(&outputTexture[i], GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
 		C3D_TexSetFilter(&outputTexture[i], GPU_NEAREST, GPU_NEAREST);
 		void* outputTextureEnd = (u8*)outputTexture[i].data + 256 * 256 * 2;
 
-	// Zero texture data to make sure no garbage around the border interferes with filtering
-	GX_MemoryFill(
+		// Zero texture data to make sure no garbage around the border interferes with filtering
+		GX_MemoryFill(
 				outputTexture[i].data, 0x0000, outputTextureEnd, GX_FILL_16BIT_DEPTH | GX_FILL_TRIGGER,
-			NULL, 0, NULL, 0);
-	gspWaitForPSC0();
+				NULL, 0, NULL, 0);
+		gspWaitForPSC0();
 	}
 
 	struct GUIFont* font = GUIFontCreate();

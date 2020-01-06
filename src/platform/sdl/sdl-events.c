@@ -210,9 +210,6 @@ bool mSDLAttachPlayer(struct mSDLEvents* events, struct mSDLPlayer* player) {
 			continue;
 		}
 #endif
-		if (!joystickName) {
-			continue;
-		}
 		if (events->preferredJoysticks[player->playerId] && strcmp(events->preferredJoysticks[player->playerId], joystickName) == 0) {
 			index = i;
 			break;
@@ -267,9 +264,6 @@ void mSDLPlayerLoadConfig(struct mSDLPlayer* context, const struct Configuration
 			return;
 		}
 #endif
-		if (!name) {
-			return;
-		}
 		mInputProfileLoad(context->bindings, SDL_BINDING_BUTTON, config, name);
 
 		const char* value;
@@ -374,7 +368,6 @@ void mSDLUpdateJoysticks(struct mSDLEvents* events, const struct Configuration* 
 			if (joystickName)
 #endif
 			{
-			if (joystickName) {
 				for (i = 0; (int) i < events->playersAttached; ++i) {
 					if (events->players[i]->joystick) {
 						continue;

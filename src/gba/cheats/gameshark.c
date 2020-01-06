@@ -236,6 +236,7 @@ bool GBACheatAddGameShark(struct GBACheatSet* set, uint32_t op1, uint32_t op2) {
 		GBACheatSetGameSharkVersion(set, GBA_GS_GSAV1);
 	// Fall through
 	case GBA_GS_GSAV1:
+		GBACheatDecryptGameShark(&o1, &o2, set->gsaSeeds);
 	// Fall through
 	case GBA_GS_GSAV1_RAW:
 		return GBACheatAddGameSharkRaw(set, o1, o2);

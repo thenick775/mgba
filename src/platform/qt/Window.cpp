@@ -654,8 +654,8 @@ void Window::closeEvent(QCloseEvent* event) {
 		event->ignore();
 		m_pendingClose = true;
 	} else {
-	m_display.reset();
-}
+		m_display.reset();
+	}
 }
 
 void Window::focusInEvent(QFocusEvent*) {
@@ -744,7 +744,6 @@ void Window::gameStarted() {
 		resizeFrame(size * m_savedScale);
 	}
 	attachWidget(m_display.get());
-	setFocus();
 	setFocus();
 
 #ifndef Q_OS_MAC
@@ -938,11 +937,11 @@ void Window::reloadDisplayDriver() {
 		m_display->startDrawing(m_controller);
 	}
 #ifdef M_CORE_GB
-		m_display->setMinimumSize(GB_VIDEO_HORIZONTAL_PIXELS, GB_VIDEO_VERTICAL_PIXELS);
+	m_display->setMinimumSize(GB_VIDEO_HORIZONTAL_PIXELS, GB_VIDEO_VERTICAL_PIXELS);
 #elif defined(M_CORE_GBA)
 	m_display->setMinimumSize(GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS);
 #endif
-	}
+}
 
 void Window::reloadAudioDriver() {
 	if (!m_controller) {
@@ -1684,7 +1683,7 @@ void Window::setupMenu(QMenuBar* menubar) {
 
 	m_shortcutController->rebuildItems();
 	m_actions.rebuildMenu(menuBar(), this, *m_shortcutController);
-	}
+}
 
 void Window::attachWidget(QWidget* widget) {
 	m_screenWidget->layout()->addWidget(widget);
@@ -1973,11 +1972,11 @@ void WindowBackground::paintEvent(QPaintEvent* event) {
 	}
 	if (m_lockIntegerScaling) {
 		if (ds.width() >= m_aspectWidth) {
-		ds.setWidth(ds.width() - ds.width() % m_aspectWidth);
+			ds.setWidth(ds.width() - ds.width() % m_aspectWidth);
 		}
 		if (ds.height() >= m_aspectHeight) {
-		ds.setHeight(ds.height() - ds.height() % m_aspectHeight);
-	}
+			ds.setHeight(ds.height() - ds.height() % m_aspectHeight);
+		}
 	}
 	QPoint origin = QPoint((s.width() - ds.width()) / 2, (s.height() - ds.height()) / 2);
 	QRect full(origin, ds);

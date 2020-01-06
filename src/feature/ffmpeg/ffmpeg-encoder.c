@@ -95,7 +95,7 @@ void FFmpegEncoderInit(struct FFmpegEncoder* encoder) {
 	int i;
 	for (i = 0; i < FFMPEG_FILTERS_MAX; ++i) {
 		encoder->filters[i] = NULL;
-}
+	}
 }
 
 bool FFmpegEncoderSetAudio(struct FFmpegEncoder* encoder, const char* acodec, unsigned abr) {

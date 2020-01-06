@@ -38,7 +38,7 @@ typedef struct
 	struct mCore* core;
 	struct mLogger logger;
 	struct GBA* gba; // anything that uses this will be deprecated eventually
-	color_t vbuff[VIDEO_HORIZONTAL_PIXELS * VIDEO_VERTICAL_PIXELS];
+	color_t vbuff[GBA_VIDEO_HORIZONTAL_PIXELS * GBA_VIDEO_VERTICAL_PIXELS];
 	void* rom;
 	struct VFile* romvf;
 	char bios[16384];
@@ -166,7 +166,7 @@ EXP bizctx* BizCreate(const void* bios, const void* data, int length, const over
 	}
 	ctx->gba = ctx->core->board;
 
-	ctx->core->setVideoBuffer(ctx->core, ctx->vbuff, VIDEO_HORIZONTAL_PIXELS);
+	ctx->core->setVideoBuffer(ctx->core, ctx->vbuff, GBA_VIDEO_HORIZONTAL_PIXELS);
 	ctx->core->setAudioBufferSize(ctx->core, 1024);
 
 	blip_set_rates(ctx->core->getAudioChannel(ctx->core, 0), ctx->core->frequency(ctx->core), 44100);
@@ -231,7 +231,7 @@ EXP void BizReset(bizctx* ctx)
 
 static void blit(uint32_t* dst, const color_t* src, const uint32_t* palette)
 {
-	uint32_t* dst_end = dst + VIDEO_HORIZONTAL_PIXELS * VIDEO_VERTICAL_PIXELS;
+	uint32_t* dst_end = dst + GBA_VIDEO_HORIZONTAL_PIXELS * GBA_VIDEO_VERTICAL_PIXELS;
 
 	while (dst < dst_end)
 	{

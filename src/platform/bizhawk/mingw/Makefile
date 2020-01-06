@@ -23,7 +23,8 @@ CXXFLAGS = \
 	-I../../../../include -Wall -std=gnu99 -fgnu89-inline \
 	-I../../.. \
 	-DRESAMPLE_LIBRARY=RESAMPLE_BLIP_BUF -DHAVE_LOCALTIME_R \
-	-DMINIMAL_CORE=2 -DDISABLE_THREADING -DM_CORE_GBA -DCOLOR_16_BIT
+	-DMINIMAL_CORE=2 -DDISABLE_THREADING -DM_CORE_GBA -DCOLOR_16_BIT \
+	-Dmgba_EXPORTS
 
 TARGET = mgba.dll
 
@@ -35,6 +36,7 @@ DEST_32 = ../../../../../output/dll
 DEST_64 = ../../../../../output/dll
 
 SRCS = \
+	$(ROOT_DIR)/core/bitmap-cache.c \
 	$(ROOT_DIR)/core/cache-set.c \
 	$(ROOT_DIR)/core/cheats.c \
 	$(ROOT_DIR)/core/config.c \
@@ -54,9 +56,6 @@ SRCS = \
 	$(ROOT_DIR)/core/thread.c \
 	$(ROOT_DIR)/core/tile-cache.c \
 	$(ROOT_DIR)/core/timing.c \
-	$(ROOT_DIR)/lr35902/decoder.c \
-	$(ROOT_DIR)/lr35902/isa-lr35902.c \
-	$(ROOT_DIR)/lr35902/lr35902.c \
 	$(ROOT_DIR)/arm/arm.c \
 	$(ROOT_DIR)/arm/decoder-arm.c \
 	$(ROOT_DIR)/arm/decoder-thumb.c \
@@ -88,6 +87,7 @@ SRCS = \
 	$(ROOT_DIR)/gba/cheats/gameshark.c \
 	$(ROOT_DIR)/gba/cheats/parv3.c \
 	$(ROOT_DIR)/gba/renderers/cache-set.c \
+	$(ROOT_DIR)/gba/renderers/common.c \
 	$(ROOT_DIR)/gba/renderers/software-bg.c \
 	$(ROOT_DIR)/gba/renderers/software-mode0.c \
 	$(ROOT_DIR)/gba/renderers/software-obj.c \
@@ -101,6 +101,7 @@ SRCS = \
 	$(ROOT_DIR)/util/crc32.c \
 	$(ROOT_DIR)/util/elf-read.c \
 	$(ROOT_DIR)/util/formatting.c \
+	$(ROOT_DIR)/util/gbk-table.c \
 	$(ROOT_DIR)/util/gui.c \
 	$(ROOT_DIR)/util/hash.c \
 	$(ROOT_DIR)/util/patch-fast.c \

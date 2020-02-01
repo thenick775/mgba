@@ -18,13 +18,12 @@ OBJ_DIR:=$(MAKEFILE_DIR)/obj
 #-I../../../arm 
 # -s -O3 -fomit-frame-pointer -fexpensive-optimizations -flto
 CXXFLAGS = \
-	-s -O3 -fomit-frame-pointer \
-	-fexpensive-optimizations -flto \
-	-I../../../../include -Wall -std=gnu99 -fgnu89-inline \
-	-I../../.. \
+	-s -O3 -fomit-frame-pointer -fexpensive-optimizations -flto \
+	-I../../../../include -I../../.. \
+	-Wall -Wno-stringop-overflow -Wno-lto-type-mismatch -std=gnu99 -fgnu89-inline \
 	-DRESAMPLE_LIBRARY=RESAMPLE_BLIP_BUF -DHAVE_LOCALTIME_R \
 	-DMINIMAL_CORE=2 -DDISABLE_THREADING -DM_CORE_GBA -DCOLOR_16_BIT \
-	-DMGBA_STANDALONE
+	-DMGBA_STANDALONE -DUSE_DEBUGGERS
 
 TARGET = mgba.dll
 
@@ -94,6 +93,10 @@ SRCS = \
 	$(ROOT_DIR)/gba/renderers/video-software.c \
 	$(ROOT_DIR)/gba/sio/joybus.c \
 	$(ROOT_DIR)/gba/sio/lockstep.c \
+	$(ROOT_DIR)/debugger/debugger.c \
+	$(ROOT_DIR)/debugger/cli-debugger.c \
+	$(ROOT_DIR)/debugger/symbols.c \
+	$(ROOT_DIR)/debugger/parser.c \
 	$(ROOT_DIR)/third-party/blip_buf/blip_buf.c \
 	$(ROOT_DIR)/third-party/inih/ini.c \
 	$(ROOT_DIR)/util/circle-buffer.c \

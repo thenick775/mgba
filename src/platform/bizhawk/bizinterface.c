@@ -16,7 +16,6 @@
 #include "mgba/core/blip_buf.h"
 
 const char* const binaryName = "mgba";
-const uint32_t DEBUGGER_ID = 0xFEEDFACE;
 
 #define EXP __declspec(dllexport)
 
@@ -30,7 +29,6 @@ const uint32_t DEBUGGER_ID = 0xFEEDFACE;
 #define container_of(ptr, type, member) ({					  \
 		const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
 		(type *)( (char *)__mptr - offsetof(type,member) );})
-void mDebuggerEnter(struct mDebugger* debugger, enum mDebuggerEntryReason reason, struct mDebuggerEntryInfo* info) { }
 struct VFile* VFileOpenFD(const char* path, int flags) { return NULL; }
 
 typedef struct
@@ -49,6 +47,7 @@ typedef struct
 	struct mRotationSource rotsource;
 	struct mRTCSource rtcsource;
 	struct GBALuminanceSource lumasource;
+	struct mDebugger* debugger;
 	int16_t tiltx;
 	int16_t tilty;
 	int16_t tiltz;
@@ -219,7 +218,10 @@ EXP bizctx* BizCreate(const void* bios, const void* data, int length, const over
 		override.idleLoop = dbinfo->idleLoop;
 		GBAOverrideApply(ctx->gba, &override);
 	}
-
+	
+	ctx->debugger = mDebuggerCreate(DEBUGGER_CUSTOM, ctx->core);
+	mDebuggerAttach(ctx->debugger, ctx->core);
+	
 	resetinternal(ctx);
 	return ctx;
 }

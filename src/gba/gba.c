@@ -13,7 +13,6 @@
 #include <mgba/internal/gba/cheats.h>
 #include <mgba/internal/gba/io.h>
 #include <mgba/internal/gba/overrides.h>
-#include <mgba/internal/gba/rr/rr.h>
 
 #include <mgba-util/patch.h>
 #include <mgba-util/crc32.h>
@@ -96,7 +95,6 @@ static void GBAInit(void* cpu, struct mCPUComponent* component) {
 	gba->luminanceSource = 0;
 	gba->rtcSource = 0;
 	gba->rumble = 0;
-	gba->rr = 0;
 
 	gba->romVf = 0;
 	gba->biosVf = 0;
@@ -170,7 +168,6 @@ void GBADestroy(struct GBA* gba) {
 	GBAVideoDeinit(&gba->video);
 	GBAAudioDeinit(&gba->audio);
 	GBASIODeinit(&gba->sio);
-	gba->rr = 0;
 	mTimingDeinit(&gba->timing);
 	mCoreCallbacksListDeinit(&gba->coreCallbacks);
 }
@@ -196,13 +193,12 @@ void GBAReset(struct ARMCore* cpu) {
 	cpu->gprs[ARM_SP] = SP_BASE_SYSTEM;
 
 	struct GBA* gba = (struct GBA*) cpu->master;
-	if (!gba->rr || (!gba->rr->isPlaying(gba->rr) && !gba->rr->isRecording(gba->rr))) {
-		gba->memory.savedata.maskWriteback = false;
-		GBASavedataUnmask(&gba->memory.savedata);
-	}
+	gba->memory.savedata.maskWriteback = false;
+	GBASavedataUnmask(&gba->memory.savedata);
 
 	gba->cpuBlocked = false;
 	gba->earlyExit = false;
+	gba->dmaPC = 0;
 	if (gba->yankedRomSize) {
 		gba->memory.romSize = gba->yankedRomSize;
 		gba->memory.romMask = toPow2(gba->memory.romSize) - 1;
@@ -238,8 +234,16 @@ void GBAReset(struct ARMCore* cpu) {
 
 	gba->debug = false;
 	memset(gba->debugString, 0, sizeof(gba->debugString));
-	if (gba->pristineRomSize > SIZE_CART0) {
-		GBAMatrixReset(gba);
+
+
+	if (gba->romVf && gba->pristineRomSize > SIZE_CART0) {
+		char ident;
+		gba->romVf->seek(gba->romVf, 0xAC, SEEK_SET);
+		gba->romVf->read(gba->romVf, &ident, 1);
+		gba->romVf->seek(gba->romVf, 0, SEEK_SET);
+		if (ident == 'M') {
+			GBAMatrixReset(gba);
+		}
 	}
 }
 
@@ -376,12 +380,20 @@ bool GBALoadROM(struct GBA* gba, struct VFile* vf) {
 	vf->seek(vf, 0, SEEK_SET);
 	if (gba->pristineRomSize > SIZE_CART0) {
 		gba->isPristine = false;
-		gba->memory.romSize = 0x01000000;
+		char ident;
+		vf->seek(vf, 0xAC, SEEK_SET);
+		vf->read(vf, &ident, 1);
+		if (ident == 'M') {
+			gba->memory.romSize = 0x01000000;
 #ifdef FIXED_ROM_BUFFER
-		gba->memory.rom = romBuffer;
+			gba->memory.rom = romBuffer;
 #else
-		gba->memory.rom = anonymousMemoryMap(SIZE_CART0);
+			gba->memory.rom = anonymousMemoryMap(SIZE_CART0);
 #endif
+		} else {
+			gba->memory.rom = vf->map(vf, SIZE_CART0, MAP_READ);
+			gba->memory.romSize = SIZE_CART0;
+		}
 	} else {
 		gba->isPristine = true;
 		gba->memory.rom = vf->map(vf, gba->pristineRomSize, MAP_READ);
@@ -795,10 +807,6 @@ void GBAFrameStarted(struct GBA* gba) {
 
 void GBAFrameEnded(struct GBA* gba) {
 	GBASavedataClean(&gba->memory.savedata, gba->video.frameCounter);
-
-	if (gba->rr) {
-		gba->rr->nextFrame(gba->rr);
-	}
 
 	if (gba->cpu->components && gba->cpu->components[CPU_COMPONENT_CHEAT_DEVICE]) {
 		struct mCheatDevice* device = (struct mCheatDevice*) gba->cpu->components[CPU_COMPONENT_CHEAT_DEVICE];

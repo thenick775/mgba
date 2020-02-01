@@ -8,7 +8,6 @@
 #include <mgba/internal/arm/macros.h>
 #include <mgba/internal/gba/dma.h>
 #include <mgba/internal/gba/gba.h>
-#include <mgba/internal/gba/rr/rr.h>
 #include <mgba/internal/gba/serialize.h>
 
 mLOG_DEFINE_CATEGORY(GBA_IO, "GBA I/O", "gba.io");
@@ -712,16 +711,16 @@ uint16_t GBAIORead(struct GBA* gba, uint32_t address) {
 	switch (address) {
 	// Reading this takes two cycles (1N+1I), so let's remove them preemptively
 	case REG_TM0CNT_LO:
-		GBATimerUpdateRegister(gba, 0, 4);
+		GBATimerUpdateRegister(gba, 0, 2);
 		break;
 	case REG_TM1CNT_LO:
-		GBATimerUpdateRegister(gba, 1, 4);
+		GBATimerUpdateRegister(gba, 1, 2);
 		break;
 	case REG_TM2CNT_LO:
-		GBATimerUpdateRegister(gba, 2, 4);
+		GBATimerUpdateRegister(gba, 2, 2);
 		break;
 	case REG_TM3CNT_LO:
-		GBATimerUpdateRegister(gba, 3, 4);
+		GBATimerUpdateRegister(gba, 3, 2);
 		break;
 
 	case REG_KEYINPUT:
@@ -734,31 +733,24 @@ uint16_t GBAIORead(struct GBA* gba, uint32_t address) {
 				}
 			}
 		}
-		if (gba->rr && gba->rr->isPlaying(gba->rr)) {
-			return 0x3FF ^ gba->rr->queryInput(gba->rr);
-		} else {
-			uint16_t input = 0;
-			if (gba->keyCallback) {
-				input = gba->keyCallback->readKeys(gba->keyCallback);
-				if (gba->keySource) {
-					*gba->keySource = input;
-				}
-			} else if (gba->keySource) {
-				input = *gba->keySource;
-				if (!gba->allowOpposingDirections) {
-					unsigned rl = input & 0x030;
-					unsigned ud = input & 0x0C0;
-					input &= 0x30F;
-					if (rl != 0x030) {
-						input |= rl;
-					}
-					if (ud != 0x0C0) {
-						input |= ud;
-					}
-				}
+		uint16_t input = 0;
+		if (gba->keyCallback) {
+			input = gba->keyCallback->readKeys(gba->keyCallback);
+			if (gba->keySource) {
+				*gba->keySource = input;
 			}
-			if (gba->rr && gba->rr->isRecording(gba->rr)) {
-				gba->rr->logInput(gba->rr, input);
+		} else if (gba->keySource) {
+			input = *gba->keySource;
+			if (!gba->allowOpposingDirections) {
+				unsigned rl = input & 0x030;
+				unsigned ud = input & 0x0C0;
+				input &= 0x30F;
+				if (rl != 0x030) {
+					input |= rl;
+				}
+				if (ud != 0x0C0) {
+					input |= ud;
+				}
 			}
 			return 0x3FF ^ input;
 		}
@@ -950,7 +942,8 @@ void GBAIOSerialize(struct GBA* gba, struct GBASerializedState* state) {
 		STORE_32(gba->memory.dma[i].when, 0, &state->dma[i].when);
 	}
 
-	state->dmaTransferRegister = gba->memory.dmaTransferRegister;
+	STORE_32(gba->memory.dmaTransferRegister, 0, &state->dmaTransferRegister);
+	STORE_32(gba->dmaPC, 0, &state->dmaBlockPC);
 
 	GBAHardwareSerialize(&gba->memory.hw, state);
 }
@@ -988,12 +981,12 @@ void GBAIODeserialize(struct GBA* gba, const struct GBASerializedState* state) {
 		LOAD_32(gba->memory.dma[i].nextDest, 0, &state->dma[i].nextDest);
 		LOAD_32(gba->memory.dma[i].nextCount, 0, &state->dma[i].nextCount);
 		LOAD_32(gba->memory.dma[i].when, 0, &state->dma[i].when);
-		if (GBADMARegisterGetTiming(gba->memory.dma[i].reg) != GBA_DMA_TIMING_NOW) {
-			GBADMASchedule(gba, i, &gba->memory.dma[i]);
-		}
 	}
 	GBAAudioWriteSOUNDCNT_X(&gba->audio, gba->memory.io[REG_SOUNDCNT_X >> 1]);
-	gba->memory.dmaTransferRegister = state->dmaTransferRegister;
+
+	LOAD_32(gba->memory.dmaTransferRegister, 0, &state->dmaTransferRegister);
+	LOAD_32(gba->dmaPC, 0, &state->dmaBlockPC);
+
 	GBADMAUpdate(gba);
 	GBAHardwareDeserialize(&gba->memory.hw, state);
 }

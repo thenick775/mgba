@@ -61,6 +61,9 @@ SRCS = \
 	$(ROOT_DIR)/arm/decoder.c \
 	$(ROOT_DIR)/arm/isa-arm.c \
 	$(ROOT_DIR)/arm/isa-thumb.c \
+	$(ROOT_DIR)/arm/debugger/cli-debugger.c \
+	$(ROOT_DIR)/arm/debugger/memory-debugger.c \
+	$(ROOT_DIR)/arm/debugger/debugger.c \
 	$(ROOT_DIR)/gb/audio.c \
 	$(ROOT_DIR)/gba/audio.c \
 	$(ROOT_DIR)/gba/bios.c \
@@ -85,6 +88,7 @@ SRCS = \
 	$(ROOT_DIR)/gba/cheats/codebreaker.c \
 	$(ROOT_DIR)/gba/cheats/gameshark.c \
 	$(ROOT_DIR)/gba/cheats/parv3.c \
+	$(ROOT_DIR)/gba/debugger/cli.c \
 	$(ROOT_DIR)/gba/renderers/cache-set.c \
 	$(ROOT_DIR)/gba/renderers/common.c \
 	$(ROOT_DIR)/gba/renderers/software-bg.c \

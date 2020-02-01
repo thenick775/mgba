@@ -47,7 +47,7 @@ typedef struct
 	struct mRotationSource rotsource;
 	struct mRTCSource rtcsource;
 	struct GBALuminanceSource lumasource;
-	struct mDebugger* debugger;
+	struct mDebugger debugger;
 	int16_t tiltx;
 	int16_t tilty;
 	int16_t tiltz;
@@ -219,8 +219,7 @@ EXP bizctx* BizCreate(const void* bios, const void* data, int length, const over
 		GBAOverrideApply(ctx->gba, &override);
 	}
 	
-	ctx->debugger = mDebuggerCreate(DEBUGGER_CUSTOM, ctx->core);
-	mDebuggerAttach(ctx->debugger, ctx->core);
+	mDebuggerAttach(&ctx->debugger, ctx->core);
 	
 	resetinternal(ctx);
 	return ctx;

@@ -125,6 +125,11 @@ typedef struct
 	uint32_t idleLoop;
 } overrideinfo;
 
+void exec_callback(struct mDebugger* d)
+{
+	
+}
+
 EXP bizctx* BizCreate(const void* bios, const void* data, int length, const overrideinfo* dbinfo, int skipbios)
 {
 	bizctx* ctx = calloc(1, sizeof(*ctx));
@@ -218,6 +223,8 @@ EXP bizctx* BizCreate(const void* bios, const void* data, int length, const over
 	}
 	
 	mDebuggerAttach(&ctx->debugger, ctx->core);
+	ctx->debugger.state = DEBUGGER_CALLBACK;
+	ctx->debugger.custom = exec_callback;
 	
 	resetinternal(ctx);
 	return ctx;
@@ -249,7 +256,8 @@ EXP int BizAdvance(bizctx* ctx, uint16_t keys, uint32_t* vbuff, int* nsamp, int1
 	ctx->tilty = gyroy;
 	ctx->tiltz = gyroz;
 	ctx->lagged = TRUE;
-	ctx->core->runFrame(ctx->core);
+	
+	mDebuggerRunFrame(&ctx->debugger);
 
 	blit(vbuff, ctx->vbuff, ctx->palette);
 	*nsamp = blip_samples_avail(ctx->core->getAudioChannel(ctx->core, 0));

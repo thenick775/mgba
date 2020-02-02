@@ -7,8 +7,6 @@
 #include "mgba/gba/interface.h"
 #include "mgba/internal/gba/gba.h"
 #include "mgba/internal/gba/video.h"
-#include "mgba/internal/gba/audio.h"
-#include "mgba/internal/gba/memory.h"
 #include "mgba/debugger/debugger.h"
 #include "mgba/internal/gba/overrides.h"
 #include "mgba-util/vfs.h"
@@ -178,8 +176,8 @@ EXP bizctx* BizCreate(const void* bios, const void* data, int length, const over
 
 	mCoreSetRTC(ctx->core, &ctx->rtcsource);
 	
-	ctx->gba->idleOptimization = IDLE_LOOP_IGNORE; // ??
-	ctx->gba->keyCallback = &ctx->keysource; // ??
+	ctx->gba->idleOptimization = IDLE_LOOP_IGNORE; // Don't do "idle skipping"
+	ctx->gba->keyCallback = &ctx->keysource; // Callback for key reading
 
 	ctx->keysource.readKeys = GetKeys;
 	ctx->rotsource.sample = RotationCB;
@@ -355,10 +353,10 @@ EXP void BizGetRegisters(bizctx* ctx, int* dest)
 
 EXP void BizWriteBus(bizctx* ctx, uint32_t addr, uint8_t val)
 {
-	GBAStore8(ctx->gba->cpu, addr, val, NULL);
+	ctx->core->rawWrite8(ctx->core, addr, -1, val);
 }
 
 EXP uint8_t BizReadBus(bizctx* ctx, uint32_t addr)
 {
-	return GBAView8(ctx->gba->cpu, addr);
+	return ctx->core->busRead8(ctx->core, addr);
 }

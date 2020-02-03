@@ -9,6 +9,7 @@
 #include "mgba/internal/gba/video.h"
 #include "mgba/debugger/debugger.h"
 #include "mgba/internal/gba/overrides.h"
+#include <mgba/internal/arm/isa-inlines.h>
 #include "mgba-util/vfs.h"
 #include "mgba/core/serialize.h"
 #include "mgba/core/blip_buf.h"
@@ -126,11 +127,7 @@ typedef struct
 } overrideinfo;
 
 void (*trace_callback)(const char *buffer) = 0;
-
-EXP void BizSetTraceCallback(void(*callback)(const char *buffer))
-{
-	trace_callback = callback;
-}
+void (*exec_callback)(uint32_t pc) = 0;
 
 void exec_hook(struct mDebugger* debugger)
 {
@@ -145,7 +142,19 @@ void exec_hook(struct mDebugger* debugger)
 			trace[traceSize + 1] = '\0';
 		}
 		trace_callback(trace);
-	}	
+	}
+	if (exec_callback)
+		exec_callback(_ARMPCAddress(debugger->core->cpu));
+}
+
+EXP void BizSetTraceCallback(void(*callback)(const char *buffer))
+{
+	trace_callback = callback;
+}
+
+EXP void BizSetExecCallback(void(*callback)(uint32_t pc))
+{
+	exec_callback = callback;
 }
 
 EXP bizctx* BizCreate(const void* bios, const void* data, int length, const overrideinfo* dbinfo, int skipbios)

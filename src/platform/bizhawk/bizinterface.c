@@ -125,9 +125,27 @@ typedef struct
 	uint32_t idleLoop;
 } overrideinfo;
 
-void exec_callback(struct mDebugger* d)
+void (*trace_callback)(int size, const char *buffer) = 0;
+
+EXP void BizSetTraceCallback(void(*callback)(size_t size, const char *buffer))
 {
-	
+	trace_callback = callback;
+}
+
+void exec_hook(struct mDebugger* debugger)
+{
+	if (trace_callback)
+	{
+		char trace[1024];
+		trace[sizeof(trace) - 1] = '\0';
+		size_t traceSize = sizeof(trace) - 2;
+		debugger->platform->trace(debugger->platform, trace, &traceSize);
+		if (traceSize + 1 <= sizeof(trace)) {
+			trace[traceSize] = '\n';
+			trace[traceSize + 1] = '\0';
+		}
+		trace_callback(traceSize, trace);
+	}	
 }
 
 EXP bizctx* BizCreate(const void* bios, const void* data, int length, const overrideinfo* dbinfo, int skipbios)
@@ -224,7 +242,7 @@ EXP bizctx* BizCreate(const void* bios, const void* data, int length, const over
 	
 	mDebuggerAttach(&ctx->debugger, ctx->core);
 	ctx->debugger.state = DEBUGGER_CALLBACK;
-	ctx->debugger.custom = exec_callback;
+	ctx->debugger.custom = exec_hook;
 	
 	resetinternal(ctx);
 	return ctx;

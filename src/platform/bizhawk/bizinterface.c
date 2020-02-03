@@ -125,9 +125,9 @@ typedef struct
 	uint32_t idleLoop;
 } overrideinfo;
 
-void (*trace_callback)(int size, const char *buffer) = 0;
+void (*trace_callback)(const char *buffer) = 0;
 
-EXP void BizSetTraceCallback(void(*callback)(size_t size, const char *buffer))
+EXP void BizSetTraceCallback(void(*callback)(const char *buffer))
 {
 	trace_callback = callback;
 }
@@ -144,7 +144,7 @@ void exec_hook(struct mDebugger* debugger)
 			trace[traceSize] = '\n';
 			trace[traceSize + 1] = '\0';
 		}
-		trace_callback(traceSize, trace);
+		trace_callback(trace);
 	}	
 }
 

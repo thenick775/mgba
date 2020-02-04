@@ -250,7 +250,6 @@ EXP bizctx* BizCreate(const void* bios, const void* data, int length, const over
 	}
 	
 	mDebuggerAttach(&ctx->debugger, ctx->core);
-	ctx->debugger.state = DEBUGGER_CALLBACK;
 	ctx->debugger.custom = exec_hook;
 	
 	resetinternal(ctx);
@@ -284,6 +283,7 @@ EXP int BizAdvance(bizctx* ctx, uint16_t keys, uint32_t* vbuff, int* nsamp, int1
 	ctx->tiltz = gyroz;
 	ctx->lagged = TRUE;
 	
+	ctx->debugger.state = trace_callback || exec_callback ? DEBUGGER_CALLBACK : DEBUGGER_RUNNING;
 	mDebuggerRunFrame(&ctx->debugger);
 
 	blit(vbuff, ctx->vbuff, ctx->palette);

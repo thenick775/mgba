@@ -128,6 +128,7 @@ typedef struct
 
 void (*trace_callback)(const char *buffer) = 0;
 void (*exec_callback)(uint32_t pc) = 0;
+void (*mem_callback)(uint32_t addr, enum mWatchpointType type, uint32_t oldValue, uint32_t newValue) = 0;
 
 void exec_hook(struct mDebugger* debugger)
 {
@@ -155,6 +156,31 @@ EXP void BizSetTraceCallback(void(*callback)(const char *buffer))
 EXP void BizSetExecCallback(void(*callback)(uint32_t pc))
 {
 	exec_callback = callback;
+}
+
+EXP void BizSetMemCallback(void(*callback)(uint32_t addr, enum mWatchpointType type, uint32_t oldValue, uint32_t newValue))
+{
+	mem_callback = callback;
+}
+
+static void watchpoint_entry(struct mDebugger* debugger, enum mDebuggerEntryReason reason, struct mDebuggerEntryInfo* info) {
+	if (reason == DEBUGGER_ENTER_WATCHPOINT && info && mem_callback)
+		mem_callback(info->address, info->type.wp.accessType, info->type.wp.oldValue, info->type.wp.newValue);
+}
+
+EXP ssize_t BizSetWatchpoint(bizctx* ctx, uint32_t addr, enum mWatchpointType type)
+{
+	struct mWatchpoint watchpoint = {
+		.address = addr,
+		.segment = -1,
+		.type = type
+	};
+	return ctx->debugger.platform->setWatchpoint(ctx->debugger.platform, &watchpoint);
+}
+
+EXP bool BizClearWatchpoint(bizctx* ctx, ssize_t id)
+{
+	return ctx->debugger.platform->clearBreakpoint(ctx->debugger.platform, id);
 }
 
 EXP bizctx* BizCreate(const void* bios, const void* data, int length, const overrideinfo* dbinfo, int skipbios)
@@ -251,6 +277,7 @@ EXP bizctx* BizCreate(const void* bios, const void* data, int length, const over
 	
 	mDebuggerAttach(&ctx->debugger, ctx->core);
 	ctx->debugger.custom = exec_hook;
+	ctx->debugger.entered = watchpoint_entry;
 	
 	resetinternal(ctx);
 	return ctx;

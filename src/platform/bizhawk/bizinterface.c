@@ -166,6 +166,7 @@ EXP void BizSetMemCallback(void(*callback)(uint32_t addr, enum mWatchpointType t
 static void watchpoint_entry(struct mDebugger* debugger, enum mDebuggerEntryReason reason, struct mDebuggerEntryInfo* info) {
 	if (reason == DEBUGGER_ENTER_WATCHPOINT && info && mem_callback)
 		mem_callback(info->address, info->type.wp.accessType, info->type.wp.oldValue, info->type.wp.newValue);
+	debugger->state = trace_callback || exec_callback ? DEBUGGER_CALLBACK : DEBUGGER_RUNNING;
 }
 
 EXP ssize_t BizSetWatchpoint(bizctx* ctx, uint32_t addr, enum mWatchpointType type)

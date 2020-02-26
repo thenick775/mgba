@@ -423,6 +423,13 @@ void Window::selectPatch() {
 	}
 }
 
+void Window::scanCard() {
+	QStringList filenames = GBAApp::app()->getOpenFileNames(this, tr("Select e-Reader dotcode"), tr("e-Reader card (*.raw *.bin *.bmp)"));
+	for (QString& filename : filenames) {
+		m_controller->scanCard(filename);
+	}
+}
+
 void Window::openView(QWidget* widget) {
 	connect(this, &Window::shutdown, widget, &QWidget::close);
 	widget->setAttribute(Qt::WA_DeleteOnClose);
@@ -806,7 +813,6 @@ void Window::gameStopped() {
 		action->setEnabled(false);
 	}
 	setWindowFilePath(QString());
-	updateTitle();
 	detachWidget(m_display.get());
 	m_screenWidget->setDimensions(m_logo.width(), m_logo.height());
 	m_screenWidget->setLockIntegerScaling(false);
@@ -834,6 +840,7 @@ void Window::gameStopped() {
 	m_display->stopDrawing();
 
 	m_controller.reset();
+	updateTitle();
 
 	m_display->setVideoProxy({});
 	if (m_pendingClose) {
@@ -949,6 +956,8 @@ void Window::reloadAudioDriver() {
 	m_audioProcessor->start();
 	connect(m_controller.get(), &CoreController::stopping, m_audioProcessor.get(), &AudioProcessor::stop);
 	connect(m_controller.get(), &CoreController::fastForwardChanged, m_audioProcessor.get(), &AudioProcessor::inputParametersChanged);
+	connect(m_controller.get(), &CoreController::paused, m_audioProcessor.get(), &AudioProcessor::pause);
+	connect(m_controller.get(), &CoreController::unpaused, m_audioProcessor.get(), &AudioProcessor::start);
 }
 
 void Window::changeRenderer() {
@@ -1115,7 +1124,11 @@ void Window::setupMenu(QMenuBar* menubar) {
 	}, "file");
 #endif
 
-	m_actions.addAction(tr("Replace ROM..."), "replaceROM", this, &Window::replaceROM, "file");
+	addGameAction(tr("Replace ROM..."), "replaceROM", this, &Window::replaceROM, "file");
+#ifdef M_CORE_GBA
+	Action* scanCard = addGameAction(tr("Scan e-Reader dotcodes..."), "scanCard", this, &Window::scanCard, "file");
+	m_platformActions.insert(PLATFORM_GBA, scanCard);
+#endif
 
 	Action* romInfo = addGameAction(tr("ROM &info..."), "romInfo", openControllerTView<ROMInfo>(), "file");
 
@@ -1455,7 +1468,7 @@ void Window::setupMenu(QMenuBar* menubar) {
 
 #ifdef USE_FFMPEG
 	addGameAction(tr("Record A/V..."), "recordOutput", this, &Window::openVideoWindow, "av");
-	addGameAction(tr("Record GIF..."), "recordGIF", this, &Window::openGIFWindow, "av");
+	addGameAction(tr("Record GIF/APNG..."), "recordGIF", this, &Window::openGIFWindow, "av");
 #endif
 
 	m_actions.addSeparator("av");

@@ -10,6 +10,7 @@
 #include <mgba/internal/gba/serialize.h>
 #include <mgba-util/formatting.h>
 #include <mgba-util/hash.h>
+#include <mgba-util/memory.h>
 
 mLOG_DEFINE_CATEGORY(GBA_HW, "GBA Pak Hardware", "gba.hardware");
 
@@ -49,6 +50,8 @@ static const int RTC_BYTES[8] = {
 
 void GBAHardwareInit(struct GBACartridgeHardware* hw, uint16_t* base) {
 	hw->gpioBase = base;
+	hw->eReaderDots = NULL;
+	memset(hw->eReaderCards, 0, sizeof(hw->eReaderCards));
 	GBAHardwareClear(hw);
 
 	hw->gbpCallback.d.readKeys = _gbpRead;
@@ -70,6 +73,20 @@ void GBAHardwareClear(struct GBACartridgeHardware* hw) {
 	hw->readWrite = GPIO_WRITE_ONLY;
 	hw->pinState = 0;
 	hw->direction = 0;
+
+	if (hw->eReaderDots) {
+		mappedMemoryFree(hw->eReaderDots, EREADER_DOTCODE_SIZE);
+		hw->eReaderDots = NULL;
+	}
+	int i;
+	for (i = 0; i < EREADER_CARDS_MAX; ++i) {
+		if (!hw->eReaderCards[i].data) {
+			continue;
+		}
+		free(hw->eReaderCards[i].data);
+		hw->eReaderCards[i].data = NULL;
+		hw->eReaderCards[i].size = 0;
+	}
 
 	if (hw->p->sio.drivers.normal == &hw->gbpDriver.d) {
 		GBASIOSetDriver(&hw->p->sio, 0, SIO_NORMAL_32);

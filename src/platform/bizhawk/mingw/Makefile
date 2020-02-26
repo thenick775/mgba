@@ -70,6 +70,7 @@ SRCS = \
 	$(ROOT_DIR)/gba/cheats.c \
 	$(ROOT_DIR)/gba/core.c \
 	$(ROOT_DIR)/gba/dma.c \
+	$(ROOT_DIR)/gba/ereader.c \
 	$(ROOT_DIR)/gba/gba.c \
 	$(ROOT_DIR)/gba/hardware.c \
 	$(ROOT_DIR)/gba/hle-bios.c \

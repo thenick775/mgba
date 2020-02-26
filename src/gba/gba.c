@@ -253,7 +253,7 @@ void GBASkipBIOS(struct GBA* gba) {
 		if (gba->memory.rom) {
 			cpu->gprs[ARM_PC] = BASE_CART0;
 		} else {
-			cpu->gprs[ARM_PC] = BASE_WORKING_RAM;
+			cpu->gprs[ARM_PC] = BASE_WORKING_RAM + 0xC0;
 		}
 		gba->video.vcount = 0x7D;
 		gba->memory.io[REG_VCOUNT >> 1] = 0x7D;
@@ -441,6 +441,10 @@ void GBAYankROM(struct GBA* gba) {
 
 void GBALoadBIOS(struct GBA* gba, struct VFile* vf) {
 	gba->biosVf = vf;
+	if (vf->size(vf) != SIZE_BIOS) {
+		mLOG(GBA, WARN, "Incorrect BIOS size");
+		return;
+	}
 	uint32_t* bios = vf->map(vf, SIZE_BIOS, MAP_READ);
 	if (!bios) {
 		mLOG(GBA, WARN, "Couldn't map BIOS");
@@ -742,11 +746,9 @@ void GBAIllegal(struct ARMCore* cpu, uint32_t opcode) {
 			.type.bp.opcode = opcode
 		};
 		mDebuggerEnter(gba->debugger->d.p, DEBUGGER_ENTER_ILLEGAL_OP, &info);
-	} else
-#endif
-	{
-		ARMRaiseUndefined(cpu);
 	}
+#endif
+	ARMRaiseUndefined(cpu);
 }
 
 void GBABreakpoint(struct ARMCore* cpu, int immediate) {

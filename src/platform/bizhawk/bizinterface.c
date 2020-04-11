@@ -414,6 +414,24 @@ EXP void BizGetRegisters(bizctx* ctx, int* dest)
 	memcpy(dest, ctx->gba->cpu, 18 * sizeof(int));
 }
 
+EXP void BizSetRegister(bizctx* ctx, int index, int value)
+{
+	if (index >= 0 && index < 16)
+	{
+		ctx->gba->cpu->gprs[index] = value;	
+	}
+
+	if (index == 16)
+	{
+		memcpy(&ctx->gba->cpu->cpsr, &value, sizeof(int));
+	}
+
+	if (index == 17)
+	{
+		memcpy(&ctx->gba->cpu->spsr, &value, sizeof(int));
+	}
+}
+
 EXP void BizWriteBus(bizctx* ctx, uint32_t addr, uint8_t val)
 {
 	ctx->core->rawWrite8(ctx->core, addr, -1, val);

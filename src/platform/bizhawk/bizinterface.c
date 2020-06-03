@@ -2,17 +2,18 @@
 #include <stdint.h>
 #include "mgba/core/core.h"
 #include "mgba/core/log.h"
-#include "mgba-util/common.h"
+#include "mgba/core/timing.h"
+#include "mgba/core/serialize.h"
+#include "mgba/core/blip_buf.h"
 #include "mgba/gba/core.h"
 #include "mgba/gba/interface.h"
 #include "mgba/internal/gba/gba.h"
 #include "mgba/internal/gba/video.h"
-#include "mgba/debugger/debugger.h"
 #include "mgba/internal/gba/overrides.h"
-#include <mgba/internal/arm/isa-inlines.h>
+#include "mgba/internal/arm/isa-inlines.h"
+#include "mgba/debugger/debugger.h"
+#include "mgba-util/common.h"
 #include "mgba-util/vfs.h"
-#include "mgba/core/serialize.h"
-#include "mgba/core/blip_buf.h"
 
 const char* const binaryName = "mgba";
 
@@ -430,6 +431,11 @@ EXP void BizSetRegister(bizctx* ctx, int index, int value)
 	{
 		memcpy(&ctx->gba->cpu->spsr, &value, sizeof(int));
 	}
+}
+
+EXP uint64_t BizGetGlobalTime(bizctx* ctx)
+{
+	return mTimingGlobalTime(ctx->debugger.core->timing);
 }
 
 EXP void BizWriteBus(bizctx* ctx, uint32_t addr, uint8_t val)

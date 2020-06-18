@@ -143,7 +143,7 @@ clean:
 	@$(RM) -rf $(OBJ_DIR)
 	@$(RM) -f $(TARGET)
 
-install:
+install: $(TARGET)
 	$(CP) $(TARGET) $(DEST_$(ARCH))
 
 print-%:

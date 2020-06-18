@@ -822,9 +822,13 @@ static size_t _GBCoreSavedataClone(struct mCore* core, void** sram) {
 		vf->seek(vf, 0, SEEK_SET);
 		return vf->read(vf, *sram, vf->size(vf));
 	}
-	*sram = malloc(gb->sramSize);
-	memcpy(*sram, gb->memory.sram, gb->sramSize);
-	return gb->sramSize;
+	if (gb->sramSize) {
+		*sram = malloc(gb->sramSize);
+		memcpy(*sram, gb->memory.sram, gb->sramSize);
+		return gb->sramSize;
+	}
+	*sram = NULL;
+	return 0;
 }
 
 static bool _GBCoreSavedataRestore(struct mCore* core, const void* sram, size_t size, bool writeback) {
@@ -1082,9 +1086,9 @@ static void _GBVLPReset(struct mCore* core) {
 	GBVideoProxyRendererShim(&gb->video, &gbcore->proxyRenderer);
 
 	// Make sure CPU loop never spins
-	GBHalt(gb->cpu);
 	gb->memory.ie = 0;
 	gb->memory.ime = false;
+	GBHalt(gb->cpu);
 }
 
 static bool _GBVLPLoadROM(struct mCore* core, struct VFile* vf) {
@@ -1115,9 +1119,9 @@ static bool _GBVLPLoadState(struct mCore* core, const void* buffer) {
 	GBAudioReset(&gb->audio);
 
 	// Make sure CPU loop never spins
-	GBHalt(gb->cpu);
 	gb->memory.ie = 0;
 	gb->memory.ime = false;
+	GBHalt(gb->cpu);
 
 	return true;
 }

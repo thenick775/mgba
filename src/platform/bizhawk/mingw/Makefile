@@ -1,150 +1,34 @@
-CXX = gcc
-RM = rm
-CP = cp
+CC ?= gcc
+RM ?= rm
+CP ?= cp
 
-MACHINE = $(shell $(CXX) -dumpmachine)
+MACHINE = $(shell $(CC) -dumpmachine)
+
 ifneq (,$(findstring i686,$(MACHINE)))
-	$(error 32 bit build no longer supported)
+    $(error 32 bit build no longer supported)
 else ifneq (,$(findstring x86_64,$(MACHINE)))
-	ARCH = 64
+    ARCH = 64
 else
-	$(error Unknown arch)
+    $(error Unknown arch)
 endif
 
-MAKEFILE_DIR:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
-ROOT_DIR:=$(MAKEFILE_DIR)/../../..
-OBJ_DIR:=$(MAKEFILE_DIR)/obj
-
-#-I../../../arm 
-# -s -O3 -fomit-frame-pointer -fexpensive-optimizations -flto
-CXXFLAGS = \
-	-s -O3 -fomit-frame-pointer -fexpensive-optimizations -flto \
-	-I../../../../include -I../../.. \
-	-Wall -Wno-stringop-overflow -Wno-lto-type-mismatch -std=gnu99 -fgnu89-inline \
-	-DRESAMPLE_LIBRARY=RESAMPLE_BLIP_BUF -DHAVE_LOCALTIME_R \
-	-DMINIMAL_CORE=2 -DDISABLE_THREADING -DM_CORE_GBA -DCOLOR_16_BIT \
-	-DMGBA_STANDALONE -DUSE_DEBUGGERS
-
-TARGET = mgba.dll
+MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+ROOT_DIR := $(MAKEFILE_DIR)/../../..
+OBJ_DIR := $(MAKEFILE_DIR)/obj
 
 LDFLAGS_32 = -static-libgcc
 LDFLAGS_64 =
-LDFLAGS = -shared $(LDFLAGS_$(ARCH)) $(CXXFLAGS)
+LDFLAGS = -shared $(LDFLAGS_$(ARCH)) $(CCFLAGS)
 
 DEST_32 = ../../../../../output/dll
 DEST_64 = ../../../../../output/dll
 
-SRCS = \
-	$(ROOT_DIR)/core/bitmap-cache.c \
-	$(ROOT_DIR)/core/cache-set.c \
-	$(ROOT_DIR)/core/cheats.c \
-	$(ROOT_DIR)/core/config.c \
-	$(ROOT_DIR)/core/core.c \
-	$(ROOT_DIR)/core/directories.c \
-	$(ROOT_DIR)/core/input.c \
-	$(ROOT_DIR)/core/interface.c \
-	$(ROOT_DIR)/core/library.c \
-	$(ROOT_DIR)/core/lockstep.c \
-	$(ROOT_DIR)/core/log.c \
-	$(ROOT_DIR)/core/map-cache.c \
-	$(ROOT_DIR)/core/mem-search.c \
-	$(ROOT_DIR)/core/rewind.c \
-	$(ROOT_DIR)/core/scripting.c \
-	$(ROOT_DIR)/core/serialize.c \
-	$(ROOT_DIR)/core/sync.c \
-	$(ROOT_DIR)/core/thread.c \
-	$(ROOT_DIR)/core/tile-cache.c \
-	$(ROOT_DIR)/core/timing.c \
-	$(ROOT_DIR)/arm/arm.c \
-	$(ROOT_DIR)/arm/decoder-arm.c \
-	$(ROOT_DIR)/arm/decoder-thumb.c \
-	$(ROOT_DIR)/arm/decoder.c \
-	$(ROOT_DIR)/arm/isa-arm.c \
-	$(ROOT_DIR)/arm/isa-thumb.c \
-	$(ROOT_DIR)/arm/debugger/cli-debugger.c \
-	$(ROOT_DIR)/arm/debugger/memory-debugger.c \
-	$(ROOT_DIR)/arm/debugger/debugger.c \
-	$(ROOT_DIR)/gb/audio.c \
-	$(ROOT_DIR)/gba/audio.c \
-	$(ROOT_DIR)/gba/bios.c \
-	$(ROOT_DIR)/gba/cheats.c \
-	$(ROOT_DIR)/gba/core.c \
-	$(ROOT_DIR)/gba/dma.c \
-	$(ROOT_DIR)/gba/ereader.c \
-	$(ROOT_DIR)/gba/gba.c \
-	$(ROOT_DIR)/gba/hardware.c \
-	$(ROOT_DIR)/gba/hle-bios.c \
-	$(ROOT_DIR)/gba/input.c \
-	$(ROOT_DIR)/gba/io.c \
-	$(ROOT_DIR)/gba/matrix.c \
-	$(ROOT_DIR)/gba/memory.c \
-	$(ROOT_DIR)/gba/overrides.c \
-	$(ROOT_DIR)/gba/savedata.c \
-	$(ROOT_DIR)/gba/serialize.c \
-	$(ROOT_DIR)/gba/sharkport.c \
-	$(ROOT_DIR)/gba/sio.c \
-	$(ROOT_DIR)/gba/timer.c \
-	$(ROOT_DIR)/gba/vfame.c \
-	$(ROOT_DIR)/gba/video.c \
-	$(ROOT_DIR)/gba/cheats/codebreaker.c \
-	$(ROOT_DIR)/gba/cheats/gameshark.c \
-	$(ROOT_DIR)/gba/cheats/parv3.c \
-	$(ROOT_DIR)/gba/debugger/cli.c \
-	$(ROOT_DIR)/gba/renderers/cache-set.c \
-	$(ROOT_DIR)/gba/renderers/common.c \
-	$(ROOT_DIR)/gba/renderers/software-bg.c \
-	$(ROOT_DIR)/gba/renderers/software-mode0.c \
-	$(ROOT_DIR)/gba/renderers/software-obj.c \
-	$(ROOT_DIR)/gba/renderers/video-software.c \
-	$(ROOT_DIR)/gba/sio/joybus.c \
-	$(ROOT_DIR)/gba/sio/lockstep.c \
-	$(ROOT_DIR)/debugger/debugger.c \
-	$(ROOT_DIR)/debugger/cli-debugger.c \
-	$(ROOT_DIR)/debugger/symbols.c \
-	$(ROOT_DIR)/debugger/parser.c \
-	$(ROOT_DIR)/third-party/blip_buf/blip_buf.c \
-	$(ROOT_DIR)/third-party/inih/ini.c \
-	$(ROOT_DIR)/util/circle-buffer.c \
-	$(ROOT_DIR)/util/configuration.c \
-	$(ROOT_DIR)/util/crc32.c \
-	$(ROOT_DIR)/util/elf-read.c \
-	$(ROOT_DIR)/util/formatting.c \
-	$(ROOT_DIR)/util/gbk-table.c \
-	$(ROOT_DIR)/util/gui.c \
-	$(ROOT_DIR)/util/hash.c \
-	$(ROOT_DIR)/util/patch-fast.c \
-	$(ROOT_DIR)/util/patch-ips.c \
-	$(ROOT_DIR)/util/patch-ups.c \
-	$(ROOT_DIR)/util/patch.c \
-	$(ROOT_DIR)/util/png-io.c \
-	$(ROOT_DIR)/util/ring-fifo.c \
-	$(ROOT_DIR)/util/string.c \
-	$(ROOT_DIR)/util/table.c \
-	$(ROOT_DIR)/util/text-codec.c \
-	$(ROOT_DIR)/util/vfs.c \
-	$(ROOT_DIR)/util/vfs/vfs-mem.c \
-	$(ROOT_DIR)/platform/windows/memory.c \
-	$(ROOT_DIR)/platform/bizhawk/bizinterface.c \
-	$(ROOT_DIR)/platform/bizhawk/localtime_r.c
+PLAT_SRCS += \
+	$(ROOT_DIR)/platform/windows/memory.c
 
-_OBJS:=$(SRCS:.c=.o)
-OBJS:=$(patsubst $(ROOT_DIR)%,$(OBJ_DIR)%,$(_OBJS))
+PLAT_FLAGS += \
+	-Wno-format
 
-all: $(TARGET)
+TARGET = mgba.dll
 
-$(OBJ_DIR)/%.o: $(ROOT_DIR)/%.c
-	@mkdir -p $(@D)
-	@$(CXX) -c -o $@ $< $(CXXFLAGS)
-
-$(TARGET) : $(OBJS)
-	@$(CXX) -o $@ $(LDFLAGS) $(OBJS)
-
-clean:
-	@$(RM) -rf $(OBJ_DIR)
-	@$(RM) -f $(TARGET)
-
-install: $(TARGET)
-	$(CP) $(TARGET) $(DEST_$(ARCH))
-
-print-%:
-	@echo $* = $($*)
+include ../base.mak

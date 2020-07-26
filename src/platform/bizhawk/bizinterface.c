@@ -17,7 +17,11 @@
 
 const char* const binaryName = "mgba";
 
+#ifdef _WIN32
 #define EXP __declspec(dllexport)
+#else
+#define EXP __attribute__((visibility("default")))
+#endif
 
 /**
  * container_of - cast a member of a structure out to the containing structure
@@ -82,24 +86,24 @@ static time_t GetTime(struct mRTCSource* rtcSource)
 static uint16_t GetKeys(struct mKeyCallback* keypadSource)
 {
 	bizctx *ctx = container_of(keypadSource, bizctx, keysource);
-	ctx->lagged = FALSE;
+	ctx->lagged = false;
 	return ctx->keys;
 }
 static void RotationCB(struct mRotationSource* rotationSource)
 {
 	bizctx* ctx = container_of(rotationSource, bizctx, rotsource);
-	ctx->lagged = FALSE;
+	ctx->lagged = false;
 }
 static void LightCB(struct GBALuminanceSource* luminanceSource)
 {
 	bizctx* ctx = container_of(luminanceSource, bizctx, lumasource);
-	ctx->lagged = FALSE;
+	ctx->lagged = false;
 }
 static void TimeCB(struct mRTCSource* rtcSource)
 {
 	// no, reading the rtc registers should not unset the lagged flag
 	// bizctx* ctx = container_of(rtcSource, bizctx, rtcsource);
-	// ctx->lagged = FALSE;
+	// ctx->lagged = false;
 }
 static void logdebug(struct mLogger* logger, int category, enum mLogLevel level, const char* format, va_list args)
 {
@@ -310,8 +314,8 @@ EXP int BizAdvance(bizctx* ctx, uint16_t keys, uint32_t* vbuff, int* nsamp, int1
 	ctx->tiltx = gyrox;
 	ctx->tilty = gyroy;
 	ctx->tiltz = gyroz;
-	ctx->lagged = TRUE;
-	
+	ctx->lagged = true;
+
 	ctx->debugger.state = trace_callback || exec_callback ? DEBUGGER_CALLBACK : DEBUGGER_RUNNING;
 	mDebuggerRunFrame(&ctx->debugger);
 
@@ -319,8 +323,8 @@ EXP int BizAdvance(bizctx* ctx, uint16_t keys, uint32_t* vbuff, int* nsamp, int1
 	*nsamp = blip_samples_avail(ctx->core->getAudioChannel(ctx->core, 0));
 	if (*nsamp > 1024)
 		*nsamp = 1024;
-	blip_read_samples(ctx->core->getAudioChannel(ctx->core, 0), sbuff, 1024, TRUE);
-	blip_read_samples(ctx->core->getAudioChannel(ctx->core, 1), sbuff + 1, 1024, TRUE);
+	blip_read_samples(ctx->core->getAudioChannel(ctx->core, 0), sbuff, 1024, true);
+	blip_read_samples(ctx->core->getAudioChannel(ctx->core, 1), sbuff + 1, 1024, true);
 	return ctx->lagged;
 }
 

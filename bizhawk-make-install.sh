@@ -4,5 +4,6 @@ if [ "$(uname -s)" == "Linux" ]; then
 else
 	cd "$BASEDIR/src/platform/bizhawk/mingw"
 fi
+make clean
 make
 make install

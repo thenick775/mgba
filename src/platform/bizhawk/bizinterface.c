@@ -61,6 +61,9 @@ typedef struct
 	int lagged;
 	int skipbios;
 	uint32_t palette[65536];
+	void (*trace_callback)(const char *buffer);
+	void (*exec_callback)(uint32_t pc);
+	void (*mem_callback)(uint32_t addr, enum mWatchpointType type, uint32_t oldValue, uint32_t newValue);
 } bizctx;
 
 static int32_t GetX(struct mRotationSource* rotationSource)
@@ -131,13 +134,10 @@ typedef struct
 	uint32_t idleLoop;
 } overrideinfo;
 
-void (*trace_callback)(const char *buffer) = 0;
-void (*exec_callback)(uint32_t pc) = 0;
-void (*mem_callback)(uint32_t addr, enum mWatchpointType type, uint32_t oldValue, uint32_t newValue) = 0;
-
 void exec_hook(struct mDebugger* debugger)
 {
-	if (trace_callback)
+	bizctx* ctx = container_of(debugger, bizctx, debugger);
+	if (ctx->trace_callback)
 	{
 		char trace[1024];
 		trace[sizeof(trace) - 1] = '\0';
@@ -147,31 +147,33 @@ void exec_hook(struct mDebugger* debugger)
 			trace[traceSize] = '\n';
 			trace[traceSize + 1] = '\0';
 		}
-		trace_callback(trace);
+		ctx->trace_callback(trace);
 	}
-	if (exec_callback)
-		exec_callback(_ARMPCAddress(debugger->core->cpu));
+	if (ctx->exec_callback)
+		ctx->exec_callback(_ARMPCAddress(debugger->core->cpu));
 }
 
-EXP void BizSetTraceCallback(void(*callback)(const char *buffer))
+EXP void BizSetTraceCallback(bizctx* ctx, void(*callback)(const char *buffer))
 {
-	trace_callback = callback;
+	ctx->trace_callback = callback;
 }
 
-EXP void BizSetExecCallback(void(*callback)(uint32_t pc))
+EXP void BizSetExecCallback(bizctx* ctx, void(*callback)(uint32_t pc))
 {
-	exec_callback = callback;
+	ctx->exec_callback = callback;
 }
 
-EXP void BizSetMemCallback(void(*callback)(uint32_t addr, enum mWatchpointType type, uint32_t oldValue, uint32_t newValue))
+EXP void BizSetMemCallback(bizctx* ctx, void(*callback)(uint32_t addr, enum mWatchpointType type, uint32_t oldValue, uint32_t newValue))
 {
-	mem_callback = callback;
+	ctx->mem_callback = callback;
 }
 
-static void watchpoint_entry(struct mDebugger* debugger, enum mDebuggerEntryReason reason, struct mDebuggerEntryInfo* info) {
-	if (reason == DEBUGGER_ENTER_WATCHPOINT && info && mem_callback)
-		mem_callback(info->address, info->type.wp.accessType, info->type.wp.oldValue, info->type.wp.newValue);
-	debugger->state = trace_callback || exec_callback ? DEBUGGER_CALLBACK : DEBUGGER_RUNNING;
+static void watchpoint_entry(struct mDebugger* debugger, enum mDebuggerEntryReason reason, struct mDebuggerEntryInfo* info)
+{
+	bizctx* ctx = container_of(debugger, bizctx, debugger);
+	if (reason == DEBUGGER_ENTER_WATCHPOINT && info && ctx->mem_callback)
+		ctx->mem_callback(info->address, info->type.wp.accessType, info->type.wp.oldValue, info->type.wp.newValue);
+	debugger->state = ctx->trace_callback || ctx->exec_callback ? DEBUGGER_CALLBACK : DEBUGGER_RUNNING;
 }
 
 EXP ssize_t BizSetWatchpoint(bizctx* ctx, uint32_t addr, enum mWatchpointType type)
@@ -316,7 +318,7 @@ EXP int BizAdvance(bizctx* ctx, uint16_t keys, uint32_t* vbuff, int* nsamp, int1
 	ctx->tiltz = gyroz;
 	ctx->lagged = true;
 
-	ctx->debugger.state = trace_callback || exec_callback ? DEBUGGER_CALLBACK : DEBUGGER_RUNNING;
+	ctx->debugger.state = ctx->trace_callback || ctx->exec_callback ? DEBUGGER_CALLBACK : DEBUGGER_RUNNING;
 	mDebuggerRunFrame(&ctx->debugger);
 
 	blit(vbuff, ctx->vbuff, ctx->palette);

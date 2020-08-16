@@ -346,7 +346,6 @@ struct MemoryAreas
 	const void* oam;
 	const void* rom;
 	const void* sram;
-	size_t sram_size;
 };
 
 EXP void BizGetMemoryAreas(bizctx* ctx, struct MemoryAreas* dst)
@@ -360,7 +359,11 @@ EXP void BizGetMemoryAreas(bizctx* ctx, struct MemoryAreas* dst)
 	dst->vram = ctx->core->getMemoryBlock(ctx->core, REGION_VRAM, &sizeOut);
 	dst->oam = ctx->core->getMemoryBlock(ctx->core, REGION_OAM, &sizeOut);
 	dst->rom = ctx->core->getMemoryBlock(ctx->core, REGION_CART0, &sizeOut);
-	dst->sram = ctx->core->getMemoryBlock(ctx->core, REGION_CART_SRAM_MIRROR, &dst->sram_size);
+	// Return the buffer that BizHawk hands to mGBA for storing savedata.
+	// getMemoryBlock is avoided because mGBA doesn't always know save type at startup,
+	// so getMemoryBlock may return nothing until the save type is detected.
+	// (returning the buffer directly avoids 0-size and variable-size savedata)
+	dst->sram = ctx->sram;
 }
 
 EXP int BizGetSaveRam(bizctx* ctx, void* data, int size)

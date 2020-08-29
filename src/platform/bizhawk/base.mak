@@ -71,6 +71,7 @@ SRCS = \
 	$(ROOT_DIR)/gba/sio/joybus.c \
 	$(ROOT_DIR)/gba/sio/lockstep.c \
 	$(ROOT_DIR)/debugger/debugger.c \
+	$(ROOT_DIR)/debugger/stack-trace.c \
 	$(ROOT_DIR)/debugger/cli-debugger.c \
 	$(ROOT_DIR)/debugger/symbols.c \
 	$(ROOT_DIR)/debugger/parser.c \

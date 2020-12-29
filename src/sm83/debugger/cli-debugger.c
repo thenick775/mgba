@@ -89,7 +89,7 @@ static void _printStatus(struct CLIDebuggerSystem* debugger) {
 	be->printf(be, "H: %02X  L: %02X  (HL: %04X)\n", cpu->h, cpu->l, cpu->hl);
 	be->printf(be, "PC: %04X  SP: %04X\n", cpu->pc, cpu->sp);
 	_printFlags(be, cpu->f);
-	be->printf(be, "T-cycle: %" PRIu64 "\n", mTimingGlobalTime(debugger->p->d.core->timing));
+	be->printf(be, "T-cycle: %" PRIu64 "\n", mTimingGlobalTime(debugger->p->d.core->timing) / 2);
 
 	struct SM83Debugger* platDebugger = (struct SM83Debugger*) debugger->p->d.platform;
 	size_t i;

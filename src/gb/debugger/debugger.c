@@ -31,7 +31,7 @@ static void _printStatus(struct CLIDebuggerSystem* debugger) {
 	struct GB* gb = debugger->p->d.core->board;
 	be->printf(be, "IE: %02X  IF: %02X  IME: %i\n", gb->memory.ie, gb->memory.io[GB_REG_IF], gb->memory.ime);
 	be->printf(be, "LCDC: %02X  STAT: %02X  LY: %02X\n", gb->memory.io[GB_REG_LCDC], gb->memory.io[GB_REG_STAT] | 0x80, gb->memory.io[GB_REG_LY]);
-	be->printf(be, "Next video mode: %i\n", mTimingUntil(&gb->timing, &gb->video.modeEvent) / 4);
+	be->printf(be, "Next video mode: %i\n", mTimingUntil(&gb->timing, &gb->video.modeEvent) / 8);
 }
 
 struct mDebuggerPlatform* GBDebuggerCreate(struct GB* gb) {

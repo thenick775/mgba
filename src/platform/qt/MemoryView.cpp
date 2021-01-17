@@ -207,6 +207,9 @@ void MemoryView::setIndex(int index) {
 	mCore* core = m_controller->thread()->core;
 	const mCoreMemoryBlock* blocks;
 	size_t nBlocks = core->listMemoryBlocks(core, &blocks);
+	if (index < 0 || static_cast<size_t>(index) >= nBlocks) {
+		return;
+	}
 	const mCoreMemoryBlock& info = blocks[index];
 
 	m_region = qMakePair(info.start, info.end);
@@ -221,7 +224,11 @@ void MemoryView::setSegment(int segment) {
 	mCore* core = m_controller->thread()->core;
 	const mCoreMemoryBlock* blocks;
 	size_t nBlocks = core->listMemoryBlocks(core, &blocks);
-	const mCoreMemoryBlock& info = blocks[m_ui.regions->currentIndex()];
+	int index = m_ui.regions->currentIndex();
+	if (index < 0 || static_cast<size_t>(index) >= nBlocks) {
+		return;
+	}
+	const mCoreMemoryBlock& info = blocks[index];
 
 	m_ui.hexfield->setSegment(info.maxSegment < segment ? info.maxSegment : segment);
 }
@@ -249,7 +256,7 @@ void MemoryView::updateSelection(uint32_t start, uint32_t end) {
 }
 
 void MemoryView::updateStatus() {
-	int align = m_ui.hexfield->alignment();
+	unsigned align = m_ui.hexfield->alignment();
 	mCore* core = m_controller->thread()->core;
 	QByteArray selection(m_ui.hexfield->serialize());
 	QString text(m_ui.hexfield->decodeText(selection));

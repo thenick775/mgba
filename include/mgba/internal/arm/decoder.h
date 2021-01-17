@@ -66,6 +66,9 @@ CXX_GUARD_START
 #define ARM_MEMORY_DECREMENT_BEFORE  0x0200
 #define ARM_MEMORY_INCREMENT_BEFORE  0x0300
 #define ARM_MEMORY_SPSR_SWAP         0x0400
+#define ARM_MEMORY_STORE             0x1000
+#define ARM_MEMORY_LOAD              0x2000
+#define ARM_MEMORY_SWAP              0x3000
 
 #define ARM_PSR_C 1
 #define ARM_PSR_X 2
@@ -216,8 +219,13 @@ void ARMDecodeARM(uint32_t opcode, struct ARMInstructionInfo* info);
 void ARMDecodeThumb(uint16_t opcode, struct ARMInstructionInfo* info);
 bool ARMDecodeThumbCombine(struct ARMInstructionInfo* info1, struct ARMInstructionInfo* info2,
                            struct ARMInstructionInfo* out);
-int ARMDisassemble(struct ARMInstructionInfo* info, uint32_t pc, char* buffer, int blen);
 uint32_t ARMResolveMemoryAccess(struct ARMInstructionInfo* info, struct ARMRegisterFile* regs, uint32_t pc);
+uint32_t ARMResolveMemoryAccess(struct ARMInstructionInfo* info, struct ARMRegisterFile* regs, uint32_t pc);
+
+#ifdef USE_DEBUGGERS
+struct mDebuggerSymbols;
+int ARMDisassemble(struct ARMInstructionInfo* info, struct ARMCore* core, const struct mDebuggerSymbols* symbols, uint32_t pc, char* buffer, int blen);
+#endif
 
 CXX_GUARD_END
 

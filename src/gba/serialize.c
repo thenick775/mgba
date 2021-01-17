@@ -15,7 +15,7 @@
 #include <fcntl.h>
 
 const uint32_t GBA_SAVESTATE_MAGIC = 0x01000000;
-const uint32_t GBA_SAVESTATE_VERSION = 0x00000003;
+const uint32_t GBA_SAVESTATE_VERSION = 0x00000004;
 
 mLOG_DEFINE_CATEGORY(GBA_STATE, "GBA Savestate", "gba.serialize");
 
@@ -76,6 +76,10 @@ void GBASerialize(struct GBA* gba, struct GBASerializedState* state) {
 	GBAVideoSerialize(&gba->video, state);
 	GBAAudioSerialize(&gba->audio, state);
 	GBASavedataSerialize(&gba->memory.savedata, state);
+
+	if (gba->memory.matrix.size) {
+		GBAMatrixSerialize(gba, state);
+	}
 }
 
 bool GBADeserialize(struct GBA* gba, const struct GBASerializedState* state) {
@@ -150,6 +154,11 @@ bool GBADeserialize(struct GBA* gba, const struct GBASerializedState* state) {
 		LOAD_32(gba->cpu->bankedSPSRs[i], i * sizeof(gba->cpu->bankedSPSRs[0]), state->cpu.bankedSPSRs);
 	}
 	gba->cpu->privilegeMode = gba->cpu->cpsr.priv;
+	uint32_t pcMask = (gba->cpu->cpsr.t ? WORD_SIZE_THUMB : WORD_SIZE_ARM) - 1;
+	if (gba->cpu->gprs[ARM_PC] & pcMask) {
+		mLOG(GBA_STATE, WARN, "Savestate has unaligned PC and is probably corrupted");
+		gba->cpu->gprs[ARM_PC] &= ~pcMask;
+	}
 	gba->cpu->memory.setActiveRegion(gba->cpu, gba->cpu->gprs[ARM_PC]);
 	if (state->biosPrefetch) {
 		LOAD_32(gba->memory.biosPrefetch, 0, &state->biosPrefetch);
@@ -195,6 +204,10 @@ bool GBADeserialize(struct GBA* gba, const struct GBASerializedState* state) {
 	GBAIODeserialize(gba, state);
 	GBAAudioDeserialize(&gba->audio, state);
 	GBASavedataDeserialize(&gba->memory.savedata, state);
+
+	if (gba->memory.matrix.size) {
+		GBAMatrixDeserialize(gba, state);
+	}
 
 	gba->timing.reroot = gba->timing.root;
 	gba->timing.root = NULL;

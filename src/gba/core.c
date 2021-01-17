@@ -33,11 +33,14 @@
 #include <mgba-util/vfs.h>
 
 static const struct mCoreChannelInfo _GBAVideoLayers[] = {
-	{ 0, "bg0", "Background 0", NULL },
-	{ 1, "bg1", "Background 1", NULL },
-	{ 2, "bg2", "Background 2", NULL },
-	{ 3, "bg3", "Background 3", NULL },
-	{ 4, "obj", "Objects", NULL },
+	{ GBA_LAYER_BG0, "bg0", "Background 0", NULL },
+	{ GBA_LAYER_BG1, "bg1", "Background 1", NULL },
+	{ GBA_LAYER_BG2, "bg2", "Background 2", NULL },
+	{ GBA_LAYER_BG3, "bg3", "Background 3", NULL },
+	{ GBA_LAYER_OBJ, "obj", "Objects", NULL },
+	{ GBA_LAYER_WIN0, "win0", "Window 0", NULL },
+	{ GBA_LAYER_WIN1, "win1", "Window 1", NULL },
+	{ GBA_LAYER_OBJWIN, "objwin", "Object Window", NULL },
 };
 
 static const struct mCoreChannelInfo _GBAAudioChannels[] = {
@@ -231,7 +234,6 @@ static void _GBACoreDeinit(struct mCore* core) {
 	if (gbacore->cheatDevice) {
 		mCheatDeviceDestroy(gbacore->cheatDevice);
 	}
-	free(gbacore->cheatDevice);
 	free(gbacore->audioMixer);
 	mCoreConfigFreeOpts(&core->opts);
 	free(core);
@@ -239,7 +241,7 @@ static void _GBACoreDeinit(struct mCore* core) {
 
 static enum mPlatform _GBACorePlatform(const struct mCore* core) {
 	UNUSED(core);
-	return PLATFORM_GBA;
+	return mPLATFORM_GBA;
 }
 
 static bool _GBACoreSupportsFeature(const struct mCore* core, enum mCoreFeature feature) {
@@ -296,6 +298,7 @@ static void _GBACoreLoadConfig(struct mCore* core, const struct mCoreConfig* con
 
 	mCoreConfigCopyValue(&core->config, config, "allowOpposingDirections");
 	mCoreConfigCopyValue(&core->config, config, "gba.bios");
+	mCoreConfigCopyValue(&core->config, config, "gba.forceGbp");
 	mCoreConfigCopyValue(&core->config, config, "gba.audioHle");
 
 #ifndef DISABLE_THREADING
@@ -483,9 +486,14 @@ static bool _GBACoreLoadROM(struct mCore* core, struct VFile* vf) {
 #ifdef USE_ELF
 	struct ELF* elf = ELFOpen(vf);
 	if (elf) {
-		GBALoadNull(core->board);
+		if (ELFEntry(elf) == BASE_CART0) {
+			GBALoadNull(core->board);
+		}
 		bool success = mCoreLoadELF(core, elf);
 		ELFClose(elf);
+		if (success) {
+			vf->close(vf);
+		}
 		return success;
 	}
 #endif
@@ -541,7 +549,7 @@ static void _GBACoreUnloadROM(struct mCore* core) {
 static void _GBACoreChecksum(const struct mCore* core, void* data, enum mCoreChecksumType type) {
 	struct GBA* gba = (struct GBA*) core->board;
 	switch (type) {
-	case CHECKSUM_CRC32:
+	case mCHECKSUM_CRC32:
 		memcpy(data, &gba->romCrc32, sizeof(gba->romCrc32));
 		break;
 	}
@@ -551,6 +559,7 @@ static void _GBACoreChecksum(const struct mCore* core, void* data, enum mCoreChe
 static void _GBACoreReset(struct mCore* core) {
 	struct GBACore* gbacore = (struct GBACore*) core;
 	struct GBA* gba = (struct GBA*) core->board;
+	int fakeBool;
 	if (gbacore->renderer.outputBuffer
 #if defined(BUILD_GLES2) || defined(BUILD_GLES3)
 	    || gbacore->glRenderer.outputTex != (unsigned) -1
@@ -560,7 +569,6 @@ static void _GBACoreReset(struct mCore* core) {
 		if (gbacore->renderer.outputBuffer) {
 			renderer = &gbacore->renderer.d;
 		}
-		int fakeBool ATTRIBUTE_UNUSED;
 #if defined(BUILD_GLES2) || defined(BUILD_GLES3)
 		if (gbacore->glRenderer.outputTex != (unsigned) -1 && mCoreConfigGetIntValue(&core->config, "hwaccelVideo", &fakeBool) && fakeBool) {
 			mCoreConfigGetIntValue(&core->config, "videoScale", &gbacore->glRenderer.scale);
@@ -598,7 +606,17 @@ static void _GBACoreReset(struct mCore* core) {
 	}
 #endif
 
+	bool forceGbp = false;
+	if (mCoreConfigGetIntValue(&core->config, "gba.forceGbp", &fakeBool)) {
+		forceGbp = fakeBool;
+	}
+	if (!forceGbp) {
+		gba->memory.hw.devices &= ~HW_GB_PLAYER_DETECTION;
+	}
 	GBAOverrideApplyDefaults(gba, gbacore->overrides);
+	if (forceGbp) {
+		gba->memory.hw.devices |= HW_GB_PLAYER_DETECTION;
+	}
 
 #if !defined(MINIMAL_CORE) || MINIMAL_CORE < 2
 	if (!gba->biosVf && core->opts.useBios) {
@@ -1027,14 +1045,23 @@ static size_t _GBACoreListAudioChannels(const struct mCore* core, const struct m
 static void _GBACoreEnableVideoLayer(struct mCore* core, size_t id, bool enable) {
 	struct GBA* gba = core->board;
 	switch (id) {
-	case 0:
-	case 1:
-	case 2:
-	case 3:
+	case GBA_LAYER_BG0:
+	case GBA_LAYER_BG1:
+	case GBA_LAYER_BG2:
+	case GBA_LAYER_BG3:
 		gba->video.renderer->disableBG[id] = !enable;
 		break;
-	case 4:
+	case GBA_LAYER_OBJ:
 		gba->video.renderer->disableOBJ = !enable;
+		break;
+	case GBA_LAYER_WIN0:
+		gba->video.renderer->disableWIN[0] = !enable;
+		break;
+	case GBA_LAYER_WIN1:
+		gba->video.renderer->disableWIN[1] = !enable;
+		break;
+	case GBA_LAYER_OBJWIN:
+		gba->video.renderer->disableOBJWIN = !enable;
 		break;
 	default:
 		break;
@@ -1064,17 +1091,21 @@ static void _GBACoreEnableAudioChannel(struct mCore* core, size_t id, bool enabl
 static void _GBACoreAdjustVideoLayer(struct mCore* core, size_t id, int32_t x, int32_t y) {
 	struct GBACore* gbacore = (struct GBACore*) core;
 	switch (id) {
-	case 0:
-	case 1:
-	case 2:
-	case 3:
+	case GBA_LAYER_BG0:
+	case GBA_LAYER_BG1:
+	case GBA_LAYER_BG2:
+	case GBA_LAYER_BG3:
 		gbacore->renderer.bg[id].offsetX = x;
 		gbacore->renderer.bg[id].offsetY = y;
 		break;
-	case 4:
+	case GBA_LAYER_OBJ:
 		gbacore->renderer.objOffsetX = x;
 		gbacore->renderer.objOffsetY = y;
 		gbacore->renderer.oamDirty = 1;
+		break;
+	case GBA_LAYER_WIN0:
+		gbacore->renderer.winN[id - GBA_LAYER_WIN0].offsetX = x;
+		gbacore->renderer.winN[id - GBA_LAYER_WIN0].offsetY = y;
 		break;
 	default:
 		return;

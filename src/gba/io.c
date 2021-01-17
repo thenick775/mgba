@@ -341,7 +341,7 @@ void GBAIOInit(struct GBA* gba) {
 }
 
 void GBAIOWrite(struct GBA* gba, uint32_t address, uint16_t value) {
-	if (address < REG_SOUND1CNT_LO && (address > REG_VCOUNT || address == REG_DISPCNT)) {
+	if (address < REG_SOUND1CNT_LO && (address > REG_VCOUNT || address < REG_DISPSTAT)) {
 		value = gba->video.renderer->writeVideoRegister(gba->video.renderer, address, value);
 	} else {
 		switch (address) {
@@ -429,12 +429,12 @@ void GBAIOWrite(struct GBA* gba, uint32_t address, uint16_t value) {
 		case REG_FIFO_A_LO:
 		case REG_FIFO_B_LO:
 			GBAIOWrite32(gba, address, (gba->memory.io[(address >> 1) + 1] << 16) | value);
-			break;
+			return;
 
 		case REG_FIFO_A_HI:
 		case REG_FIFO_B_HI:
 			GBAIOWrite32(gba, address - 2, gba->memory.io[(address >> 1) - 1] | (value << 16));
-			break;
+			return;
 
 		// DMA
 		case REG_DMA0SAD_LO:
@@ -557,7 +557,7 @@ void GBAIOWrite(struct GBA* gba, uint32_t address, uint16_t value) {
 			GBATestIRQ(gba, 1);
 			return;
 		case REG_IME:
-			gba->memory.io[REG_IME >> 1] = value;
+			gba->memory.io[REG_IME >> 1] = value & 1;
 			GBATestIRQ(gba, 1);
 			return;
 		case REG_MAX:
@@ -630,7 +630,7 @@ void GBAIOWrite32(struct GBA* gba, uint32_t address, uint32_t value) {
 		break;
 	case REG_FIFO_A_LO:
 	case REG_FIFO_B_LO:
-		GBAAudioWriteFIFO(&gba->audio, address, value);
+		value = GBAAudioWriteFIFO(&gba->audio, address, value);
 		break;
 	case REG_DMA0SAD_LO:
 		value = GBADMAWriteSAD(gba, 0, value);
@@ -850,6 +850,7 @@ uint16_t GBAIORead(struct GBA* gba, uint32_t address) {
 		}
 		// Fall through
 	case REG_DISPCNT:
+	case REG_GREENSWP:
 	case REG_DISPSTAT:
 	case REG_VCOUNT:
 	case REG_BG0CNT:

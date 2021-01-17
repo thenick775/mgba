@@ -296,10 +296,6 @@ static void _log(struct mLogger* logger, int category, enum mLogLevel level, con
 
 static void _updateLoading(size_t read, size_t size, void* context) {
 	struct mGUIRunner* runner = context;
-	if (read & 0x3FFFF) {
-		return;
-	}
-
 	runner->params.drawStart();
 	if (runner->params.guiPrepare) {
 		runner->params.guiPrepare();
@@ -387,8 +383,25 @@ void mGUIRun(struct mGUIRunner* runner, const char* path) {
 		mCoreInitConfig(runner->core, runner->port);
 		mInputMapInit(&runner->core->inputMap, &GBAInputInfo);
 
-		found = mCorePreloadFileCB(runner->core, path, _updateLoading, runner);
+		struct VFile* rom = mDirectorySetOpenPath(&runner->core->dirs, path, runner->core->isROM);
+		if (runner->setFrameLimiter) {
+			runner->setFrameLimiter(runner, false);
+		}
+		found = mCorePreloadVFCB(runner->core, rom, _updateLoading, runner);
+		if (runner->setFrameLimiter) {
+			runner->setFrameLimiter(runner, true);
+		}
+
+#ifdef FIXED_ROM_BUFFER
+		extern size_t romBufferSize;
+		if (!found && rom && (size_t) rom->size(rom) > romBufferSize) {
+			found = runner->core->loadROM(runner->core, rom);
+		}
+#endif
 		if (!found) {
+			if (rom) {
+				rom->close(rom);
+			}
 			mLOG(GUI_RUNNER, WARN, "Failed to load %s!", path);
 			mCoreConfigDeinit(&runner->core->config);
 			runner->core->deinit(runner->core);
@@ -400,7 +413,7 @@ void mGUIRun(struct mGUIRunner* runner, const char* path) {
 		GUIShowMessageBox(&runner->params, GUI_MESSAGE_BOX_OK, 240, "Load failed!");
 		return;
 	}
-	if (runner->core->platform(runner->core) == PLATFORM_GBA) {
+	if (runner->core->platform(runner->core) == mPLATFORM_GBA) {
 		runner->core->setPeripheral(runner->core, mPERIPH_GBA_LUMINANCE, &runner->luminanceSource.d);
 	}
 	mLOG(GUI_RUNNER, DEBUG, "Loading config...");

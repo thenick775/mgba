@@ -10,6 +10,7 @@
 
 #include <QImage>
 #include <QMutex>
+#include <QReadWriteLock>
 #include <QObject>
 #include <QSet>
 #include <QTimer>
@@ -152,7 +153,7 @@ private:
 		QImage resizedImage;
 		bool outOfDate;
 		QMutex mutex;
-		unsigned w, h;
+		int w, h;
 	} m_image;
 
 #ifdef BUILD_QT_MULTIMEDIA
@@ -181,6 +182,7 @@ private:
 	QTimer m_gamepadTimer{nullptr};
 
 	QSet<GBAKey> m_pendingEvents;
+	QReadWriteLock m_eventsLock;
 };
 
 }

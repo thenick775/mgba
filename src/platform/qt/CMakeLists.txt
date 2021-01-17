@@ -16,7 +16,7 @@ if(BUILD_SDL)
 endif()
 
 if(POLICY CMP0071)
-	cmake_policy(SET CMP0071 OLD)
+	cmake_policy(SET CMP0071 NEW)
 endif()
 
 set(CMAKE_AUTOMOC ON)
@@ -100,6 +100,7 @@ set(SOURCE_FILES
 	PaletteView.cpp
 	PlacementControl.cpp
 	RegisterView.cpp
+	ReportView.cpp
 	ROMInfo.cpp
 	RotatedHeaderView.cpp
 	SavestateButton.cpp
@@ -139,6 +140,7 @@ set(UI_FILES
 	PaletteView.ui
 	PlacementControl.ui
 	PrinterView.ui
+	ReportView.ui
 	ROMInfo.ui
 	SensorView.ui
 	SettingsView.ui
@@ -154,6 +156,7 @@ set(GBA_SRC
 	GBAOverride.cpp)
 
 set(GB_SRC
+	GameBoy.cpp
 	GBOverride.cpp
 	PrinterView.cpp)
 
@@ -256,7 +259,9 @@ if(Qt5LinguistTools_FOUND)
 	file(GLOB TS_FILES "${CMAKE_CURRENT_SOURCE_DIR}/ts/${BINARY_NAME}-*.ts")
 	if(UPDATE_TRANSLATIONS)
 		qt5_create_translation(TRANSLATION_FILES ${SOURCE_FILES} ${UI_FILES} ${TS_FILES} OPTIONS -locations absolute -no-obsolete)
+		list(REMOVE_ITEM TS_FILES "${CMAKE_CURRENT_SOURCE_DIR}/ts/${BINARY_NAME}-template.ts")
 	else()
+		list(REMOVE_ITEM TS_FILES "${CMAKE_CURRENT_SOURCE_DIR}/ts/${BINARY_NAME}-template.ts")
 		qt5_add_translation(TRANSLATION_FILES ${TS_FILES})
 	endif()
 	set(QT_QM_FILES)
@@ -300,7 +305,7 @@ if(QT_STATIC)
 		if(CMAKE_CROSSCOMPILING)
 			set(QWINDOWS_DEPS Qt5EventDispatcherSupport Qt5FontDatabaseSupport Qt5ThemeSupport Qt5WindowsUIAutomationSupport)
 		endif()
-		list(APPEND QT_LIBRARIES Qt5::QWindowsIntegrationPlugin ${QWINDOWS_DEPS} dwmapi uxtheme imm32 -static-libgcc -static-libstdc++)
+		list(APPEND QT_LIBRARIES Qt5::QWindowsIntegrationPlugin ${QWINDOWS_DEPS} amstrmid dwmapi uxtheme imm32 -static-libgcc -static-libstdc++)
 		set_target_properties(Qt5::Core PROPERTIES INTERFACE_LINK_LIBRARIES "${QTPCRE};version;winmm;ssl;crypto;ws2_32;iphlpapi;crypt32;userenv;netapi32;wtsapi32")
 		set_target_properties(Qt5::Gui PROPERTIES INTERFACE_LINK_LIBRARIES ${OPENGL_LIBRARY} ${OPENGLES2_LIBRARY})
 	elseif(APPLE)
@@ -321,10 +326,7 @@ install(TARGETS ${BINARY_NAME}-qt
 	RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT ${BINARY_NAME}-qt
 	BUNDLE DESTINATION Applications COMPONENT ${BINARY_NAME}-qt)
 if(UNIX AND NOT APPLE)
-	find_program(DESKTOP_FILE_INSTALL desktop-file-install)
-	if(DESKTOP_FILE_INSTALL)
-		install(CODE "execute_process(COMMAND ${DESKTOP_FILE_INSTALL} \"${CMAKE_SOURCE_DIR}/res/mgba-qt.desktop\" --dir \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/applications/\")" COMPONENT ${BINARY_NAME}-qt)
-	endif()
+	install(FILES ${CMAKE_SOURCE_DIR}/res/mgba-qt.desktop DESTINATION share/applications COMPONENT ${BINARY_NAME}-qt)
 endif()
 if(UNIX)
 	install(FILES ${CMAKE_SOURCE_DIR}/doc/mgba-qt.6 DESTINATION ${MANDIR}/man6 COMPONENT ${BINARY_NAME}-qt)

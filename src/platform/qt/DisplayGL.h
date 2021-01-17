@@ -16,10 +16,12 @@
 #endif
 #endif
 
+#include <QAtomicInt>
 #include <QElapsedTimer>
-#include <QOpenGLContext>
+#include <QHash>
 #include <QList>
 #include <QMouseEvent>
+#include <QOpenGLContext>
 #include <QPainter>
 #include <QQueue>
 #include <QThread>
@@ -32,6 +34,8 @@
 #include "platform/video-backend.h"
 
 class QOpenGLPaintDevice;
+
+uint qHash(const QSurfaceFormat&, uint seed = 0);
 
 namespace QGBA {
 
@@ -49,6 +53,8 @@ public:
 	VideoShader* shaders() override;
 	void setVideoProxy(std::shared_ptr<VideoProxy>) override;
 	int framebufferHandle() override;
+
+	static bool supportsFormat(const QSurfaceFormat&);
 
 public slots:
 	void stopDrawing() override;
@@ -73,10 +79,12 @@ protected:
 private:
 	void resizePainter();
 
+	static QHash<QSurfaceFormat, bool> s_supports;
+
 	bool m_isDrawing = false;
-	QOpenGLContext* m_gl;
-	PainterGL* m_painter;
-	QThread* m_drawThread = nullptr;
+	bool m_hasStarted = false;
+	std::unique_ptr<PainterGL> m_painter;
+	QThread m_drawThread;
 	std::shared_ptr<CoreController> m_context;
 };
 
@@ -84,7 +92,7 @@ class PainterGL : public QObject {
 Q_OBJECT
 
 public:
-	PainterGL(QWindow* surface, QOpenGLContext* parent, int forceVersion = 0);
+	PainterGL(QWindow* surface, const QSurfaceFormat& format);
 	~PainterGL();
 
 	void setContext(std::shared_ptr<CoreController>);
@@ -96,6 +104,9 @@ public:
 	void setVideoProxy(std::shared_ptr<VideoProxy>);
 
 public slots:
+	void create();
+	void destroy();
+
 	void forceDraw();
 	void draw();
 	void start();
@@ -116,7 +127,11 @@ public slots:
 
 	int glTex();
 
+signals:
+	void started();
+
 private:
+	void makeCurrent();
 	void performDraw();
 	void dequeue();
 	void dequeueAll();
@@ -124,12 +139,14 @@ private:
 	std::array<std::array<uint32_t, 0x100000>, 3> m_buffers;
 	QList<uint32_t*> m_free;
 	QQueue<uint32_t*> m_queue;
+	QAtomicInt m_lagging = 0;
 	uint32_t* m_buffer;
 	QPainter m_painter;
 	QMutex m_mutex;
 	QWindow* m_surface;
-	QOpenGLPaintDevice* m_window;
-	QOpenGLContext* m_gl;
+	QSurfaceFormat m_format;
+	std::unique_ptr<QOpenGLPaintDevice> m_window;
+	std::unique_ptr<QOpenGLContext> m_gl;
 	bool m_active = false;
 	bool m_started = false;
 	std::shared_ptr<CoreController> m_context = nullptr;

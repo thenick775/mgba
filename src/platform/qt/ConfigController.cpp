@@ -272,6 +272,9 @@ void ConfigController::setMRU(const QList<QString>& mru) {
 			break;
 		}
 	}
+	for (; i < MRU_LIST_SIZE; ++i) {
+		m_settings->remove(QString::number(i));
+	}
 	m_settings->endGroup();
 }
 
@@ -295,6 +298,10 @@ void ConfigController::makePortable() {
 	}
 	delete m_settings;
 	m_settings = settings2;
+}
+
+bool ConfigController::isPortable() {
+	return mCoreConfigIsPortable();
 }
 
 const QString& ConfigController::configDir() {

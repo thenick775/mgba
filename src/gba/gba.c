@@ -108,6 +108,7 @@ static void GBAInit(void* cpu, struct mCPUComponent* component) {
 	gba->idleOptimization = IDLE_LOOP_REMOVE;
 	gba->idleLoop = IDLE_LOOP_NONE;
 
+	gba->vbaBugCompat = false;
 	gba->hardCrash = true;
 	gba->allowOpposingDirections = true;
 
@@ -130,7 +131,7 @@ void GBAUnloadROM(struct GBA* gba) {
 		if (gba->yankedRomSize) {
 			gba->yankedRomSize = 0;
 		}
-#if !defined(FIXED_ROM_BUFFER) && !defined(__wii__)
+#ifndef FIXED_ROM_BUFFER
 		mappedMemoryFree(gba->memory.rom, SIZE_CART0);
 #endif
 	}
@@ -216,6 +217,12 @@ void GBAReset(struct ARMCore* cpu) {
 
 	GBASIOReset(&gba->sio);
 
+	// GB Player SIO control should not be engaged before detection, even if we already know it's GBP
+	gba->memory.hw.devices &= ~HW_GB_PLAYER;
+	if (gba->sio.drivers.normal == &gba->memory.hw.gbpDriver.d) {
+		GBASIOSetDriver(&gba->sio, NULL, SIO_NORMAL_32);
+	}
+
 	bool isELF = false;
 #ifdef USE_ELF
 	struct ELF* elf = ELFOpen(gba->romVf);
@@ -281,7 +288,7 @@ static void GBAProcessEvents(struct ARMCore* cpu) {
 			int32_t cycles = cpu->cycles;
 			cpu->cycles = 0;
 #ifdef USE_DEBUGGERS
-			gba->timing.globalCycles += cycles;
+			gba->timing.globalCycles += cycles < nextEvent ? nextEvent : cycles;
 #endif
 #ifndef NDEBUG
 			if (cycles < 0) {
@@ -525,11 +532,15 @@ void GBAHalt(struct GBA* gba) {
 }
 
 void GBAStop(struct GBA* gba) {
+	int validIrqs = (1 << IRQ_GAMEPAK) | (1 << IRQ_KEYPAD) | (1 << IRQ_SIO);
+	int sleep = gba->memory.io[REG_IE >> 1] & validIrqs;
 	size_t c;
 	for (c = 0; c < mCoreCallbacksListSize(&gba->coreCallbacks); ++c) {
 		struct mCoreCallbacks* callbacks = mCoreCallbacksListGetPointer(&gba->coreCallbacks, c);
-		if (callbacks->sleep) {
+		if (sleep && callbacks->sleep) {
 			callbacks->sleep(callbacks->context);
+		} else if (callbacks->shutdown) {
+			callbacks->shutdown(callbacks->context);
 		}
 	}
 	gba->cpu->nextEvent = gba->cpu->cycles;
@@ -816,6 +827,7 @@ void GBAFrameStarted(struct GBA* gba) {
 }
 
 void GBAFrameEnded(struct GBA* gba) {
+	int wasDirty = gba->memory.savedata.dirty;
 	GBASavedataClean(&gba->memory.savedata, gba->video.frameCounter);
 
 	if (gba->cpu->components && gba->cpu->components[CPU_COMPONENT_CHEAT_DEVICE]) {
@@ -846,7 +858,10 @@ void GBAFrameEnded(struct GBA* gba) {
 		if (callbacks->videoFrameEnded) {
 			callbacks->videoFrameEnded(callbacks->context);
 		}
+		if (callbacks->savedataUpdated && wasDirty && !gba->memory.savedata.dirty) {
+			callbacks->savedataUpdated(callbacks->context);
 	}
+}
 }
 
 void GBATestKeypadIRQ(struct GBA* gba) {

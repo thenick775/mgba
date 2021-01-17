@@ -16,9 +16,6 @@ mLOG_DEFINE_CATEGORY(GB_STATE, "GB Savestate", "gb.serialize");
 const uint32_t GB_SAVESTATE_MAGIC = 0x00400000;
 const uint32_t GB_SAVESTATE_VERSION = 0x00000002;
 
-static void GBSGBSerialize(struct GB* gb, struct GBSerializedState* state);
-static void GBSGBDeserialize(struct GB* gb, const struct GBSerializedState* state);
-
 void GBSerialize(struct GB* gb, struct GBSerializedState* state) {
 	STORE_32LE(GB_SAVESTATE_MAGIC + GB_SAVESTATE_VERSION, 0, &state->versionMagic);
 	STORE_32LE(gb->romCrc32, 0, &state->romCrc32);
@@ -139,7 +136,7 @@ bool GBDeserialize(struct GB* gb, const struct GBSerializedState* state) {
 		mLOG(GB_STATE, WARN, "Savestate is corrupted: OCPS is out of range");
 	}
 	bool differentBios = !gb->biosVf || gb->model != state->model;
-	if (state->io[0x50] == 0xFF) {
+	if (state->io[GB_REG_BANK] == 0xFF) {
 		if (differentBios) {
 			mLOG(GB_STATE, WARN, "Incompatible savestate, please restart with correct BIOS in %s mode", GBModelToName(state->model));
 			error = true;
@@ -178,8 +175,6 @@ bool GBDeserialize(struct GB* gb, const struct GBSerializedState* state) {
 	gb->cpu->halted = GBSerializedCpuFlagsGetHalted(flags);
 	gb->cpuBlocked = GBSerializedCpuFlagsGetBlocked(flags);
 
-	gb->audio.timingFactor = gb->doubleSpeed + 1;
-
 	LOAD_32LE(gb->cpu->cycles, 0, &state->cpu.cycles);
 	LOAD_32LE(gb->cpu->nextEvent, 0, &state->cpu.nextEvent);
 	gb->timing.root = NULL;
@@ -206,7 +201,7 @@ bool GBDeserialize(struct GB* gb, const struct GBSerializedState* state) {
 	GBTimerDeserialize(&gb->timer, state);
 	GBAudioDeserialize(&gb->audio, state);
 
-	if (gb->memory.io[0x50] == 0xFF) {
+	if (gb->memory.io[GB_REG_BANK] == 0xFF) {
 		GBMapBIOS(gb);
 	} else {
 		GBUnmapBIOS(gb);
@@ -256,7 +251,6 @@ void GBSGBSerialize(struct GB* gb, struct GBSerializedState* state) {
 	if (gb->video.renderer->sgbAttributes) {
 		memcpy(state->sgb.attributes, gb->video.renderer->sgbAttributes, sizeof(state->sgb.attributes));
 	}
-	gb->video.renderer->enableSGBBorder(gb->video.renderer, gb->video.sgbBorders);
 }
 
 void GBSGBDeserialize(struct GB* gb, const struct GBSerializedState* state) {

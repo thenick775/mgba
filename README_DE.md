@@ -6,6 +6,7 @@ mGBA ist ein Emulator für Game Boy Advance-Spiele. Das Ziel von mGBA ist, schne
 Aktuelle Neuigkeiten und Downloads findest Du auf [mgba.io](https://mgba.io).
 
 [![Build-Status](https://travis-ci.org/mgba-emu/mgba.svg?branch=master)](https://travis-ci.org/mgba-emu/mgba)
+[![Status der Übersetzungen](https://hosted.weblate.org/widgets/mgba/-/svg-badge.svg)](https://hosted.weblate.org/engage/mgba)
 
 Features
 --------
@@ -36,6 +37,7 @@ Features
 - Einstellbare Rücklauf-Funktion.
 - Unterstützung für das Laden und Exportieren von GameShark- und Action Replay-Abbildern.
 - Verfügbare Cores für RetroArch/Libretro und OpenEmu.
+- Übersetzungen für mehrere Sprachen über [Weblate](https://hosted.weblate.org/engage/mgba).
 - Viele, viele kleinere Dinge.
 
 ### Game Boy-Mapper
@@ -57,7 +59,7 @@ Die folgenden Mapper werden vollständig unterstützt:
 
 Die folgenden Mapper werden teilweise unterstützt:
 
-- MBC6 (fehlende Flash-Unterstützung)
+- MBC6 (fehlende Unterstützung für Schreibzugriffe auf den Flash-Speicher)
 - MMM01
 - Pocket Cam
 - TAMA5 (fehlende RTC-Unterstützung)
@@ -128,10 +130,8 @@ Dieser Befehl erzeugt ein Verzeichnis `build-win32` mit den erzeugten Programmda
 - mgba/switch
 - mgba/ubuntu:xenial
 - mgba/ubuntu:bionic
-- mgba/ubuntu:cosmic
-- mgba/ubuntu:disco
-- mgba/ubuntu:eoan
 - mgba/ubuntu:focal
+- mgba/ubuntu:groovy
 - mgba/vita
 - mgba/wii
 - mgba/windows:w32
@@ -165,13 +165,7 @@ Bitte beachte, dass Du unter macOS nicht `make install` verwenden solltest, da d
 
 Um mGBA auf Windows zu kompilieren, wird MSYS2 empfohlen. Befolge die Installationsschritte auf der [MSYS2-Website](https://msys2.github.io). Stelle sicher, dass Du die 32-Bit-Version ("MSYS2 MinGW 32-bit") (oder die 64-Bit-Version "MSYS2 MinGW 64-bit", wenn Du mGBA für x86_64 kompilieren willst) verwendest und führe folgendes Kommando (einschließlich der Klammern) aus, um alle benötigten Abhängigkeiten zu installieren. Bitte beachte, dass dafür über 1100MiB an Paketen heruntergeladen werden, was eine Weile dauern kann:
 
-Für x86 (32 Bit):
-
-	pacman -Sy --needed base-devel git mingw-w64-i686-{cmake,ffmpeg,gcc,gdb,libelf,libepoxy,libzip,pkg-config,qt5,SDL2,ntldd-git}
-
-Für x86_64 (64 Bit):
-
-	pacman -Sy --needed base-devel git mingw-w64-x86_64-{cmake,ffmpeg,gcc,gdb,libelf,libepoxy,libzip,pkg-config,qt5,SDL2,ntldd-git}
+	pacman -Sy --needed base-devel git ${MINGW_PACKAGE_PREFIX}-{cmake,ffmpeg,gcc,gdb,libelf,libepoxy,libzip,pkgconf,qt5,SDL2,ntldd-git}
 
 Lade den aktuellen mGBA-Quellcode mithilfe des folgenden Kommandos herunter:
 
@@ -179,11 +173,10 @@ Lade den aktuellen mGBA-Quellcode mithilfe des folgenden Kommandos herunter:
 
 Abschließend wird mGBA über folgende Kommandos kompiliert:
 
-	cd mgba
-	mkdir build
-	cd build
+	mkdir -p mgba/build
+	cd mgba/build
 	cmake .. -G "MSYS Makefiles"
-	make
+	make -j$(nproc --ignore=1)
 
 Bitte beachte, dass mGBA für Windows aufgrund der Vielzahl an benötigten DLLs nicht für die weitere Verteilung geeignet ist, wenn es auf diese Weise gebaut wurde. Es ist jedoch perfekt für Entwickler geeignet. Soll mGBA dennoch weiter verteilt werden (beispielsweise zu Testzwecken auf Systemen, auf denen keine MSYS2-Umgebung installiert ist), kann mithilfe des Befehls `cpack -G ZIP` ein ZIP-Archiv mit allen benötigten DLLs erstellt werden.
 
@@ -249,7 +242,7 @@ Fußnoten
 Copyright
 ---------
 
-Copyright für mGBA © 2013 – 2020 Jeffrey Pfau. mGBA wird unter der [Mozilla Public License version 2.0](https://www.mozilla.org/MPL/2.0/) veröffentlicht. Eine Kopie der Lizenz ist in der mitgelieferten Datei LICENSE verfügbar.
+Copyright für mGBA © 2013 – 2021 Jeffrey Pfau. mGBA wird unter der [Mozilla Public License version 2.0](https://www.mozilla.org/MPL/2.0/) veröffentlicht. Eine Kopie der Lizenz ist in der mitgelieferten Datei LICENSE verfügbar.
 
 mGBA beinhaltet die folgenden Bibliotheken von Drittanbietern:
 

@@ -10,6 +10,8 @@
 struct VDir;
 struct VFile;
 
+class QBuffer;
+
 namespace QGBA {
 
 class VFileDevice : public QIODevice {
@@ -17,6 +19,7 @@ Q_OBJECT
 
 public:
 	VFileDevice(VFile* vf = nullptr, QObject* parent = nullptr);
+	VFileDevice(const QString&, QIODevice::OpenMode, QObject* parent = nullptr);
 
 	virtual void close() override;
 	virtual bool seek(qint64 pos) override;
@@ -27,7 +30,12 @@ public:
 	VFileDevice& operator=(VFile*);
 	operator VFile*() { return m_vf; }
 
+	static VFile* wrap(QIODevice*, QIODevice::OpenMode);
+	static VFile* wrap(QFileDevice*, QIODevice::OpenMode);
+	static VFile* wrap(QBuffer*, QIODevice::OpenMode);
+
 	static VFile* open(const QString& path, int mode);
+	static VFile* openMemory();
 	static VDir* openDir(const QString& path);
 	static VDir* openArchive(const QString& path);
 

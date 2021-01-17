@@ -65,7 +65,7 @@ void GBAudioInit(struct GBAudio* audio, size_t samples, uint8_t* nr52, enum GBAu
 	if (style == GB_AUDIO_GBA) {
 		audio->timingFactor = 4;
 	} else {
-		audio->timingFactor = 1;
+		audio->timingFactor = 2;
 	}
 
 	audio->frameEvent.context = audio;
@@ -339,7 +339,7 @@ void GBAudioWriteNR34(struct GBAudio* audio, uint8_t value) {
 	if (audio->playingCh3) {
 		audio->ch3.readable = audio->style != GB_AUDIO_DMG;
 		// TODO: Where does this cycle delay come from?
-		mTimingSchedule(audio->timing, &audio->ch3Event, audio->timingFactor * 4 + 2 * (2048 - audio->ch3.rate));
+		mTimingSchedule(audio->timing, &audio->ch3Event, audio->timingFactor * (4 + 2 * (2048 - audio->ch3.rate)));
 	}
 	*audio->nr52 &= ~0x0004;
 	*audio->nr52 |= audio->playingCh3 << 2;
@@ -446,30 +446,30 @@ void GBAudioWriteNR52(struct GBAudio* audio, uint8_t value) {
 		}
 
 		if (audio->p) {
-			audio->p->memory.io[REG_NR10] = 0;
-			audio->p->memory.io[REG_NR11] = 0;
-			audio->p->memory.io[REG_NR12] = 0;
-			audio->p->memory.io[REG_NR13] = 0;
-			audio->p->memory.io[REG_NR14] = 0;
-			audio->p->memory.io[REG_NR21] = 0;
-			audio->p->memory.io[REG_NR22] = 0;
-			audio->p->memory.io[REG_NR23] = 0;
-			audio->p->memory.io[REG_NR24] = 0;
-			audio->p->memory.io[REG_NR30] = 0;
-			audio->p->memory.io[REG_NR31] = 0;
-			audio->p->memory.io[REG_NR32] = 0;
-			audio->p->memory.io[REG_NR33] = 0;
-			audio->p->memory.io[REG_NR34] = 0;
-			audio->p->memory.io[REG_NR42] = 0;
-			audio->p->memory.io[REG_NR43] = 0;
-			audio->p->memory.io[REG_NR44] = 0;
-			audio->p->memory.io[REG_NR50] = 0;
-			audio->p->memory.io[REG_NR51] = 0;
+			audio->p->memory.io[GB_REG_NR10] = 0;
+			audio->p->memory.io[GB_REG_NR11] = 0;
+			audio->p->memory.io[GB_REG_NR12] = 0;
+			audio->p->memory.io[GB_REG_NR13] = 0;
+			audio->p->memory.io[GB_REG_NR14] = 0;
+			audio->p->memory.io[GB_REG_NR21] = 0;
+			audio->p->memory.io[GB_REG_NR22] = 0;
+			audio->p->memory.io[GB_REG_NR23] = 0;
+			audio->p->memory.io[GB_REG_NR24] = 0;
+			audio->p->memory.io[GB_REG_NR30] = 0;
+			audio->p->memory.io[GB_REG_NR31] = 0;
+			audio->p->memory.io[GB_REG_NR32] = 0;
+			audio->p->memory.io[GB_REG_NR33] = 0;
+			audio->p->memory.io[GB_REG_NR34] = 0;
+			audio->p->memory.io[GB_REG_NR42] = 0;
+			audio->p->memory.io[GB_REG_NR43] = 0;
+			audio->p->memory.io[GB_REG_NR44] = 0;
+			audio->p->memory.io[GB_REG_NR50] = 0;
+			audio->p->memory.io[GB_REG_NR51] = 0;
 			if (audio->style != GB_AUDIO_DMG) {
-				audio->p->memory.io[REG_NR11] = 0;
-				audio->p->memory.io[REG_NR21] = 0;
-				audio->p->memory.io[REG_NR31] = 0;
-				audio->p->memory.io[REG_NR41] = 0;
+				audio->p->memory.io[GB_REG_NR11] = 0;
+				audio->p->memory.io[GB_REG_NR21] = 0;
+				audio->p->memory.io[GB_REG_NR31] = 0;
+				audio->p->memory.io[GB_REG_NR41] = 0;
 			}
 		}
 		*audio->nr52 &= ~0x000F;
@@ -477,11 +477,8 @@ void GBAudioWriteNR52(struct GBAudio* audio, uint8_t value) {
 		audio->skipFrame = false;
 		audio->frame = 7;
 
-		if (audio->p) {
-			unsigned timingFactor = 0x400 >> !audio->p->doubleSpeed;
-			if (audio->p->timer.internalDiv & timingFactor) {
-				audio->skipFrame = true;
-			}
+		if (audio->p && audio->p->timer.internalDiv & 0x400) {
+			audio->skipFrame = true;
 		}
 	}
 }
@@ -914,7 +911,7 @@ static void _updateChannel3(struct mTiming* timing, void* user, uint32_t cyclesL
 	audio->ch3.readable = true;
 	if (audio->style == GB_AUDIO_DMG) {
 		mTimingDeschedule(audio->timing, &audio->ch3Fade);
-		mTimingSchedule(timing, &audio->ch3Fade, 2 - cyclesLate);
+		mTimingSchedule(timing, &audio->ch3Fade, 4 - cyclesLate);
 	}
 	int cycles = 2 * (2048 - ch->rate);
 	mTimingSchedule(timing, &audio->ch3Event, audio->timingFactor * cycles - cyclesLate);

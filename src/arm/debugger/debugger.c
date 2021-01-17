@@ -152,13 +152,15 @@ static bool ARMDebuggerUpdateStackTraceInternal(struct mDebuggerPlatform* d, uin
 		return false;
 	}
 
-	if (isCall) {
-		int instructionLength = isWideInstruction ? WORD_SIZE_ARM : WORD_SIZE_THUMB;
-		frame = mStackTracePush(stack, pc, destAddress + instructionLength, cpu->gprs[ARM_SP], &cpu->regs);
+	if (interrupt || isCall) {
+		if (isCall) {
+			int instructionLength = isWideInstruction ? WORD_SIZE_ARM : WORD_SIZE_THUMB;
+			frame = mStackTracePush(stack, pc, destAddress + instructionLength, cpu->gprs[ARM_SP], &cpu->regs);
+		}
 		if (!(debugger->stackTraceMode & STACK_TRACE_BREAK_ON_CALL)) {
 			return false;
 		}
-	} else if (!interrupt) {
+	} else {
 		if (frame && currentStack == ARMSelectBank(FRAME_PRIV(frame))) {
 			mStackTracePop(stack);
 		}
@@ -467,6 +469,7 @@ static void ARMDebuggerListWatchpoints(struct mDebuggerPlatform* d, struct mWatc
 static void ARMDebuggerTrace(struct mDebuggerPlatform* d, char* out, size_t* length) {
 	struct ARMDebugger* debugger = (struct ARMDebugger*) d;
 	struct ARMCore* cpu = debugger->cpu;
+	struct mCore* core = d->p->core;
 
 	char disassembly[64];
 
@@ -475,17 +478,17 @@ static void ARMDebuggerTrace(struct mDebuggerPlatform* d, char* out, size_t* len
 	if (cpu->executionMode == MODE_ARM) {
 		uint32_t instruction = cpu->prefetch[0];
 		sprintf(disassembly, "%08X: ", instruction);
-		ARMDisassemble(&info, cpu->gprs[ARM_PC], disassembly + strlen("00000000: "), sizeof(disassembly) - strlen("00000000: "));
+		ARMDisassemble(&info, cpu, core->symbolTable, cpu->gprs[ARM_PC], disassembly + strlen("00000000: "), sizeof(disassembly) - strlen("00000000: "));
 	} else {
 		uint16_t instruction = cpu->prefetch[0];
 		ARMDecodeThumb(instruction, &info);
 		if (isWideInstruction) {
 			uint16_t instruction2 = cpu->prefetch[1];
 			sprintf(disassembly, "%04X%04X: ", instruction, instruction2);
-			ARMDisassemble(&info, cpu->gprs[ARM_PC], disassembly + strlen("00000000: "), sizeof(disassembly) - strlen("00000000: "));
+			ARMDisassemble(&info, cpu, core->symbolTable, cpu->gprs[ARM_PC], disassembly + strlen("00000000: "), sizeof(disassembly) - strlen("00000000: "));
 		} else {
 			sprintf(disassembly, "    %04X: ", instruction);
-			ARMDisassemble(&info, cpu->gprs[ARM_PC], disassembly + strlen("00000000: "), sizeof(disassembly) - strlen("00000000: "));
+			ARMDisassemble(&info, cpu, core->symbolTable, cpu->gprs[ARM_PC], disassembly + strlen("00000000: "), sizeof(disassembly) - strlen("00000000: "));
 		}
 	}
 

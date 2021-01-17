@@ -10,6 +10,8 @@
 
 CXX_GUARD_START
 
+#include <mgba/core/interface.h>
+
 enum GBModel {
 	GB_MODEL_AUTODETECT = 0xFF,
 	GB_MODEL_DMG  = 0x00,
@@ -42,6 +44,12 @@ enum GBMemoryBankControllerType {
 	GB_UNL_HITEK = 0x221,
 };
 
+enum GBVideoLayer {
+	GB_LAYER_BACKGROUND = 0,
+	GB_LAYER_WINDOW,
+	GB_LAYER_OBJ
+};
+
 struct GBSIODriver {
 	struct GBSIO* p;
 
@@ -58,6 +66,8 @@ bool GBIsBIOS(struct VFile* vf);
 
 enum GBModel GBNameToModel(const char*);
 const char* GBModelToName(enum GBModel);
+
+int GBValidModels(const uint8_t* bank0);
 
 CXX_GUARD_END
 

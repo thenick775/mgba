@@ -22,6 +22,8 @@
 #include "InputController.h"
 #include "LoadSaveState.h"
 #include "LogController.h"
+#include "SettingsView.h"
+
 struct mArguments;
 
 namespace QGBA {
@@ -54,6 +56,8 @@ public:
 	std::shared_ptr<CoreController> controller() { return m_controller; }
 
 	void setConfig(ConfigController*);
+	ConfigController* config() { return m_config; }
+
 	void argumentsPassed(mArguments*);
 
 	void resizeFrame(const QSize& size);
@@ -93,6 +97,7 @@ public slots:
 	void exportSharkport();
 
 	void openSettingsWindow();
+	void openSettingsWindow(SettingsView::Page);
 
 	void startVideoLog();
 
@@ -131,6 +136,7 @@ private slots:
 
 	void reloadAudioDriver();
 	void reloadDisplayDriver();
+	void attachDisplay();
 	void changeRenderer();
 
 	void tryMakePortable();
@@ -141,6 +147,8 @@ private slots:
 	void focusCheck();
 
 	void updateFrame();
+
+	void setLogo();
 
 private:
 	static const int FPS_TIMER_INTERVAL = 2000;
@@ -157,7 +165,6 @@ private:
 	void updateMRU();
 
 	void openView(QWidget* widget);
-	void attachDisplay();
 
 	template <typename T, typename... A> std::function<void()> openTView(A... arg);
 	template <typename T, typename... A> std::function<void()> openControllerTView(A... arg);

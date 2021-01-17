@@ -11,7 +11,6 @@
 #include "VFileDevice.h"
 
 #include <QFileDialog>
-#include <QFontDatabase>
 
 #include <mgba/core/core.h>
 #ifdef M_CORE_GBA
@@ -36,7 +35,7 @@ PaletteView::PaletteView(std::shared_ptr<CoreController> controller, QWidget* pa
 	m_ui.objGrid->setDimensions(QSize(16, 16));
 	int count = 256;
 #ifdef M_CORE_GB
-	if (controller->platform() == PLATFORM_GB) {
+	if (controller->platform() == mPLATFORM_GB) {
 		m_ui.bgGrid->setDimensions(QSize(4, 8));
 		m_ui.objGrid->setDimensions(QSize(4, 8));
 		m_ui.bgGrid->setSize(24);
@@ -48,7 +47,7 @@ PaletteView::PaletteView(std::shared_ptr<CoreController> controller, QWidget* pa
 	m_ui.selected->setDimensions(QSize(1, 1));
 	updatePalette();
 
-	const QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+	const QFont font = GBAApp::monospaceFont();
 
 	m_ui.hexcode->setFont(font);
 	m_ui.value->setFont(font);
@@ -70,16 +69,16 @@ void PaletteView::updatePalette() {
 		return;
 	}
 	const uint16_t* palette;
-	size_t count;
+	int count;
 	switch (m_controller->platform()) {
 #ifdef M_CORE_GBA
-	case PLATFORM_GBA:
+	case mPLATFORM_GBA:
 		palette = static_cast<GBA*>(m_controller->thread()->core->board)->video.palette;
 		count = 256;
 		break;
 #endif
 #ifdef M_CORE_GB
-	case PLATFORM_GB:
+	case mPLATFORM_GB:
 		palette = static_cast<GB*>(m_controller->thread()->core->board)->video.palette;
 		count = 32;
 		break;
@@ -99,12 +98,12 @@ void PaletteView::selectIndex(int index) {
 	const uint16_t* palette;
 	switch (m_controller->platform()) {
 #ifdef M_CORE_GBA
-	case PLATFORM_GBA:
+	case mPLATFORM_GBA:
 		palette = static_cast<GBA*>(m_controller->thread()->core->board)->video.palette;
 		break;
 #endif
 #ifdef M_CORE_GB
-	case PLATFORM_GB:
+	case mPLATFORM_GB:
 		palette = static_cast<GB*>(m_controller->thread()->core->board)->video.palette;
 		break;
 #endif

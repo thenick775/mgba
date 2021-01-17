@@ -64,7 +64,7 @@ static void GBInit(void* cpu, struct mCPUComponent* component) {
 	GBVideoInit(&gb->video);
 
 	gb->audio.p = gb;
-	GBAudioInit(&gb->audio, 2048, &gb->memory.io[REG_NR52], GB_AUDIO_DMG); // TODO: Remove magic constant
+	GBAudioInit(&gb->audio, 2048, &gb->memory.io[GB_REG_NR52], GB_AUDIO_DMG); // TODO: Remove magic constant
 
 	gb->sio.p = gb;
 	GBSIOInit(&gb->sio);
@@ -160,6 +160,10 @@ bool GBLoadSave(struct GB* gb, struct VFile* vf) {
 	if (gb->sramSize) {
 		GBResizeSram(gb, gb->sramSize);
 		GBMBCSwitchSramBank(gb, gb->memory.sramCurrentBank);
+
+		if (gb->memory.mbcType == GB_MBC3_RTC) {
+			GBMBCRTCRead(gb);
+	}
 	}
 	return vf;
 }
@@ -247,6 +251,14 @@ void GBSramClean(struct GB* gb, uint32_t frameCount) {
 		} else {
 			mLOG(GB_MEM, INFO, "Savedata failed to sync!");
 		}
+
+		size_t c;
+		for (c = 0; c < mCoreCallbacksListSize(&gb->coreCallbacks); ++c) {
+			struct mCoreCallbacks* callbacks = mCoreCallbacksListGetPointer(&gb->coreCallbacks, c);
+			if (callbacks->savedataUpdated) {
+				callbacks->savedataUpdated(callbacks->context);
+	}
+}
 	}
 }
 
@@ -461,7 +473,7 @@ void GBReset(struct SM83Core* cpu) {
 	GBVideoReset(&gb->video);
 	GBTimerReset(&gb->timer);
 	GBIOReset(gb);
-	if (!gb->biosVf) {
+	if (!gb->biosVf && gb->memory.rom) {
 		GBSkipBIOS(gb);
 	} else {
 		mTimingSchedule(&gb->timing, &gb->timer.event, 0);
@@ -546,6 +558,12 @@ void GBSkipBIOS(struct GB* gb) {
 			cpu->e = 0x08;
 			cpu->l = 0x7C;
 			gb->timer.internalDiv = 0x260;
+			gb->model = GB_MODEL_DMG;
+			gb->memory.io[GB_REG_KEY1] = 0xFF;
+			gb->memory.io[GB_REG_BCPS] = 0x88; // Faked writing 4 BG palette entries
+			gb->memory.io[GB_REG_OCPS] = 0x90; // Faked writing 8 OBJ palette entries
+			gb->memory.io[GB_REG_SVBK] = 0xFF;
+			GBVideoDisableCGB(&gb->video);
 		}
 		nextDiv = 0xC;
 		break;
@@ -559,7 +577,7 @@ void GBSkipBIOS(struct GB* gb) {
 	mTimingDeschedule(&gb->timing, &gb->timer.event);
 	mTimingSchedule(&gb->timing, &gb->timer.event, gb->timer.nextDiv);
 
-	GBIOWrite(gb, REG_LCDC, 0x91);
+	GBIOWrite(gb, GB_REG_LCDC, 0x91);
 	GBVideoSkipBIOS(&gb->video);
 
 	if (gb->biosVf) {
@@ -648,8 +666,24 @@ void GBDetectModel(struct GB* gb) {
 	}
 }
 
+int GBValidModels(const uint8_t* bank0) {
+	const struct GBCartridge* cart = (const struct GBCartridge*) &bank0[0x100];
+	int models;
+	if (cart->cgb == 0x80) {
+		models = GB_MODEL_CGB | GB_MODEL_MGB;
+	} else if (cart->cgb == 0xC0) {
+		models = GB_MODEL_CGB;
+	} else {
+		models = GB_MODEL_MGB;		
+	}
+	if (cart->sgb == 0x03 && cart->oldLicensee == 0x33) {
+		models |= GB_MODEL_SGB;
+	}
+	return models;
+}
+
 void GBUpdateIRQs(struct GB* gb) {
-	int irqs = gb->memory.ie & gb->memory.io[REG_IF] & 0x1F;
+	int irqs = gb->memory.ie & gb->memory.io[GB_REG_IF] & 0x1F;
 	if (!irqs) {
 		gb->cpu->irqPending = false;
 		return;
@@ -673,15 +707,16 @@ void GBProcessEvents(struct SM83Core* cpu) {
 		int32_t nextEvent;
 
 		cpu->cycles = 0;
-#ifdef USE_DEBUGGERS
-		gb->timing.globalCycles += cycles;
-#endif
 		cpu->nextEvent = INT_MAX;
 
 		nextEvent = cycles;
 		do {
+#ifdef USE_DEBUGGERS
+			gb->timing.globalCycles += nextEvent;
+#endif
 			nextEvent = mTimingTick(&gb->timing, nextEvent);
 		} while (gb->cpuBlocked && !gb->earlyExit);
+		// This loop cannot early exit until the SM83 run loop properly handles mid-M-cycle-exits
 		cpu->nextEvent = nextEvent;
 
 		if (cpu->halted) {
@@ -707,32 +742,32 @@ void GBSetInterrupts(struct SM83Core* cpu, bool enable) {
 		gb->memory.ime = false;
 		GBUpdateIRQs(gb);
 	} else {
-		mTimingSchedule(&gb->timing, &gb->eiPending, 4);
+		mTimingSchedule(&gb->timing, &gb->eiPending, 4 * cpu->tMultiplier);
 	}
 }
 
 uint16_t GBIRQVector(struct SM83Core* cpu) {
 	struct GB* gb = (struct GB*) cpu->master;
-	int irqs = gb->memory.ie & gb->memory.io[REG_IF];
+	int irqs = gb->memory.ie & gb->memory.io[GB_REG_IF];
 
 	if (irqs & (1 << GB_IRQ_VBLANK)) {
-		gb->memory.io[REG_IF] &= ~(1 << GB_IRQ_VBLANK);
+		gb->memory.io[GB_REG_IF] &= ~(1 << GB_IRQ_VBLANK);
 		return GB_VECTOR_VBLANK;
 	}
 	if (irqs & (1 << GB_IRQ_LCDSTAT)) {
-		gb->memory.io[REG_IF] &= ~(1 << GB_IRQ_LCDSTAT);
+		gb->memory.io[GB_REG_IF] &= ~(1 << GB_IRQ_LCDSTAT);
 		return GB_VECTOR_LCDSTAT;
 	}
 	if (irqs & (1 << GB_IRQ_TIMER)) {
-		gb->memory.io[REG_IF] &= ~(1 << GB_IRQ_TIMER);
+		gb->memory.io[GB_REG_IF] &= ~(1 << GB_IRQ_TIMER);
 		return GB_VECTOR_TIMER;
 	}
 	if (irqs & (1 << GB_IRQ_SIO)) {
-		gb->memory.io[REG_IF] &= ~(1 << GB_IRQ_SIO);
+		gb->memory.io[GB_REG_IF] &= ~(1 << GB_IRQ_SIO);
 		return GB_VECTOR_SIO;
 	}
 	if (irqs & (1 << GB_IRQ_KEYPAD)) {
-		gb->memory.io[REG_IF] &= ~(1 << GB_IRQ_KEYPAD);
+		gb->memory.io[GB_REG_IF] &= ~(1 << GB_IRQ_KEYPAD);
 		return GB_VECTOR_KEYPAD;
 	}
 	return 0;
@@ -748,7 +783,7 @@ static void _enableInterrupts(struct mTiming* timing, void* user, uint32_t cycle
 
 void GBHalt(struct SM83Core* cpu) {
 	struct GB* gb = (struct GB*) cpu->master;
-	if (!(gb->memory.ie & gb->memory.io[REG_IF] & 0x1F)) {
+	if (!(gb->memory.ie & gb->memory.io[GB_REG_IF] & 0x1F)) {
 		cpu->cycles = cpu->nextEvent;
 		cpu->halted = true;
 	} else if (!gb->memory.ime) {
@@ -759,29 +794,23 @@ void GBHalt(struct SM83Core* cpu) {
 
 void GBStop(struct SM83Core* cpu) {
 	struct GB* gb = (struct GB*) cpu->master;
-	if (cpu->bus) {
-		mLOG(GB, GAME_ERROR, "Hit illegal stop at address %04X:%02X", cpu->pc, cpu->bus);
-	}
-	if (gb->memory.io[REG_KEY1] & 1) {
+	if (gb->model >= GB_MODEL_CGB && gb->memory.io[GB_REG_KEY1] & 1) {
 		gb->doubleSpeed ^= 1;
-		gb->audio.timingFactor = gb->doubleSpeed + 1;
-		gb->memory.io[REG_KEY1] = 0;
-		gb->memory.io[REG_KEY1] |= gb->doubleSpeed << 7;
-	} else if (cpu->bus) {
-#ifdef USE_DEBUGGERS
-		if (cpu->components && cpu->components[CPU_COMPONENT_DEBUGGER]) {
-			struct mDebuggerEntryInfo info = {
-				.address = cpu->pc - 1,
-				.type.bp.opcode = 0x1000 | cpu->bus,
-			};
-			mDebuggerEnter((struct mDebugger*) cpu->components[CPU_COMPONENT_DEBUGGER], DEBUGGER_ENTER_ILLEGAL_OP, &info);
+		gb->cpu->tMultiplier = 2 - gb->doubleSpeed;
+		gb->memory.io[GB_REG_KEY1] = 0;
+		gb->memory.io[GB_REG_KEY1] |= gb->doubleSpeed << 7;
+	} else {
+		int sleep = ~(gb->memory.io[GB_REG_JOYP] & 0x30);
+		size_t c;
+		for (c = 0; c < mCoreCallbacksListSize(&gb->coreCallbacks); ++c) {
+			struct mCoreCallbacks* callbacks = mCoreCallbacksListGetPointer(&gb->coreCallbacks, c);
+			if (sleep && callbacks->sleep) {
+				callbacks->sleep(callbacks->context);
+			} else if (callbacks->shutdown) {
+				callbacks->shutdown(callbacks->context);
 		}
-#endif
-		// Hang forever
-		gb->memory.ime = 0;
-		cpu->pc -= 2;
 	}
-	// TODO: Actually stop
+}
 }
 
 void GBIllegal(struct SM83Core* cpu) {

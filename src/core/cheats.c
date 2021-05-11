@@ -666,7 +666,7 @@ void mCheatRefresh(struct mCheatDevice* device, struct mCheatSet* cheats) {
 				break;
 			case CHEAT_ASSIGN_INDIRECT:
 				value = operand;
-				address = _readMem(device->p, address + cheat->addressOffset, 4);
+				address = _readMem(device->p, address, 4) + cheat->addressOffset;
 				performAssignment = true;
 				break;
 			case CHEAT_AND:
@@ -775,7 +775,9 @@ void mCheatDeviceInit(void* cpu, struct mCPUComponent* component) {
 	size_t i;
 	for (i = 0; i < mCheatSetsSize(&device->cheats); ++i) {
 		struct mCheatSet* cheats = *mCheatSetsGetPointer(&device->cheats, i);
-		cheats->add(cheats, device);
+		if (cheats->add) {
+			cheats->add(cheats, device);
+		}
 	}
 }
 
@@ -784,6 +786,8 @@ void mCheatDeviceDeinit(struct mCPUComponent* component) {
 	size_t i;
 	for (i = mCheatSetsSize(&device->cheats); i--;) {
 		struct mCheatSet* cheats = *mCheatSetsGetPointer(&device->cheats, i);
-		cheats->remove(cheats, device);
+		if (cheats->remove) {
+			cheats->remove(cheats, device);
+		}
 	}
 }

@@ -309,10 +309,10 @@ static const char* const _renderMode35 =
 	"	ivec2 offset[4];\n"
 	"	vec2 incoord = texCoord;\n"
 	"	if (mosaic.x > 1) {\n"
-	"		incoord.x = floor(MOSAIC(incoord.x, mosaic.x));\n"
+	"		incoord.x = float(MOSAIC(incoord.x, mosaic.x));\n"
 	"	}\n"
 	"	if (mosaic.y > 1) {\n"
-	"		incoord.y = floor(MOSAIC(incoord.y, mosaic.y));\n"
+	"		incoord.y = float(MOSAIC(incoord.y, mosaic.y));\n"
 	"	}\n"
 	"	loadAffine(int(incoord.y), mat, offset);\n"
 	"	float y = fract(incoord.y);\n"
@@ -370,10 +370,10 @@ static const char* const _renderMode4 =
 	"	ivec2 offset[4];\n"
 	"	vec2 incoord = texCoord;\n"
 	"	if (mosaic.x > 1) {\n"
-	"		incoord.x = floor(MOSAIC(incoord.x, mosaic.x));\n"
+	"		incoord.x = float(MOSAIC(incoord.x, mosaic.x));\n"
 	"	}\n"
 	"	if (mosaic.y > 1) {\n"
-	"		incoord.y = floor(MOSAIC(incoord.y, mosaic.y));\n"
+	"		incoord.y = float(MOSAIC(incoord.y, mosaic.y));\n"
 	"	}\n"
 	"	loadAffine(int(incoord.y), mat, offset);\n"
 	"	float y = fract(incoord.y);\n"
@@ -1818,7 +1818,7 @@ void _prepareBackground(struct GBAVideoGLRenderer* renderer, struct GBAVideoGLBa
 	glUniform1i(uniforms[GBA_GL_BG_VRAM], 0);
 	glUniform1i(uniforms[GBA_GL_OBJ_PALETTE], 1);
 	if (background->mosaic) {
-		glUniform2i(uniforms[GBA_GL_BG_MOSAIC], GBAMosaicControlGetBgV(renderer->mosaic) + 1, GBAMosaicControlGetBgH(renderer->mosaic) + 1);
+		glUniform2i(uniforms[GBA_GL_BG_MOSAIC], GBAMosaicControlGetBgH(renderer->mosaic) + 1, GBAMosaicControlGetBgV(renderer->mosaic) + 1);
 	} else {
 		glUniform2i(uniforms[GBA_GL_BG_MOSAIC], 0, 0);
 	}

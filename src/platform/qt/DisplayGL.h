@@ -29,6 +29,7 @@
 
 #include <array>
 
+#include "CoreController.h"
 #include "VideoProxy.h"
 
 #include "platform/video-backend.h"
@@ -102,6 +103,7 @@ public:
 	bool supportsShaders() const { return m_supportsShaders; }
 
 	void setVideoProxy(std::shared_ptr<VideoProxy>);
+	void interrupt();
 
 public slots:
 	void create();
@@ -134,13 +136,12 @@ private:
 	void makeCurrent();
 	void performDraw();
 	void dequeue();
-	void dequeueAll();
+	void dequeueAll(bool keep = false);
 
 	std::array<std::array<uint32_t, 0x100000>, 3> m_buffers;
 	QList<uint32_t*> m_free;
 	QQueue<uint32_t*> m_queue;
-	QAtomicInt m_lagging = 0;
-	uint32_t* m_buffer;
+	uint32_t* m_buffer = nullptr;
 	QPainter m_painter;
 	QMutex m_mutex;
 	QWindow* m_surface;
@@ -149,12 +150,14 @@ private:
 	std::unique_ptr<QOpenGLContext> m_gl;
 	bool m_active = false;
 	bool m_started = false;
-	std::shared_ptr<CoreController> m_context = nullptr;
+	std::shared_ptr<CoreController> m_context;
+	CoreController::Interrupter m_interrupter;
 	bool m_supportsShaders;
 	bool m_showOSD;
 	VideoShader m_shader{};
 	VideoBackend* m_backend = nullptr;
 	QSize m_size;
+	QSize m_dims;
 	MessagePainter* m_messagePainter = nullptr;
 	QElapsedTimer m_delayTimer;
 	std::shared_ptr<VideoProxy> m_videoProxy;

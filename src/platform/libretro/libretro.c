@@ -64,12 +64,14 @@ static size_t dataSize;
 static void* savedata;
 static struct mAVStream stream;
 static bool sensorsInitDone;
+static bool rumbleInitDone;
 static int rumbleUp;
 static int rumbleDown;
 static struct mRumble rumble;
 static struct GBALuminanceSource lux;
 static struct mRotationSource rotation;
-static bool rotationEnabled;
+static bool tiltEnabled;
+static bool gyroEnabled;
 static int luxLevelIndex;
 static uint8_t luxLevel;
 static bool luxSensorEnabled;
@@ -100,9 +102,12 @@ static void _initSensors(void) {
 		sensorStateCallback = sensorInterface.set_sensor_state;
 
 		if (sensorStateCallback && sensorGetCallback) {
-			if (sensorStateCallback(0, RETRO_SENSOR_ACCELEROMETER_ENABLE, EVENT_RATE)
-				&& sensorStateCallback(0, RETRO_SENSOR_GYROSCOPE_ENABLE, EVENT_RATE)) {
-				rotationEnabled = true;
+			if (sensorStateCallback(0, RETRO_SENSOR_ACCELEROMETER_ENABLE, EVENT_RATE)) {
+				tiltEnabled = true;
+			}
+
+			if (sensorStateCallback(0, RETRO_SENSOR_GYROSCOPE_ENABLE, EVENT_RATE)) {
+				gyroEnabled = true;
 			}
 
 			if (sensorStateCallback(0, RETRO_SENSOR_ILLUMINANCE_ENABLE, EVENT_RATE)) {
@@ -112,6 +117,19 @@ static void _initSensors(void) {
 	}
 
 	sensorsInitDone = true;
+}
+
+static void _initRumble(void) {
+	if (rumbleInitDone) {
+		return;
+	}
+
+	struct retro_rumble_interface rumbleInterface;
+	if (environCallback(RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE, &rumbleInterface)) {
+		rumbleCallback = rumbleInterface.set_rumble_state;
+	}
+
+	rumbleInitDone = true;
 }
 
 static void _reloadSettings(void) {
@@ -306,19 +324,16 @@ void retro_init(void) {
 
 	// TODO: RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME when BIOS booting is supported
 
-	struct retro_rumble_interface rumbleInterface;
-	if (environCallback(RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE, &rumbleInterface)) {
-		rumbleCallback = rumbleInterface.set_rumble_state;
-		rumble.setRumble = _setRumble;
-	} else {
-		rumbleCallback = 0;
-	}
+	rumbleInitDone = false;
+	rumble.setRumble = _setRumble;
+	rumbleCallback = 0;
 
 	sensorsInitDone = false;
 	sensorGetCallback = 0;
 	sensorStateCallback = 0;
 
-	rotationEnabled = false;
+	tiltEnabled = false;
+	gyroEnabled = false;
 	rotation.sample = _updateRotation;
 	rotation.readTiltX = _readTiltX;
 	rotation.readTiltY = _readTiltY;
@@ -363,7 +378,8 @@ void retro_deinit(void) {
 		sensorStateCallback = NULL;
 	}
 
-	rotationEnabled = false;
+	tiltEnabled = false;
+	gyroEnabled = false;
 	luxSensorEnabled = false;
 	sensorsInitDone = false;
 }
@@ -374,7 +390,6 @@ void retro_run(void) {
 	}
 	uint16_t keys;
 
-	_initSensors();
 	inputPollCallback();
 
 	bool updated = false;
@@ -603,8 +618,8 @@ static void _setupMaps(struct mCore* core) {
 		i++;
 
 		/* Map External RAM */
-		if (gb->memory.sram) {
-			descs[i].ptr    = gb->memory.sram;
+		if (savedataSize) {
+			descs[i].ptr    = savedata;
 			descs[i].start  = GB_BASE_EXTERNAL_RAM;
 			descs[i].len    = savedataSize;
 			i++;
@@ -675,6 +690,7 @@ bool retro_load_game(const struct retro_game_info* game) {
 	blip_set_rates(core->getAudioChannel(core, 1), core->frequency(core), 32768);
 
 	core->setPeripheral(core, mPERIPH_RUMBLE, &rumble);
+	core->setPeripheral(core, mPERIPH_ROTATION, &rotation);
 
 	savedata = anonymousMemoryMap(SIZE_CART_FLASH1M);
 	memset(savedata, 0xFF, SIZE_CART_FLASH1M);
@@ -996,6 +1012,9 @@ static void _postAudioBuffer(struct mAVStream* stream, blip_t* left, blip_t* rig
 
 static void _setRumble(struct mRumble* rumble, int enable) {
 	UNUSED(rumble);
+	if (!rumbleInitDone) {
+		_initRumble();
+	}
 	if (!rumbleCallback) {
 		return;
 	}
@@ -1023,6 +1042,7 @@ static void _updateLux(struct GBALuminanceSource* lux) {
 	}
 
 	if (luxSensorUsed) {
+		_initSensors();
 		float fLux = luxSensorEnabled ? sensorGetCallback(0, RETRO_SENSOR_ILLUMINANCE) : 0.0f;
 		luxLevel = cbrtf(fLux) * 8;
 	} else {
@@ -1124,9 +1144,12 @@ static void _updateRotation(struct mRotationSource* source) {
 	tiltX = 0;
 	tiltY = 0;
 	gyroZ = 0;
-	if (rotationEnabled) {
+	_initSensors();
+	if (tiltEnabled) {
 		tiltX = sensorGetCallback(0, RETRO_SENSOR_ACCELEROMETER_X) * 3e8f;
 		tiltY = sensorGetCallback(0, RETRO_SENSOR_ACCELEROMETER_Y) * -3e8f;
+	}
+	if (gyroEnabled) {
 		gyroZ = sensorGetCallback(0, RETRO_SENSOR_GYROSCOPE_Z) * -1.1e9f;
 	}
 }

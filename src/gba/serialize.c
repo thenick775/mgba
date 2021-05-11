@@ -14,8 +14,8 @@
 
 #include <fcntl.h>
 
-const uint32_t GBA_SAVESTATE_MAGIC = 0x01000000;
-const uint32_t GBA_SAVESTATE_VERSION = 0x00000004;
+MGBA_EXPORT const uint32_t GBASavestateMagic = 0x01000000;
+MGBA_EXPORT const uint32_t GBASavestateVersion = 0x00000004;
 
 mLOG_DEFINE_CATEGORY(GBA_STATE, "GBA Savestate", "gba.serialize");
 
@@ -25,7 +25,7 @@ struct GBABundledState {
 };
 
 void GBASerialize(struct GBA* gba, struct GBASerializedState* state) {
-	STORE_32(GBA_SAVESTATE_MAGIC + GBA_SAVESTATE_VERSION, 0, &state->versionMagic);
+	STORE_32(GBASavestateMagic + GBASavestateVersion, 0, &state->versionMagic);
 	STORE_32(gba->biosChecksum, 0, &state->biosChecksum);
 	STORE_32(gba->romCrc32, 0, &state->romCrc32);
 	STORE_32(gba->timing.masterCycles, 0, &state->masterCycles);
@@ -87,14 +87,14 @@ bool GBADeserialize(struct GBA* gba, const struct GBASerializedState* state) {
 	int32_t check;
 	uint32_t ucheck;
 	LOAD_32(ucheck, 0, &state->versionMagic);
-	if (ucheck > GBA_SAVESTATE_MAGIC + GBA_SAVESTATE_VERSION) {
-		mLOG(GBA_STATE, WARN, "Invalid or too new savestate: expected %08X, got %08X", GBA_SAVESTATE_MAGIC + GBA_SAVESTATE_VERSION, ucheck);
+	if (ucheck > GBASavestateMagic + GBASavestateVersion) {
+		mLOG(GBA_STATE, WARN, "Invalid or too new savestate: expected %08X, got %08X", GBASavestateMagic + GBASavestateVersion, ucheck);
 		error = true;
-	} else if (ucheck < GBA_SAVESTATE_MAGIC) {
-		mLOG(GBA_STATE, WARN, "Invalid savestate: expected %08X, got %08X", GBA_SAVESTATE_MAGIC + GBA_SAVESTATE_VERSION, ucheck);
+	} else if (ucheck < GBASavestateMagic) {
+		mLOG(GBA_STATE, WARN, "Invalid savestate: expected %08X, got %08X", GBASavestateMagic + GBASavestateVersion, ucheck);
 		error = true;
-	} else if (ucheck < GBA_SAVESTATE_MAGIC + GBA_SAVESTATE_VERSION) {
-		mLOG(GBA_STATE, WARN, "Old savestate: expected %08X, got %08X, continuing anyway", GBA_SAVESTATE_MAGIC + GBA_SAVESTATE_VERSION, ucheck);
+	} else if (ucheck < GBASavestateMagic + GBASavestateVersion) {
+		mLOG(GBA_STATE, WARN, "Old savestate: expected %08X, got %08X, continuing anyway", GBASavestateMagic + GBASavestateVersion, ucheck);
 	}
 	LOAD_32(ucheck, 0, &state->biosChecksum);
 	if (ucheck != gba->biosChecksum) {
@@ -154,10 +154,9 @@ bool GBADeserialize(struct GBA* gba, const struct GBASerializedState* state) {
 		LOAD_32(gba->cpu->bankedSPSRs[i], i * sizeof(gba->cpu->bankedSPSRs[0]), state->cpu.bankedSPSRs);
 	}
 	gba->cpu->privilegeMode = gba->cpu->cpsr.priv;
-	uint32_t pcMask = (gba->cpu->cpsr.t ? WORD_SIZE_THUMB : WORD_SIZE_ARM) - 1;
-	if (gba->cpu->gprs[ARM_PC] & pcMask) {
+	if (gba->cpu->gprs[ARM_PC] & 1) {
 		mLOG(GBA_STATE, WARN, "Savestate has unaligned PC and is probably corrupted");
-		gba->cpu->gprs[ARM_PC] &= ~pcMask;
+		gba->cpu->gprs[ARM_PC] &= ~1;
 	}
 	gba->cpu->memory.setActiveRegion(gba->cpu, gba->cpu->gprs[ARM_PC]);
 	if (state->biosPrefetch) {

@@ -29,6 +29,7 @@
 #include "DebuggerConsole.h"
 #include "DebuggerConsoleController.h"
 #include "Display.h"
+#include "DolphinConnector.h"
 #include "CoreController.h"
 #include "FrameView.h"
 #include "GBAApp.h"
@@ -49,6 +50,7 @@
 #include "PrinterView.h"
 #include "ReportView.h"
 #include "ROMInfo.h"
+#include "SaveConverter.h"
 #include "SensorView.h"
 #include "ShaderSelector.h"
 #include "ShortcutController.h"
@@ -72,7 +74,6 @@
 #include <mgba/internal/gba/gba.h>
 #endif
 #include <mgba/feature/commandline.h>
-#include "feature/sqlite3/no-intro.h"
 #include <mgba-util/vfs.h>
 
 using namespace QGBA;
@@ -160,11 +161,6 @@ Window::Window(CoreManager* manager, ConfigController* config, int playerId, QWi
 
 Window::~Window() {
 	delete m_logView;
-
-#ifdef USE_FFMPEG
-	delete m_videoView;
-	delete m_gifView;
-#endif
 
 #ifdef USE_SQLITE3
 	delete m_libraryView;
@@ -270,7 +266,7 @@ QString Window::getFilters() const {
 #ifdef M_CORE_GBA
 	QStringList gbaFormats{
 		"*.gba",
-#if defined(USE_LIBZIP) || defined(USE_ZLIB)
+#if defined(USE_LIBZIP) || defined(USE_MINIZIP)
 		"*.zip",
 #endif
 #ifdef USE_LZMA
@@ -292,7 +288,7 @@ QString Window::getFilters() const {
 		"*.gb",
 		"*.gbc",
 		"*.sgb",
-#if defined(USE_LIBZIP) || defined(USE_ZLIB)
+#if defined(USE_LIBZIP) || defined(USE_MINIZIP)
 		"*.zip",
 #endif
 #ifdef USE_LZMA
@@ -314,7 +310,7 @@ QString Window::getFiltersArchive() const {
 	QStringList filters;
 
 	QStringList formats{
-#if defined(USE_LIBZIP) || defined(USE_ZLIB)
+#if defined(USE_LIBZIP) || defined(USE_MINIZIP)
 		"*.zip",
 #endif
 #ifdef USE_LZMA
@@ -330,6 +326,10 @@ void Window::selectROM() {
 	if (!filename.isEmpty()) {
 		setController(m_manager->loadGame(filename), filename);
 	}
+}
+
+void Window::bootBIOS() {
+	setController(m_manager->loadBIOS(mPLATFORM_GBA, m_config->getOption("gba.bios")), QString());
 }
 
 #ifdef USE_SQLITE3
@@ -491,7 +491,6 @@ std::function<void()> Window::openTView(A... arg) {
 	};
 }
 
-
 template <typename T, typename... A>
 std::function<void()> Window::openControllerTView(A... arg) {
 	return [=]() {
@@ -500,29 +499,32 @@ std::function<void()> Window::openControllerTView(A... arg) {
 	};
 }
 
-#ifdef USE_FFMPEG
-void Window::openVideoWindow() {
-	if (!m_videoView) {
-		m_videoView = new VideoView();
-		if (m_controller) {
-			m_videoView->setController(m_controller);
+template <typename T, typename... A>
+std::function<void()> Window::openNamedTView(std::unique_ptr<T>* name, A... arg) {
+	return [=]() {
+		if (!*name) {
+			*name = std::make_unique<T>(arg...);
+			connect(this, &Window::shutdown, name->get(), &QWidget::close);
 		}
-		connect(this, &Window::shutdown, m_videoView, &QWidget::close);
-	}
-	m_videoView->show();
+		(*name)->show();
+		(*name)->setFocus(Qt::PopupFocusReason);
+	};
 }
 
-void Window::openGIFWindow() {
-	if (!m_gifView) {
-		m_gifView = new GIFView();
-		if (m_controller) {
-			m_gifView->setController(m_controller);
+template <typename T, typename... A>
+std::function<void()> Window::openNamedControllerTView(std::unique_ptr<T>* name, A... arg) {
+	return [=]() {
+		if (!*name) {
+			*name = std::make_unique<T>(arg...);
+			if (m_controller) {
+				(*name)->setController(m_controller);
+			}
+			connect(this, &Window::shutdown, name->get(), &QWidget::close);
 		}
-		connect(this, &Window::shutdown, m_gifView, &QWidget::close);
-	}
-	m_gifView->show();
+		(*name)->show();
+		(*name)->setFocus(Qt::PopupFocusReason);
+	};
 }
-#endif
 
 #ifdef USE_GDB_STUB
 void Window::gdbOpen() {
@@ -618,6 +620,7 @@ void Window::showEvent(QShowEvent* event) {
 	m_wasOpened = true;
 	resizeFrame(m_screenWidget->sizeHint());
 	QVariant windowPos = m_config->getQtOption("windowPos");
+	bool maximized = m_config->getQtOption("maximized").toBool();
 	QRect geom = windowHandle()->screen()->availableGeometry();
 	if (!windowPos.isNull() && geom.contains(windowPos.toPoint())) {
 		move(windowPos.toPoint());
@@ -625,6 +628,9 @@ void Window::showEvent(QShowEvent* event) {
 		QRect rect = frameGeometry();
 		rect.moveCenter(geom.center());
 		move(rect.topLeft());
+	}
+	if (maximized) {
+		showMaximized();
 	}
 	if (m_fullscreenOnStart) {
 		enterFullScreen();
@@ -650,6 +656,7 @@ void Window::hideEvent(QHideEvent* event) {
 void Window::closeEvent(QCloseEvent* event) {
 	emit shutdown();
 	m_config->setQtOption("windowPos", pos());
+	m_config->setQtOption("maximized", isMaximized());
 
 	if (m_savedScale > 0) {
 		m_config->setOption("height", GBA_VIDEO_VERTICAL_PIXELS * m_savedScale);
@@ -1025,31 +1032,15 @@ void Window::showFPS() {
 
 void Window::updateTitle(float fps) {
 	QString title;
-
 	if (m_config->getOption("dynamicTitle", 1).toInt() && m_controller) {
-		CoreController::Interrupter interrupter(m_controller);
-		const NoIntroDB* db = GBAApp::app()->gameDB();
-		NoIntroGame game{};
-		uint32_t crc32 = 0;
-		mCore* core = m_controller->thread()->core;
-		core->checksum(m_controller->thread()->core, &crc32, mCHECKSUM_CRC32);
 		QString filePath = windowFilePath();
-
 		if (m_config->getOption("showFilename").toInt() && !filePath.isNull()) {
 			QFileInfo fileInfo(filePath);
 			title = fileInfo.fileName();
 		} else {
-			char gameTitle[17] = { '\0' };
-			core->getGameTitle(core, gameTitle);
-			title = gameTitle;
-
-#ifdef USE_SQLITE3
-			if (db && crc32 && NoIntroDBLookupGameByCRC(db, crc32, &game)) {
-				title = QLatin1String(game.name);
-			}
-#endif
+			title = m_controller->title();
 		}
-		
+
 		MultiplayerController* multiplayer = m_controller->multiplayerController();
 		if (multiplayer && multiplayer->attached() > 1) {
 			title += tr(" -  Player %1 of %2").arg(multiplayer->playerId(m_controller.get()) + 1).arg(multiplayer->attached());
@@ -1128,9 +1119,7 @@ void Window::setupMenu(QMenuBar* menubar) {
 	m_actions.addAction(tr("Load &patch..."), "loadPatch", this, &Window::selectPatch, "file");
 
 #ifdef M_CORE_GBA
-	m_actions.addAction(tr("Boot BIOS"), "bootBIOS", [this]() {
-		setController(m_manager->loadBIOS(mPLATFORM_GBA, m_config->getOption("gba.bios")), QString());
-	}, "file");
+	m_actions.addAction(tr("Boot BIOS"), "bootBIOS", this, &Window::bootBIOS, "file");
 #endif
 
 	addGameAction(tr("Replace ROM..."), "replaceROM", this, &Window::replaceROM, "file");
@@ -1209,6 +1198,8 @@ void Window::setupMenu(QMenuBar* menubar) {
 
 #ifdef M_CORE_GBA
 	m_actions.addSeparator("file");
+	m_actions.addAction(tr("Convert save game..."), "convertSave", openControllerTView<SaveConverter>(), "file");
+
 	Action* importShark = addGameAction(tr("Import GameShark Save..."), "importShark", this, &Window::importSharkport, "file");
 	m_platformActions.insert(mPLATFORM_GBA, importShark);
 
@@ -1221,11 +1212,19 @@ void Window::setupMenu(QMenuBar* menubar) {
 		GBAApp::app()->newWindow();
 	}, "file");
 
+#ifdef M_CORE_GBA
+	Action* dolphin = m_actions.addAction(tr("Connect to Dolphin..."), "connectDolphin", openNamedTView<DolphinConnector>(&m_dolphinView, this), "file");
+	m_platformActions.insert(mPLATFORM_GBA, dolphin);
+#endif
+
+	m_actions.addSeparator("file");
+
+	m_actions.addAction(tr("Report bug..."), "bugReport", openTView<ReportView>(), "file");
+
 #ifndef Q_OS_MAC
 	m_actions.addSeparator("file");
 #endif
 
-	m_actions.addAction(tr("Report bug..."), "bugReport", openTView<ReportView>(), "file");
 	m_actions.addAction(tr("About..."), "about", openTView<AboutScreen>(), "file");
 
 #ifndef Q_OS_MAC
@@ -1462,8 +1461,8 @@ void Window::setupMenu(QMenuBar* menubar) {
 #endif
 
 #ifdef USE_FFMPEG
-	addGameAction(tr("Record A/V..."), "recordOutput", this, &Window::openVideoWindow, "av");
-	addGameAction(tr("Record GIF/WebP/APNG..."), "recordGIF", this, &Window::openGIFWindow, "av");
+	addGameAction(tr("Record A/V..."), "recordOutput", openNamedControllerTView<VideoView>(&m_videoView), "av");
+	addGameAction(tr("Record GIF/WebP/APNG..."), "recordGIF", openNamedControllerTView<GIFView>(&m_gifView), "av");
 #endif
 
 	m_actions.addSeparator("av");
@@ -1487,16 +1486,7 @@ void Window::setupMenu(QMenuBar* menubar) {
 		m_overrideView->recheck();
 	}, "tools");
 
-	m_actions.addAction(tr("Game Pak sensors..."), "sensorWindow", [this]() {
-		if (!m_sensorView) {
-			m_sensorView = std::make_unique<SensorView>(&m_inputController);
-			if (m_controller) {
-				m_sensorView->setController(m_controller);
-			}
-			connect(this, &Window::shutdown, m_sensorView.get(), &QWidget::close);
-		}
-		m_sensorView->show();
-	}, "tools");
+	m_actions.addAction(tr("Game Pak sensors..."), "sensorWindow",  openNamedControllerTView<SensorView>(&m_sensorView, &m_inputController), "tools");
 
 	addGameAction(tr("&Cheats..."), "cheatsWindow", openControllerTView<CheatsView>(), "tools");
 

@@ -34,6 +34,7 @@ class CoreController;
 class CoreManager;
 class DebuggerConsoleController;
 class Display;
+class DolphinConnector;
 class FrameView;
 class GDBController;
 class GIFView;
@@ -72,6 +73,7 @@ signals:
 public slots:
 	void setController(CoreController* controller, const QString& fname);
 	void selectROM();
+	void bootBIOS();
 #ifdef USE_SQLITE3
 	void selectROMInArchive();
 	void addDirToLibrary();
@@ -103,11 +105,6 @@ public slots:
 
 #ifdef USE_DEBUGGERS
 	void consoleOpen();
-#endif
-
-#ifdef USE_FFMPEG
-	void openVideoWindow();
-	void openGIFWindow();
 #endif
 
 #ifdef USE_GDB_STUB
@@ -168,6 +165,8 @@ private:
 
 	template <typename T, typename... A> std::function<void()> openTView(A... arg);
 	template <typename T, typename... A> std::function<void()> openControllerTView(A... arg);
+	template <typename T, typename... A> std::function<void()> openNamedTView(std::unique_ptr<T>*, A... arg);
+	template <typename T, typename... A> std::function<void()> openNamedControllerTView(std::unique_ptr<T>*, A... arg);
 
 	Action* addGameAction(const QString& visibleName, const QString& name, Action::Function action, const QString& menu = {}, const QKeySequence& = {});
 	template<typename T, typename V> Action* addGameAction(const QString& visibleName, const QString& name, T* obj, V (T::*action)(), const QString& menu = {}, const QKeySequence& = {});
@@ -228,11 +227,12 @@ private:
 
 	std::unique_ptr<OverrideView> m_overrideView;
 	std::unique_ptr<SensorView> m_sensorView;
+	std::unique_ptr<DolphinConnector> m_dolphinView;
 	FrameView* m_frameView = nullptr;
 
 #ifdef USE_FFMPEG
-	VideoView* m_videoView = nullptr;
-	GIFView* m_gifView = nullptr;
+	std::unique_ptr<VideoView> m_videoView;
+	std::unique_ptr<GIFView> m_gifView;
 #endif
 
 #ifdef USE_GDB_STUB

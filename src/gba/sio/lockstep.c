@@ -149,11 +149,7 @@ bool GBASIOLockstepNodeUnload(struct GBASIODriver* driver) {
 
 	// Flush ongoing transfer
 	if (mTimingIsScheduled(&driver->p->p->timing, &node->event)) {
-		int oldWhen = node->event.when;
-
-		mTimingDeschedule(&driver->p->p->timing, &node->event);
-		mTimingSchedule(&driver->p->p->timing, &node->event, 0);
-		node->eventDiff -= oldWhen - node->event.when;
+		node->eventDiff -= node->event.when - mTimingCurrentTime(&driver->p->p->timing);
 		mTimingDeschedule(&driver->p->p->timing, &node->event);
 	}
 
@@ -190,15 +186,11 @@ static uint16_t GBASIOLockstepNodeMultiWriteRegister(struct GBASIODriver* driver
 				ATOMIC_STORE(node->p->d.transferActive, TRANSFER_STARTING);
 				ATOMIC_STORE(node->p->d.transferCycles, GBASIOCyclesPerTransfer[GBASIOMultiplayerGetBaud(node->d.p->siocnt)][node->p->d.attached - 1]);
 
-				bool scheduled = mTimingIsScheduled(&driver->p->p->timing, &node->event);
-				int oldWhen = node->event.when;
-
-				mTimingDeschedule(&driver->p->p->timing, &node->event);
-				mTimingSchedule(&driver->p->p->timing, &node->event, 0);
-
-				if (scheduled) {
-					node->eventDiff -= oldWhen - node->event.when;
+				if (mTimingIsScheduled(&driver->p->p->timing, &node->event)) {
+					node->eventDiff -= node->event.when - mTimingCurrentTime(&driver->p->p->timing);
+					mTimingDeschedule(&driver->p->p->timing, &node->event);
 				}
+				mTimingSchedule(&driver->p->p->timing, &node->event, 0);
 			} else {
 				value &= ~0x0080;
 			}
@@ -375,17 +367,22 @@ static int32_t _masterUpdate(struct GBASIOLockstepNode* node) {
 
 static uint32_t _slaveUpdate(struct GBASIOLockstepNode* node) {
 	enum mLockstepPhase transferActive;
-	int attachedMulti, attached;
+	int attached;
+	int attachedMode;
 
 	ATOMIC_LOAD(transferActive, node->p->d.transferActive);
-	ATOMIC_LOAD(attachedMulti, node->p->attachedMulti);
 	ATOMIC_LOAD(attached, node->p->d.attached);
 
-	node->d.p->siocnt = GBASIOMultiplayerSetReady(node->d.p->siocnt, attachedMulti == attached);
+	if (node->mode == SIO_MULTI) {
+		ATOMIC_LOAD(attachedMode, node->p->attachedMulti);
+		node->d.p->siocnt = GBASIOMultiplayerSetReady(node->d.p->siocnt, attachedMode == attached);
+	} else {
+		ATOMIC_LOAD(attachedMode, node->p->attachedNormal);
+	}
 	bool signal = false;
 	switch (transferActive) {
 	case TRANSFER_IDLE:
-		if (!GBASIOMultiplayerIsReady(node->d.p->siocnt)) {
+		if (attachedMode != attached) {
 			node->p->d.addCycles(&node->p->d, node->id, LOCKSTEP_INCREMENT);
 		}
 		break;
@@ -443,14 +440,13 @@ static uint32_t _slaveUpdate(struct GBASIOLockstepNode* node) {
 static void _GBASIOLockstepNodeProcessEvents(struct mTiming* timing, void* user, uint32_t cyclesLate) {
 	struct GBASIOLockstepNode* node = user;
 	mLockstepLock(&node->p->d);
-	if (node->p->d.attached < 2) {
-		mLockstepUnlock(&node->p->d);
-		return;
-	}
+
 	int32_t cycles = 0;
 	node->nextEvent -= cyclesLate;
 	node->eventDiff += cyclesLate;
-	if (node->nextEvent <= 0) {
+	if (node->p->d.attached < 2) {
+		cycles = GBASIOCyclesPerTransfer[GBASIOMultiplayerGetBaud(node->d.p->siocnt)][0];
+	} else if (node->nextEvent <= 0) {
 		if (!node->id) {
 			cycles = _masterUpdate(node);
 		} else {
@@ -488,15 +484,32 @@ static uint16_t GBASIOLockstepNodeNormalWriteRegister(struct GBASIODriver* drive
 		}
 		if (value & 0x0080) {
 			if (!node->id) {
-				// Internal shift clock
-				if (value & 1) {
-					ATOMIC_STORE(node->p->d.transferActive, TRANSFER_STARTING);
-				}
 				// Frequency
+				int32_t cycles;
 				if (value & 2) {
-					node->p->d.transferCycles = GBA_ARM7TDMI_FREQUENCY / 1024;
+					cycles = 8 * 8;
 				} else {
-					node->p->d.transferCycles = GBA_ARM7TDMI_FREQUENCY / 8192;
+					cycles = 64 * 8;
+				}
+				if (value & 0x1000) {
+					cycles *= 4;
+				}
+
+				enum mLockstepPhase transferActive;
+				ATOMIC_LOAD(transferActive, node->p->d.transferActive);
+
+				if (transferActive == TRANSFER_IDLE) {
+					mLOG(GBA_SIO, DEBUG, "Lockstep %i: Transfer initiated", node->id);
+					ATOMIC_STORE(node->p->d.transferActive, TRANSFER_STARTING);
+					ATOMIC_STORE(node->p->d.transferCycles, cycles);
+
+					if (mTimingIsScheduled(&driver->p->p->timing, &node->event)) {
+						node->eventDiff -= node->event.when - mTimingCurrentTime(&driver->p->p->timing);
+						mTimingDeschedule(&driver->p->p->timing, &node->event);
+					}
+					mTimingSchedule(&driver->p->p->timing, &node->event, 0);
+				} else {
+					value &= ~0x0080;
 				}
 			} else {
 

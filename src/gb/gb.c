@@ -26,12 +26,13 @@ const uint32_t GB_COMPONENT_MAGIC = 0x400000;
 
 static const uint8_t _knownHeader[4] = { 0xCE, 0xED, 0x66, 0x66};
 
-#define DMG_BIOS_CHECKSUM 0xC2F5CC97
-#define DMG_2_BIOS_CHECKSUM 0x59C8598E
+#define DMG0_BIOS_CHECKSUM 0xC2F5CC97
+#define DMG_BIOS_CHECKSUM 0x59C8598E
 #define MGB_BIOS_CHECKSUM 0xE6920754
 #define SGB_BIOS_CHECKSUM 0xEC8A83B9
 #define SGB2_BIOS_CHECKSUM 0X53D0DD63
 #define CGB_BIOS_CHECKSUM 0x41884E46
+#define AGB_BIOS_CHECKSUM 0xFFD6B0F1
 
 mLOG_DEFINE_CATEGORY(GB, "GB", "gb");
 
@@ -113,10 +114,10 @@ bool GBLoadROM(struct GB* gb, struct VFile* vf) {
 		return false;
 	}
 	gb->yankedRomSize = 0;
-	gb->memory.romBase = gb->memory.rom;
 	gb->memory.romSize = gb->pristineRomSize;
 	gb->romCrc32 = doCrc32(gb->memory.rom, gb->memory.romSize);
-	GBMBCInit(gb);
+	memset(&gb->memory.mbcState, 0, sizeof(gb->memory.mbcState));
+	GBMBCReset(gb);
 
 	if (gb->cpu) {
 		struct SM83Core* cpu = gb->cpu;
@@ -132,7 +133,7 @@ void GBYankROM(struct GB* gb) {
 	gb->yankedMbc = gb->memory.mbcType;
 	gb->memory.romSize = 0;
 	gb->memory.mbcType = GB_MBC_NONE;
-	gb->memory.sramAccess = false;
+	GBMBCReset(gb);
 
 	if (gb->cpu) {
 		struct SM83Core* cpu = gb->cpu;
@@ -293,8 +294,9 @@ void GBSavedataUnmask(struct GB* gb) {
 
 void GBUnloadROM(struct GB* gb) {
 	// TODO: Share with GBAUnloadROM
-	if (gb->memory.rom && gb->memory.romBase != gb->memory.rom && !gb->isPristine) {
-		free(gb->memory.romBase);
+	off_t romBase = gb->memory.romBase - gb->memory.rom;
+	if (romBase >= 0 && ((size_t) romBase < gb->memory.romSize || (size_t) romBase < gb->yankedRomSize)) {
+		gb->memory.romBase = NULL;
 	}
 	if (gb->memory.rom && !gb->isPristine) {
 		if (gb->yankedRomSize) {
@@ -315,6 +317,7 @@ void GBUnloadROM(struct GB* gb) {
 	gb->isPristine = false;
 
 	gb->sramMaskWriteback = false;
+	GBSavedataUnmask(gb);
 	GBSramDeinit(gb);
 	if (gb->sramRealVf) {
 		gb->sramRealVf->close(gb->sramRealVf);
@@ -373,6 +376,7 @@ void GBApplyPatch(struct GB* gb, struct Patch* patch) {
 }
 
 void GBDestroy(struct GB* gb) {
+	GBUnmapBIOS(gb);
 	GBUnloadROM(gb);
 
 	if (gb->biosVf) {
@@ -411,11 +415,12 @@ static uint32_t _GBBiosCRC32(struct VFile* vf) {
 bool GBIsBIOS(struct VFile* vf) {
 	switch (_GBBiosCRC32(vf)) {
 	case DMG_BIOS_CHECKSUM:
-	case DMG_2_BIOS_CHECKSUM:
+	case DMG0_BIOS_CHECKSUM:
 	case MGB_BIOS_CHECKSUM:
 	case SGB_BIOS_CHECKSUM:
 	case SGB2_BIOS_CHECKSUM:
 	case CGB_BIOS_CHECKSUM:
+	case AGB_BIOS_CHECKSUM:
 		return true;
 	default:
 		return false;
@@ -577,27 +582,29 @@ void GBSkipBIOS(struct GB* gb) {
 	mTimingDeschedule(&gb->timing, &gb->timer.event);
 	mTimingSchedule(&gb->timing, &gb->timer.event, gb->timer.nextDiv);
 
-	GBIOWrite(gb, GB_REG_LCDC, 0x91);
-	GBVideoSkipBIOS(&gb->video);
-
 	if (gb->biosVf) {
 		GBUnmapBIOS(gb);
 	}
+
+	GBIOWrite(gb, GB_REG_LCDC, 0x91);
+	gb->memory.io[GB_REG_BANK] = 0x1;
+	GBVideoSkipBIOS(&gb->video);
 }
 
 void GBMapBIOS(struct GB* gb) {
 	gb->biosVf->seek(gb->biosVf, 0, SEEK_SET);
-	uint8_t* oldRomBase = gb->memory.romBase;
 	gb->memory.romBase = malloc(GB_SIZE_CART_BANK0);
 	ssize_t size = gb->biosVf->read(gb->biosVf, gb->memory.romBase, GB_SIZE_CART_BANK0);
-	memcpy(&gb->memory.romBase[size], &oldRomBase[size], GB_SIZE_CART_BANK0 - size);
-	if (size > 0x100) {
-		memcpy(&gb->memory.romBase[0x100], &oldRomBase[0x100], sizeof(struct GBCartridge));
+	if (gb->memory.rom) {
+		memcpy(&gb->memory.romBase[size], &gb->memory.rom[size], GB_SIZE_CART_BANK0 - size);
+		if (size > 0x100) {
+			memcpy(&gb->memory.romBase[0x100], &gb->memory.rom[0x100], sizeof(struct GBCartridge));
+		}
 	}
 }
 
 void GBUnmapBIOS(struct GB* gb) {
-	if (gb->memory.romBase < gb->memory.rom || gb->memory.romBase > &gb->memory.rom[gb->memory.romSize - 1]) {
+	if (gb->memory.io[GB_REG_BANK] == 0xFF && gb->memory.romBase != gb->memory.rom) {
 		free(gb->memory.romBase);
 		if (gb->memory.mbcType == GB_MMM01) {
 			GBMBCSwitchBank0(gb, gb->memory.romSize / GB_SIZE_CART_BANK0 - 2);
@@ -618,7 +625,7 @@ void GBDetectModel(struct GB* gb) {
 	if (gb->biosVf) {
 		switch (_GBBiosCRC32(gb->biosVf)) {
 		case DMG_BIOS_CHECKSUM:
-		case DMG_2_BIOS_CHECKSUM:
+		case DMG0_BIOS_CHECKSUM:
 			gb->model = GB_MODEL_DMG;
 			break;
 		case MGB_BIOS_CHECKSUM:
@@ -632,6 +639,9 @@ void GBDetectModel(struct GB* gb) {
 			break;
 		case CGB_BIOS_CHECKSUM:
 			gb->model = GB_MODEL_CGB;
+			break;
+		case AGB_BIOS_CHECKSUM:
+			gb->model = GB_MODEL_AGB;
 			break;
 		default:
 			gb->biosVf->close(gb->biosVf);

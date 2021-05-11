@@ -276,10 +276,10 @@ const QList<IOViewer::RegisterDescription>& IOViewer::registerDescriptions(mPlat
 	});
 	// 0x0400004C: MOSAIC
 	regGBA.append({
-		{ tr("Background mosaic size vertical"), 0, 4 },
-		{ tr("Background mosaic size horizontal"), 4, 4 },
-		{ tr("Object mosaic size vertical"), 8, 4 },
-		{ tr("Object mosaic size horizontal"), 12, 4 },
+		{ tr("Background mosaic size horizontal"), 0, 4 },
+		{ tr("Background mosaic size vertical"), 4, 4 },
+		{ tr("Object mosaic size horizontal"), 8, 4 },
+		{ tr("Object mosaic size vertical"), 12, 4 },
 	});
 	// 0x0400004E: Unused
 	regGBA.append(RegisterDescription());
@@ -1594,7 +1594,7 @@ IOViewer::IOViewer(std::shared_ptr<CoreController> controller, QWidget* parent)
 		m_ui.regSelect->addItem("0x" + QString("%1: %2").arg((i << m_width) + m_base, 4, 16, QChar('0')).toUpper().arg(reg), i << m_width);
 	}
 
-	const QFont font = GBAApp::monospaceFont();
+	const QFont font = GBAApp::app()->monospaceFont();
 	m_ui.regValue->setFont(font);
 
 	connect(m_ui.buttonBox, &QDialogButtonBox::clicked, this, &IOViewer::buttonPressed);
@@ -1730,7 +1730,7 @@ void IOViewer::selectRegister(int address) {
 			sbox->setAccelerated(true);
 			box->addWidget(sbox, i, 1, Qt::AlignRight);
 
-			connect(sbox, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), [sbox, this, &ri](int v) {
+			connect(sbox, static_cast<void (QSpinBox::*)(int)>(&QSpinBox::valueChanged), [this, &ri](int v) {
 				for (int o = 0; o < ri.size; ++o) {
 					QSignalBlocker blocker(m_b[o + ri.start]);
 					m_b[o + ri.start]->setChecked(v & (1 << o));

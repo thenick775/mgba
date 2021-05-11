@@ -25,6 +25,9 @@
 #ifdef M_CORE_GB
 #include <mgba/internal/gb/sio/printer.h>
 #endif
+#ifdef M_CORE_GBA
+#include <mgba/internal/gba/sio/dolphin.h>
+#endif
 
 #ifdef M_CORE_GBA
 #include <mgba/gba/interface.h>
@@ -53,12 +56,22 @@ public:
 
 	class Interrupter {
 	public:
+		Interrupter();
 		Interrupter(CoreController*);
 		Interrupter(std::shared_ptr<CoreController>);
 		Interrupter(const Interrupter&);
 		~Interrupter();
 
+		Interrupter& operator=(const Interrupter&);
+
+		void interrupt(CoreController*);
+		void interrupt(std::shared_ptr<CoreController>);
+		void resume();
+
 	private:
+		void interrupt();
+		void resume(CoreController*);
+
 		CoreController* m_parent;
 	};
 
@@ -72,6 +85,10 @@ public:
 
 	bool isPaused();
 	bool hasStarted();
+
+	QString title() { return m_dbTitle.isNull() ? m_internalTitle : m_dbTitle; }
+	QString intenralTitle() { return m_internalTitle; }
+	QString dbTitle() { return m_dbTitle; }
 
 	mPlatform platform() const;
 	QSize screenDimensions() const;
@@ -90,6 +107,10 @@ public:
 	void setMultiplayerController(MultiplayerController*);
 	void clearMultiplayerController();
 	MultiplayerController* multiplayerController() { return m_multiplayer; }
+
+#ifdef M_CORE_GBA
+	bool isDolphinConnected() const { return !SOCKET_FAILED(m_dolphin.data); }
+#endif
 
 	mCacheSet* graphicCaches();
 	int stateSlot() const { return m_stateSlot; }
@@ -160,6 +181,9 @@ public slots:
 	void detachBattleChipGate();
 	void setBattleChipId(uint16_t id);
 	void setBattleChipFlavor(int flavor);
+
+	bool attachDolphin(const Address& address);
+	void detachDolphin();
 #endif
 
 	void setAVStream(mAVStream*);
@@ -201,9 +225,15 @@ private:
 
 	void updateFastForward();
 
+	void updateROMInfo();
+
 	mCoreThread m_threadContext{};
 
 	bool m_patched = false;
+
+	uint32_t m_crc32;
+	QString m_internalTitle;
+	QString m_dbTitle;
 
 	QByteArray m_activeBuffer;
 	QByteArray m_completeBuffer;
@@ -249,6 +279,9 @@ private:
 	InputController* m_inputController = nullptr;
 	LogController* m_log = nullptr;
 	MultiplayerController* m_multiplayer = nullptr;
+#ifdef M_CORE_GBA
+	GBASIODolphin m_dolphin;
+#endif
 
 	mVideoLogContext* m_vl = nullptr;
 	VFile* m_vlVf = nullptr;

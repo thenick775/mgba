@@ -94,23 +94,23 @@ InputController::InputController(int playerId, QWidget* topLevel, QObject* paren
 		InputControllerImage* image = static_cast<InputControllerImage*>(context);
 		image->w = w;
 		image->h = h;
+		image->p->m_cameraActive = true;
 		if (image->image.isNull()) {
 			image->image.load(":/res/no-cam.png");
 		}
 #ifdef BUILD_QT_MULTIMEDIA
-		if (image->p->m_config->getQtOption("cameraDriver").toInt() == static_cast<int>(CameraDriver::QT_MULTIMEDIA)) {
-			QByteArray camera = image->p->m_config->getQtOption("camera").toByteArray();
-			if (!camera.isNull()) {
-				QMetaObject::invokeMethod(image->p, "setCamera", Q_ARG(QByteArray, camera));
-			}
-			QMetaObject::invokeMethod(image->p, "setupCam");
+		QByteArray camera = image->p->m_config->getQtOption("camera").toByteArray();
+		if (!camera.isNull()) {
+			image->p->m_cameraDevice = camera;
 		}
+		QMetaObject::invokeMethod(image->p, "setupCam");
 #endif
 	};
 
 	m_image.stopRequestImage = [](mImageSource* context) {
 		InputControllerImage* image = static_cast<InputControllerImage*>(context);
 #ifdef BUILD_QT_MULTIMEDIA
+		image->p->m_cameraActive = false;
 		QMetaObject::invokeMethod(image->p, "teardownCam");
 #endif
 	};
@@ -178,6 +178,9 @@ void InputController::loadConfiguration(uint32_t type) {
 }
 
 void InputController::loadProfile(uint32_t type, const QString& profile) {
+	if (profile.isEmpty()) {
+		return;
+	}
 	bool loaded = mInputProfileLoad(&m_inputMap, type, m_config->input(), profile.toUtf8().constData());
 	recalibrateAxes();
 	if (!loaded) {
@@ -207,6 +210,9 @@ void InputController::saveConfiguration(uint32_t type) {
 }
 
 void InputController::saveProfile(uint32_t type, const QString& profile) {
+	if (profile.isEmpty()) {
+		return;
+	}
 	mInputProfileSave(&m_inputMap, type, m_config->input(), profile.toUtf8().constData());
 	m_config->write();
 }
@@ -563,6 +569,10 @@ void InputController::bindHat(uint32_t type, int hat, GamepadHatEvent::Direction
 	mInputBindHat(&m_inputMap, type, hat, &bindings);
 }
 
+void InputController::unbindAllHats(uint32_t type) {
+	mInputUnbindAllHats(&m_inputMap, type);
+}
+
 void InputController::testGamepad(int type) {
 	QWriteLocker l(&m_eventsLock);
 	auto activeAxes = activeGamepadAxes(type);
@@ -756,9 +766,17 @@ void InputController::setLuminanceValue(uint8_t value) {
 
 void InputController::setupCam() {
 #ifdef BUILD_QT_MULTIMEDIA
+	if (m_config->getQtOption("cameraDriver").toInt() != static_cast<int>(CameraDriver::QT_MULTIMEDIA)) {
+		return;
+	}
+
 	if (!m_camera) {
-		m_camera = std::make_unique<QCamera>();
+		m_camera = std::make_unique<QCamera>(m_cameraDevice);
 		connect(m_camera.get(), &QCamera::statusChanged, this, &InputController::prepareCamSettings, Qt::QueuedConnection);
+	}
+	if (m_camera->status() == QCamera::UnavailableStatus) {
+		m_camera.reset();
+		return;
 	}
 	m_camera->setCaptureMode(QCamera::CaptureVideo);
 	m_camera->setViewfinder(&m_videoDumper);
@@ -810,20 +828,22 @@ void InputController::prepareCamSettings(QCamera::Status status) {
 void InputController::teardownCam() {
 #ifdef BUILD_QT_MULTIMEDIA
 	if (m_camera) {
-		m_camera->stop();
+		m_camera->unload();
+		m_camera.reset();
 	}
 #endif
 }
 
 void InputController::setCamera(const QByteArray& name) {
 #ifdef BUILD_QT_MULTIMEDIA
-	bool needsRestart = false;
-	if (m_camera) {
-		needsRestart = m_camera->state() == QCamera::ActiveState;
+	if (m_cameraDevice == name) {
+		return;
 	}
-	m_camera = std::make_unique<QCamera>(name);
-	connect(m_camera.get(), &QCamera::statusChanged, this, &InputController::prepareCamSettings, Qt::QueuedConnection);
-	if (needsRestart) {
+	m_cameraDevice = name;
+	if (m_camera && m_camera->state() == QCamera::ActiveState) {
+		teardownCam();
+	}
+	if (m_cameraActive) {
 		setupCam();
 	}
 #endif

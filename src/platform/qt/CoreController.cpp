@@ -25,6 +25,7 @@
 #include <mgba/internal/gb/gb.h>
 #include <mgba/internal/gb/renderers/cache-set.h>
 #endif
+#include "feature/sqlite3/no-intro.h"
 #include <mgba-util/math.h>
 #include <mgba-util/vfs.h>
 
@@ -39,6 +40,11 @@ CoreController::CoreController(mCore* core, QObject* parent)
 {
 	m_threadContext.core = core;
 	m_threadContext.userData = this;
+	updateROMInfo();
+
+#ifdef M_CORE_GBA
+	GBASIODolphinCreate(&m_dolphin);
+#endif
 
 	m_resetActions.append([this]() {
 		if (m_autoload) {
@@ -111,6 +117,9 @@ CoreController::CoreController(mCore* core, QObject* parent)
 		}
 
 		controller->clearMultiplayerController();
+#ifdef M_CORE_GBA
+		controller->detachDolphin();
+#endif
 		QMetaObject::invokeMethod(controller, "stopping");
 	};
 
@@ -354,6 +363,28 @@ mCacheSet* CoreController::graphicCaches() {
 	}
 	return m_cacheSet.get();
 }
+
+#ifdef M_CORE_GBA
+bool CoreController::attachDolphin(const Address& address) {
+	if (platform() != mPLATFORM_GBA) {
+		return false;
+	}
+	if (GBASIODolphinConnect(&m_dolphin, &address, 0, 0)) {
+		GBA* gba = static_cast<GBA*>(m_threadContext.core->board);
+		GBASIOSetDriver(&gba->sio, &m_dolphin.d, SIO_JOYBUS);
+		return true;
+	}
+	return false;
+}
+
+void CoreController::detachDolphin() {
+	if (platform() == mPLATFORM_GBA) {
+		GBA* gba = static_cast<GBA*>(m_threadContext.core->board);
+		GBASIOSetDriver(&gba->sio, nullptr, SIO_JOYBUS);
+	}
+	GBASIODolphinDestroy(&m_dolphin);
+}
+#endif
 
 void CoreController::setOverride(std::unique_ptr<Override> override) {
 	Interrupter interrupter(this);
@@ -681,8 +712,10 @@ void CoreController::loadPatch(const QString& patchPath) {
 		m_threadContext.core->loadPatch(m_threadContext.core, patch);
 		m_patched = true;
 		patch->close(patch);
+		updateROMInfo();
 	}
 	if (mCoreThreadHasStarted(&m_threadContext)) {
+		interrupter.resume();
 		reset();
 	}
 }
@@ -697,6 +730,7 @@ void CoreController::replaceGame(const QString& path) {
 	Interrupter interrupter(this);
 	mDirectorySetDetachBase(&m_threadContext.core->dirs);
 	mCoreLoadFile(m_threadContext.core, fname.toUtf8().constData());
+	updateROMInfo();
 }
 
 void CoreController::yankPak() {
@@ -765,7 +799,7 @@ void CoreController::scanCard(const QString& path) {
 		QFile file(path);
 		file.open(QIODevice::ReadOnly);
 		m_eReaderData = file.read(2912);
-	} else if (image.size() == QSize(989, 44)) {
+	} else if (image.size() == QSize(989, 44) || image.size() == QSize(639, 44)) {
 		const uchar* bits = image.constBits();
 		size_t size;
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 10, 0))
@@ -1074,25 +1108,75 @@ void CoreController::updateFastForward() {
 	m_threadContext.core->reloadConfigOption(m_threadContext.core, NULL, NULL);
 }
 
+void CoreController::updateROMInfo() {
+	const NoIntroDB* db = GBAApp::app()->gameDB();
+	NoIntroGame game{};
+	m_crc32 = 0;
+	mCore* core = m_threadContext.core;
+	core->checksum(core, &m_crc32, mCHECKSUM_CRC32);
+
+	char gameTitle[17] = { '\0' };
+	core->getGameTitle(core, gameTitle);
+	m_internalTitle = QLatin1String(gameTitle);
+
+#ifdef USE_SQLITE3
+	if (db && m_crc32 && NoIntroDBLookupGameByCRC(db, m_crc32, &game)) {
+		m_dbTitle = QString::fromUtf8(game.name);
+	}
+#endif
+}
+
+CoreController::Interrupter::Interrupter()
+	: m_parent(nullptr)
+{
+}
+
 CoreController::Interrupter::Interrupter(CoreController* parent)
 	: m_parent(parent)
 {
-	if (!m_parent->thread()->impl) {
-		return;
-	}
-	if (mCoreThreadGet() != m_parent->thread()) {
-		mCoreThreadInterrupt(m_parent->thread());
-	} else {
-		mCoreThreadInterruptFromThread(m_parent->thread());
-	}
+	interrupt();
 }
 
 CoreController::Interrupter::Interrupter(std::shared_ptr<CoreController> parent)
 	: m_parent(parent.get())
 {
-	if (!m_parent->thread()->impl) {
+	interrupt();
+}
+
+CoreController::Interrupter::Interrupter(const Interrupter& other)
+	: m_parent(other.m_parent)
+{
+	interrupt();
+}
+
+CoreController::Interrupter::~Interrupter() {
+	resume();
+}
+
+CoreController::Interrupter& CoreController::Interrupter::operator=(const Interrupter& other)
+{
+	interrupt(other.m_parent);
+	return *this;
+}
+
+void CoreController::Interrupter::interrupt(CoreController* controller) {
+	if (m_parent != controller) {
+		CoreController* old = m_parent;
+		m_parent = controller;
+		interrupt();
+		resume(old);
+	}
+}
+
+void CoreController::Interrupter::interrupt(std::shared_ptr<CoreController> controller) {
+	interrupt(controller.get());
+}
+
+void CoreController::Interrupter::interrupt() {
+	if (!m_parent || !m_parent->thread()->impl) {
 		return;
 	}
+
 	if (mCoreThreadGet() != m_parent->thread()) {
 		mCoreThreadInterrupt(m_parent->thread());
 	} else {
@@ -1100,18 +1184,15 @@ CoreController::Interrupter::Interrupter(std::shared_ptr<CoreController> parent)
 	}
 }
 
-CoreController::Interrupter::Interrupter(const Interrupter& other)
-	: m_parent(other.m_parent)
-{
-	if (!m_parent->thread()->impl) {
-		return;
-	}
-	mCoreThreadInterrupt(m_parent->thread());
+void CoreController::Interrupter::resume() {
+	resume(m_parent);
+	m_parent = nullptr;
 }
 
-CoreController::Interrupter::~Interrupter() {
-	if (!m_parent->thread()->impl) {
+void CoreController::Interrupter::resume(CoreController* controller) {
+	if (!controller || !controller->thread()->impl) {
 		return;
 	}
-	mCoreThreadContinue(m_parent->thread());
+
+	mCoreThreadContinue(controller->thread());
 }

@@ -411,6 +411,7 @@ bool GBALoadROM(struct GBA* gba, struct VFile* vf) {
 		gba->memory.romSize = gba->pristineRomSize;
 	}
 	if (!gba->memory.rom) {
+		gba->romVf = NULL;
 		mLOG(GBA, WARN, "Couldn't map ROM");
 		return false;
 	}
@@ -439,7 +440,12 @@ bool GBALoadROM(struct GBA* gba, struct VFile* vf) {
 }
 
 bool GBALoadSave(struct GBA* gba, struct VFile* sav) {
+	enum SavedataType type = gba->memory.savedata.type;
+	GBASavedataDeinit(&gba->memory.savedata);
 	GBASavedataInit(&gba->memory.savedata, sav);
+	if (type != SAVEDATA_AUTODETECT) {
+		GBASavedataForceType(&gba->memory.savedata, type);
+	}
 	return sav;
 }
 

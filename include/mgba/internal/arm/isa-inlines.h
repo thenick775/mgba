@@ -37,17 +37,17 @@
 #define ARM_V_ADDITION(M, N, D) (!(ARM_SIGN((M) ^ (N))) && (ARM_SIGN((M) ^ (D))))
 #define ARM_V_SUBTRACTION(M, N, D) ((ARM_SIGN((M) ^ (N))) && (ARM_SIGN((M) ^ (D))))
 
-#define ARM_WAIT_MUL(R)                                                   \
+#define ARM_WAIT_MUL(R, WAIT)                                             \
 	{                                                                     \
-		int32_t wait;                                                     \
+		int32_t wait = WAIT;                                              \
 		if ((R & 0xFFFFFF00) == 0xFFFFFF00 || !(R & 0xFFFFFF00)) {        \
-			wait = 1;                                                     \
+			wait += 1;                                                    \
 		} else if ((R & 0xFFFF0000) == 0xFFFF0000 || !(R & 0xFFFF0000)) { \
-			wait = 2;                                                     \
+			wait += 2;                                                    \
 		} else if ((R & 0xFF000000) == 0xFF000000 || !(R & 0xFF000000)) { \
-			wait = 3;                                                     \
+			wait += 3;                                                    \
 		} else {                                                          \
-			wait = 4;                                                     \
+			wait += 4;                                                    \
 		}                                                                 \
 		currentCycles += cpu->memory.stall(cpu, wait);                    \
 	}
@@ -56,20 +56,22 @@
 #define ARM_ILL cpu->irqh.hitIllegal(cpu, opcode)
 
 static inline int32_t ARMWritePC(struct ARMCore* cpu) {
-	cpu->gprs[ARM_PC] = (cpu->gprs[ARM_PC] & -WORD_SIZE_ARM);
-	cpu->memory.setActiveRegion(cpu, cpu->gprs[ARM_PC]);
-	LOAD_32(cpu->prefetch[0], cpu->gprs[ARM_PC] & cpu->memory.activeMask, cpu->memory.activeRegion);
-	cpu->gprs[ARM_PC] += WORD_SIZE_ARM;
-	LOAD_32(cpu->prefetch[1], cpu->gprs[ARM_PC] & cpu->memory.activeMask, cpu->memory.activeRegion);
+	uint32_t pc = cpu->gprs[ARM_PC] & -WORD_SIZE_THUMB;
+	cpu->memory.setActiveRegion(cpu, pc);
+	LOAD_32(cpu->prefetch[0], pc & cpu->memory.activeMask, cpu->memory.activeRegion);
+	pc += WORD_SIZE_ARM;
+	LOAD_32(cpu->prefetch[1], pc & cpu->memory.activeMask, cpu->memory.activeRegion);
+	cpu->gprs[ARM_PC] = pc;
 	return 2 + cpu->memory.activeNonseqCycles32 + cpu->memory.activeSeqCycles32;
 }
 
 static inline int32_t ThumbWritePC(struct ARMCore* cpu) {
-	cpu->gprs[ARM_PC] = (cpu->gprs[ARM_PC] & -WORD_SIZE_THUMB);
-	cpu->memory.setActiveRegion(cpu, cpu->gprs[ARM_PC]);
-	LOAD_16(cpu->prefetch[0], cpu->gprs[ARM_PC] & cpu->memory.activeMask, cpu->memory.activeRegion);
-	cpu->gprs[ARM_PC] += WORD_SIZE_THUMB;
-	LOAD_16(cpu->prefetch[1], cpu->gprs[ARM_PC] & cpu->memory.activeMask, cpu->memory.activeRegion);
+	uint32_t pc = cpu->gprs[ARM_PC] & -WORD_SIZE_THUMB;
+	cpu->memory.setActiveRegion(cpu, pc);
+	LOAD_16(cpu->prefetch[0], pc & cpu->memory.activeMask, cpu->memory.activeRegion);
+	pc += WORD_SIZE_THUMB;
+	LOAD_16(cpu->prefetch[1], pc & cpu->memory.activeMask, cpu->memory.activeRegion);
+	cpu->gprs[ARM_PC] = pc;
 	return 2 + cpu->memory.activeNonseqCycles16 + cpu->memory.activeSeqCycles16;
 }
 
@@ -86,9 +88,11 @@ static inline void _ARMSetMode(struct ARMCore* cpu, enum ExecutionMode execution
 	switch (executionMode) {
 	case MODE_ARM:
 		cpu->cpsr.t = 0;
+		cpu->memory.activeMask &= ~2;
 		break;
 	case MODE_THUMB:
 		cpu->cpsr.t = 1;
+		cpu->memory.activeMask |= 2;
 	}
 	cpu->nextEvent = cpu->cycles;
 }

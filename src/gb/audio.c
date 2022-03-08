@@ -204,7 +204,6 @@ void GBAudioWriteNR14(struct GBAudio* audio, uint8_t value) {
 		}
 	}
 	if (GBAudioRegisterControlIsRestart(value << 8)) {
-		bool wasDead = !audio->playingCh1;
 		audio->playingCh1 = _resetEnvelope(&audio->ch1.envelope);
 		audio->ch1.sweep.realFrequency = audio->ch1.control.frequency;
 		_resetSweep(&audio->ch1.sweep);
@@ -217,10 +216,10 @@ void GBAudioWriteNR14(struct GBAudio* audio, uint8_t value) {
 				--audio->ch1.control.length;
 			}
 		}
-		if (wasDead && audio->playingCh1) {
-			mTimingSchedule(audio->timing, &audio->ch1Event, 0);
-		} else if (!audio->playingCh1) {
+		if (audio->playingCh1 && audio->ch1.envelope.dead != 2) {
+			_updateSquareChannel(&audio->ch1);
 			mTimingDeschedule(audio->timing, &audio->ch1Event);
+			mTimingSchedule(audio->timing, &audio->ch1Event, 0);
 		}
 	}
 	*audio->nr52 &= ~0x0001;
@@ -258,7 +257,6 @@ void GBAudioWriteNR24(struct GBAudio* audio, uint8_t value) {
 		}
 	}
 	if (GBAudioRegisterControlIsRestart(value << 8)) {
-		bool wasDead = !audio->playingCh2;
 		audio->playingCh2 = _resetEnvelope(&audio->ch2.envelope);
 
 		if (!audio->ch2.control.length) {
@@ -267,10 +265,10 @@ void GBAudioWriteNR24(struct GBAudio* audio, uint8_t value) {
 				--audio->ch2.control.length;
 			}
 		}
-		if (wasDead && audio->playingCh2) {
-			mTimingSchedule(audio->timing, &audio->ch2Event, 0);
-		} else if (!audio->playingCh2) {
+		if (audio->playingCh2 && audio->ch2.envelope.dead != 2) {
+			_updateSquareChannel(&audio->ch2);
 			mTimingDeschedule(audio->timing, &audio->ch2Event);
+			mTimingSchedule(audio->timing, &audio->ch2Event, 0);
 		}
 	}
 	*audio->nr52 &= ~0x0002;

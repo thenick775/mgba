@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "ffmpeg-decoder.h"
 
+#include <libavcodec/avcodec.h>
 #include <libswscale/swscale.h>
 
 void FFmpegDecoderInit(struct FFmpegDecoder* decoder) {
@@ -38,7 +39,7 @@ bool FFmpegDecoderOpen(struct FFmpegDecoder* decoder, const char* infile) {
 #else
 		enum AVMediaType type = decoder->context->streams[i]->codec->codec_type;
 #endif
-		struct AVCodec* codec;
+		const struct AVCodec* codec;
 		struct AVCodecContext* context = NULL;
 		if (type == AVMEDIA_TYPE_VIDEO && decoder->videoStream < 0) {
 			decoder->video = avcodec_alloc_context3(NULL);
@@ -81,20 +82,12 @@ bool FFmpegDecoderOpen(struct FFmpegDecoder* decoder, const char* infile) {
 			decoder->videoStream = i;
 			decoder->width = -1;
 			decoder->height = -1;
-#if LIBAVCODEC_VERSION_MAJOR >= 55
 			decoder->videoFrame = av_frame_alloc();
-#else
-			decoder->videoFrame = avcodec_alloc_frame();
-#endif
 		}
 
 		if (type == AVMEDIA_TYPE_AUDIO) {
 			decoder->audioStream = i;
-#if LIBAVCODEC_VERSION_MAJOR >= 55
 			decoder->audioFrame = av_frame_alloc();
-#else
-			decoder->audioFrame = avcodec_alloc_frame();
-#endif
 		}
 	}
 	return true;
@@ -102,11 +95,7 @@ bool FFmpegDecoderOpen(struct FFmpegDecoder* decoder, const char* infile) {
 
 void FFmpegDecoderClose(struct FFmpegDecoder* decoder) {
 	if (decoder->audioFrame) {
-#if LIBAVCODEC_VERSION_MAJOR >= 55
 		av_frame_free(&decoder->audioFrame);
-#else
-		avcodec_free_frame(&decoder->audioFrame);
-#endif
 	}
 
 	if (decoder->audio) {
@@ -124,11 +113,7 @@ void FFmpegDecoderClose(struct FFmpegDecoder* decoder) {
 	}
 
 	if (decoder->videoFrame) {
-#if LIBAVCODEC_VERSION_MAJOR >= 55
 		av_frame_free(&decoder->videoFrame);
-#else
-		avcodec_free_frame(&decoder->videoFrame);
-#endif
 	}
 
 	if (decoder->pixels) {

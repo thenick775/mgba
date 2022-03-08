@@ -119,19 +119,15 @@ static void _writeSGBBits(struct GB* gb, int bits) {
 	if (bits == gb->currentSgbBits) {
 		return;
 	}
-	switch (bits) {
-	case 0:
-	case 1:
-		if (gb->currentSgbBits & 2) {
-			gb->sgbIncrement = !gb->sgbIncrement;
-		}
-		break;
-	case 3:
+	if (bits & 2) {
 		if (gb->sgbIncrement) {
 			gb->sgbIncrement = false;
 			gb->sgbCurrentController = (gb->sgbCurrentController + 1) & gb->sgbControllers;
 		}
-		break;
+	} else {
+		if (gb->currentSgbBits & 2) {
+			gb->sgbIncrement = !gb->sgbIncrement;
+		}
 	}
 	gb->currentSgbBits = bits;
 	if (gb->sgbBit == 128 && bits == 2) {
@@ -510,9 +506,6 @@ void GBIOWrite(struct GB* gb, unsigned address, uint8_t value) {
 				gb->memory.io[GB_REG_BCPD] = gb->video.palette[gb->video.bcpIndex >> 1] >> (8 * (gb->video.bcpIndex & 1));
 				break;
 			case GB_REG_BCPD:
-				if (gb->video.mode != 3) {
-					GBVideoProcessDots(&gb->video, 0);
-				}
 				GBVideoWritePalette(&gb->video, address, value);
 				return;
 			case GB_REG_OCPS:
@@ -521,9 +514,6 @@ void GBIOWrite(struct GB* gb, unsigned address, uint8_t value) {
 				gb->memory.io[GB_REG_OCPD] = gb->video.palette[8 * 4 + (gb->video.ocpIndex >> 1)] >> (8 * (gb->video.ocpIndex & 1));
 				break;
 			case GB_REG_OCPD:
-				if (gb->video.mode != 3) {
-					GBVideoProcessDots(&gb->video, 0);
-				}
 				GBVideoWritePalette(&gb->video, address, value);
 				return;
 			case GB_REG_SVBK:
@@ -691,8 +681,8 @@ uint8_t GBIORead(struct GB* gb, unsigned address) {
 	case GB_REG_OCPS:
 	case GB_REG_OCPD:
 	case GB_REG_SVBK:
-	case GB_REG_UNK72:
-	case GB_REG_UNK73:
+	case GB_REG_PSWX:
+	case GB_REG_PSWY:
 	case GB_REG_UNK75:
 				// Handled transparently by the registers
 		if (gb->model < GB_MODEL_CGB) {
@@ -724,6 +714,7 @@ void GBIODeserialize(struct GB* gb, const struct GBSerializedState* state) {
 
 	gb->audio.enable = GBAudioEnableGetEnable(*gb->audio.nr52);
 	if (gb->audio.enable) {
+		gb->audio.playingCh1 = false;
 		GBIOWrite(gb, GB_REG_NR10, gb->memory.io[GB_REG_NR10]);
 		GBIOWrite(gb, GB_REG_NR11, gb->memory.io[GB_REG_NR11]);
 		GBIOWrite(gb, GB_REG_NR12, gb->memory.io[GB_REG_NR12]);
@@ -731,12 +722,14 @@ void GBIODeserialize(struct GB* gb, const struct GBSerializedState* state) {
 		gb->audio.ch1.control.frequency &= 0xFF;
 		gb->audio.ch1.control.frequency |= GBAudioRegisterControlGetFrequency(gb->memory.io[GB_REG_NR14] << 8);
 		gb->audio.ch1.control.stop = GBAudioRegisterControlGetStop(gb->memory.io[GB_REG_NR14] << 8);
+		gb->audio.playingCh2 = false;
 		GBIOWrite(gb, GB_REG_NR21, gb->memory.io[GB_REG_NR21]);
 		GBIOWrite(gb, GB_REG_NR22, gb->memory.io[GB_REG_NR22]);
 		GBIOWrite(gb, GB_REG_NR23, gb->memory.io[GB_REG_NR23]);
 		gb->audio.ch2.control.frequency &= 0xFF;
 		gb->audio.ch2.control.frequency |= GBAudioRegisterControlGetFrequency(gb->memory.io[GB_REG_NR24] << 8);
 		gb->audio.ch2.control.stop = GBAudioRegisterControlGetStop(gb->memory.io[GB_REG_NR24] << 8);
+		gb->audio.playingCh3 = false;
 		GBIOWrite(gb, GB_REG_NR30, gb->memory.io[GB_REG_NR30]);
 		GBIOWrite(gb, GB_REG_NR31, gb->memory.io[GB_REG_NR31]);
 		GBIOWrite(gb, GB_REG_NR32, gb->memory.io[GB_REG_NR32]);
@@ -744,6 +737,7 @@ void GBIODeserialize(struct GB* gb, const struct GBSerializedState* state) {
 		gb->audio.ch3.rate &= 0xFF;
 		gb->audio.ch3.rate |= GBAudioRegisterControlGetRate(gb->memory.io[GB_REG_NR34] << 8);
 		gb->audio.ch3.stop = GBAudioRegisterControlGetStop(gb->memory.io[GB_REG_NR34] << 8);
+		gb->audio.playingCh4 = false;
 		GBIOWrite(gb, GB_REG_NR41, gb->memory.io[GB_REG_NR41]);
 		GBIOWrite(gb, GB_REG_NR42, gb->memory.io[GB_REG_NR42]);
 		GBIOWrite(gb, GB_REG_NR43, gb->memory.io[GB_REG_NR43]);

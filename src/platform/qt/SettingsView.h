@@ -7,6 +7,7 @@
 
 #include <QDialog>
 #include <QMap>
+#include <QTimer>
 
 #include "ColorPicker.h"
 #include "LogConfigModel.h"
@@ -33,6 +34,7 @@ public:
 	enum class Page {
 		AV,
 		INTERFACE,
+		UPDATE,
 		EMULATION,
 		ENHANCEMENTS,
 		BIOS,
@@ -60,6 +62,7 @@ signals:
 	void pathsChanged();
 	void languageChanged();
 	void libraryCleared();
+	void audioHleChanged();
 
 public slots:
 	void selectPage(Page);
@@ -69,6 +72,7 @@ private slots:
 	void selectPath(QLineEdit*, QCheckBox*);
 	void updateConfig();
 	void reloadConfig();
+	void updateChecked();
 
 private:
 	Ui::SettingsView m_ui;
@@ -77,6 +81,7 @@ private:
 	InputController* m_input;
 	ShaderSelector* m_shader = nullptr;
 	LogConfigModel m_logModel;
+	QTimer m_checkTimer;
 
 #ifdef M_CORE_GB
 	uint32_t m_gbColors[12]{};

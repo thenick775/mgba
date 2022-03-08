@@ -90,7 +90,8 @@ static void GBAInit(void* cpu, struct mCPUComponent* component) {
 
 	GBAHardwareInit(&gba->memory.hw, NULL);
 
-	gba->keySource = 0;
+	gba->keysActive = 0;
+	gba->keysLast = 0x400;
 	gba->rotationSource = 0;
 	gba->luminanceSource = 0;
 	gba->rtcSource = 0;
@@ -148,7 +149,9 @@ void GBAUnloadROM(struct GBA* gba) {
 	gba->memory.rom = NULL;
 	gba->isPristine = false;
 
-	gba->memory.savedata.maskWriteback = false;
+	if (!gba->memory.savedata.dirty) {
+		gba->memory.savedata.maskWriteback = false;
+	}
 	GBASavedataUnmask(&gba->memory.savedata);
 	GBASavedataDeinit(&gba->memory.savedata);
 	if (gba->memory.savedata.realVf) {
@@ -219,7 +222,7 @@ void GBAReset(struct ARMCore* cpu) {
 
 	// GB Player SIO control should not be engaged before detection, even if we already know it's GBP
 	gba->memory.hw.devices &= ~HW_GB_PLAYER;
-	if (gba->sio.drivers.normal == &gba->memory.hw.gbpDriver.d) {
+	if (gba->sio.drivers.normal == &gba->sio.gbp.d) {
 		GBASIOSetDriver(&gba->sio, NULL, SIO_NORMAL_32);
 	}
 
@@ -265,8 +268,10 @@ void GBASkipBIOS(struct GBA* gba) {
 		} else {
 			cpu->gprs[ARM_PC] = BASE_WORKING_RAM + 0xC0;
 		}
-		gba->video.vcount = 0x7D;
-		gba->memory.io[REG_VCOUNT >> 1] = 0x7D;
+		gba->video.vcount = 0x7E;
+		gba->memory.io[REG_VCOUNT >> 1] = 0x7E;
+		mTimingDeschedule(&gba->timing, &gba->video.event);
+		mTimingSchedule(&gba->timing, &gba->video.event, 117);
 		gba->memory.io[REG_POSTFLG >> 1] = 1;
 		ARMWritePC(cpu);
 	}
@@ -501,7 +506,11 @@ void GBAApplyPatch(struct GBA* gba, struct Patch* patch) {
 	}
 	if (gba->romVf) {
 #ifndef FIXED_ROM_BUFFER
-		gba->romVf->unmap(gba->romVf, gba->memory.rom, gba->pristineRomSize);
+		if (!gba->isPristine) {
+			mappedMemoryFree(gba->memory.rom, SIZE_CART0);
+		} else {
+			gba->romVf->unmap(gba->romVf, gba->memory.rom, gba->pristineRomSize);
+		}
 #endif
 		gba->romVf->close(gba->romVf);
 		gba->romVf = NULL;
@@ -510,7 +519,7 @@ void GBAApplyPatch(struct GBA* gba, struct Patch* patch) {
 	gba->memory.rom = newRom;
 	gba->memory.hw.gpioBase = &((uint16_t*) gba->memory.rom)[GPIO_REG_DATA >> 1];
 	gba->memory.romSize = patchedSize;
-	gba->memory.romMask = SIZE_CART0 - 1;
+	gba->memory.romMask = toPow2(patchedSize) - 1;
 	gba->romCrc32 = doCrc32(gba->memory.rom, gba->memory.romSize);
 }
 
@@ -573,7 +582,7 @@ bool GBAIsROM(struct VFile* vf) {
 		uint32_t entry = ELFEntry(elf);
 		bool isGBA = true;
 		isGBA = isGBA && ELFMachine(elf) == EM_ARM;
-		isGBA = isGBA && (entry == BASE_CART0 || entry == BASE_WORKING_RAM);
+		isGBA = isGBA && (entry == BASE_CART0 || entry == BASE_WORKING_RAM + 0xC0);
 		ELFClose(elf);
 		return isGBA;
 	}
@@ -632,7 +641,7 @@ bool GBAIsMB(struct VFile* vf) {
 #ifdef USE_ELF
 	struct ELF* elf = ELFOpen(vf);
 	if (elf) {
-		bool isMB = ELFEntry(elf) == BASE_WORKING_RAM;
+		bool isMB = ELFEntry(elf) == BASE_WORKING_RAM + 0xC0;
 		ELFClose(elf);
 		return isMB;
 	}
@@ -663,13 +672,23 @@ bool GBAIsMB(struct VFile* vf) {
 	}
 
 	uint32_t pc = GBA_MB_MAGIC_OFFSET;
+	int wramAddrs = 0;
+	int wramLoads = 0;
+	int romAddrs = 0;
+	int romLoads = 0;
 	int i;
-	for (i = 0; i < 80; ++i) {
+	for (i = 0; i < 128; ++i) {
 		if (vf->read(vf, &signature, sizeof(signature)) != sizeof(signature)) {
 			break;
 		}
 		pc += 4;
 		LOAD_32(opcode, 0, &signature);
+		if ((opcode & ~0x1FFFF) == BASE_WORKING_RAM) {
+			++wramAddrs;
+		}
+		if ((opcode & ~0x1FFFF) == BASE_CART0) {
+			++romAddrs;
+		}
 		ARMDecodeARM(opcode, &info);
 		if (info.mnemonic != ARM_MN_LDR) {
 			continue;
@@ -690,10 +709,19 @@ bool GBAIsMB(struct VFile* vf) {
 			if (vf->seek(vf, pc, SEEK_SET) < 0) {
 				break;
 			}
-			if ((immediate & ~0x7FF) == BASE_WORKING_RAM) {
-				return true;
+			if ((immediate & ~0x1FFFF) == BASE_WORKING_RAM) {
+				++wramLoads;
+			}
+			if ((immediate & ~0x1FFFF) == BASE_CART0) {
+				++romLoads;
 			}
 		}
+	}
+	if (romLoads + romAddrs >= 2) {
+		return false;
+	}
+	if (wramLoads + wramAddrs) {
+		return true;
 	}
 	// Found a libgba-linked cart...these are a bit harder to detect.
 	return false;
@@ -855,7 +883,7 @@ void GBAFrameEnded(struct GBA* gba) {
 	}
 
 	if (gba->memory.hw.devices & (HW_GB_PLAYER | HW_GB_PLAYER_DETECTION)) {
-		GBAHardwarePlayerUpdate(gba);
+		GBASIOPlayerUpdate(gba);
 	}
 
 	size_t c;
@@ -871,23 +899,26 @@ void GBAFrameEnded(struct GBA* gba) {
 }
 
 void GBATestKeypadIRQ(struct GBA* gba) {
+	uint16_t keysLast = gba->keysLast;
+	uint16_t keysActive = gba->keysActive;
+
 	uint16_t keycnt = gba->memory.io[REG_KEYCNT >> 1];
 	if (!(keycnt & 0x4000)) {
 		return;
 	}
+	gba->keysLast = keysActive;
 	int isAnd = keycnt & 0x8000;
-	if (!gba->keySource) {
-		// TODO?
-		return;
-	}
 
 	keycnt &= 0x3FF;
-	uint16_t keyInput = *gba->keySource & keycnt;
-
-	if (isAnd && keycnt == keyInput) {
+	if (isAnd && keycnt == (keysActive & keycnt)) {
+		if (keysLast == keysActive) {
+			return;
+		}
 		GBARaiseIRQ(gba, IRQ_KEYPAD, 0);
-	} else if (!isAnd && keyInput) {
+	} else if (!isAnd && (keysActive & keycnt)) {
 		GBARaiseIRQ(gba, IRQ_KEYPAD, 0);
+	} else {
+		gba->keysLast = 0x400;
 	}
 }
 

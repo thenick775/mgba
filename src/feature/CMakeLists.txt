@@ -2,9 +2,11 @@ include(ExportDirectory)
 set(SOURCE_FILES
 	commandline.c
 	thread-proxy.c
+	updater.c
 	video-logger.c)
 
 set(GUI_FILES
+	gui/cheats.c
 	gui/gui-config.c
 	gui/gui-runner.c
 	gui/remap.c)

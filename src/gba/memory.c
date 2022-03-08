@@ -7,6 +7,7 @@
 
 #include <mgba/internal/arm/decoder.h>
 #include <mgba/internal/arm/macros.h>
+#include <mgba/internal/defines.h>
 #include <mgba/internal/gba/gba.h>
 #include <mgba/internal/gba/dma.h>
 #include <mgba/internal/gba/io.h>
@@ -94,6 +95,10 @@ void GBAMemoryInit(struct GBA* gba) {
 
 	GBADMAInit(gba);
 	GBAVFameInit(&gba->memory.vfame);
+
+	gba->memory.ereader.p = gba;
+	gba->memory.ereader.dots = NULL;
+	memset(gba->memory.ereader.cards, 0, sizeof(gba->memory.ereader.cards));
 }
 
 void GBAMemoryDeinit(struct GBA* gba) {
@@ -107,6 +112,8 @@ void GBAMemoryDeinit(struct GBA* gba) {
 	if (gba->memory.agbPrintBufferBackup) {
 		mappedMemoryFree(gba->memory.agbPrintBufferBackup, SIZE_AGB_PRINT);
 	}
+
+	GBACartEReaderDeinit(&gba->memory.ereader);
 }
 
 void GBAMemoryReset(struct GBA* gba) {
@@ -121,6 +128,7 @@ void GBAMemoryReset(struct GBA* gba) {
 	memset(gba->memory.io, 0, sizeof(gba->memory.io));
 	GBAAdjustWaitstates(gba, 0);
 
+	gba->memory.activeRegion = -1;
 	gba->memory.agbPrintProtect = 0;
 	gba->memory.agbPrintBase = 0;
 	memset(&gba->memory.agbPrintCtx, 0, sizeof(gba->memory.agbPrintCtx));
@@ -260,6 +268,11 @@ static void GBASetActiveRegion(struct ARMCore* cpu, uint32_t address) {
 	gba->lastJump = address;
 	memory->lastPrefetchedPc = 0;
 	if (newRegion == memory->activeRegion) {
+		if (cpu->cpsr.t) {
+			cpu->memory.activeMask |= WORD_SIZE_THUMB;
+		} else {
+			cpu->memory.activeMask &= -WORD_SIZE_ARM;
+		}
 		if (newRegion < REGION_CART0 || (address & (SIZE_CART0 - 1)) < memory->romSize) {
 			return;
 		}
@@ -369,7 +382,7 @@ static void GBASetActiveRegion(struct ARMCore* cpu, uint32_t address) {
 	wait += waitstatesRegion[REGION_WORKING_RAM];
 
 #define LOAD_WORKING_IRAM LOAD_32(value, address & (SIZE_WORKING_IRAM - 4), memory->iwram);
-#define LOAD_IO value = GBAIORead(gba, address & OFFSET_MASK & ~2) | (GBAIORead(gba, (address & OFFSET_MASK) | 2) << 16);
+#define LOAD_IO value = GBAIORead(gba, address & OFFSET_MASK & ~3) | (GBAIORead(gba, (address & OFFSET_MASK & ~1) | 2) << 16);
 
 #define LOAD_PALETTE_RAM \
 	LOAD_32(value, address & (SIZE_PALETTE_RAM - 4), gba->video.palette); \
@@ -588,7 +601,7 @@ uint32_t GBALoad16(struct ARMCore* cpu, uint32_t address, int* cycleCounter) {
 		if (memory->savedata.type == SAVEDATA_EEPROM || memory->savedata.type == SAVEDATA_EEPROM512) {
 			value = GBASavedataReadEEPROM(&memory->savedata);
 		} else if ((address & 0x0DFC0000) >= 0x0DF80000 && memory->hw.devices & HW_EREADER) {
-			value = GBAHardwareEReaderRead(&memory->hw, address);
+			value = GBACartEReaderRead(&memory->ereader, address);
 		} else if ((address & (SIZE_CART0 - 1)) < memory->romSize) {
 			LOAD_16(value, address & (SIZE_CART0 - 2), memory->rom);
 		} else if (memory->mirroring && (address & memory->romMask) < memory->romSize) {
@@ -704,13 +717,15 @@ uint32_t GBALoad8(struct ARMCore* cpu, uint32_t address, int* cycleCounter) {
 			break;
 		}
 		if (memory->hw.devices & HW_EREADER && (address & 0xE00FF80) >= 0xE00FF80) {
-			value = GBAHardwareEReaderReadFlash(&memory->hw, address);
+			value = GBACartEReaderReadFlash(&memory->ereader, address);
 		} else if (memory->savedata.type == SAVEDATA_SRAM) {
 			value = memory->savedata.data[address & (SIZE_CART_SRAM - 1)];
 		} else if (memory->savedata.type == SAVEDATA_FLASH512 || memory->savedata.type == SAVEDATA_FLASH1M) {
 			value = GBASavedataReadFlash(&memory->savedata, address);
 		} else if (memory->hw.devices & HW_TILT) {
 			value = GBAHardwareTiltRead(&memory->hw, address & OFFSET_MASK);
+		} else if (memory->savedata.type == SAVEDATA_SRAM512) {
+			value = memory->savedata.data[address & (SIZE_CART_SRAM512 - 1)];
 		} else {
 			mLOG(GBA_MEM, GAME_ERROR, "Reading from non-existent SRAM: 0x%08X", address);
 			value = 0xFF;
@@ -965,7 +980,7 @@ void GBAStore16(struct ARMCore* cpu, uint32_t address, int16_t value, int* cycle
 		break;
 	case REGION_CART2_EX:
 		if ((address & 0x0DFC0000) >= 0x0DF80000 && memory->hw.devices & HW_EREADER) {
-			GBAHardwareEReaderWrite(&memory->hw, address, value);
+			GBACartEReaderWrite(&memory->ereader, address, value);
 			break;
 		} else if (memory->savedata.type == SAVEDATA_AUTODETECT) {
 			mLOG(GBA_MEM, INFO, "Detected EEPROM savegame");
@@ -1052,7 +1067,7 @@ void GBAStore8(struct ARMCore* cpu, uint32_t address, int8_t value, int* cycleCo
 			}
 		}
 		if (memory->hw.devices & HW_EREADER && (address & 0xE00FF80) >= 0xE00FF80) {
-			GBAHardwareEReaderWriteFlash(&memory->hw, address, value);
+			GBACartEReaderWriteFlash(&memory->ereader, address, value);
 		} else if (memory->savedata.type == SAVEDATA_FLASH512 || memory->savedata.type == SAVEDATA_FLASH1M) {
 			GBASavedataWriteFlash(&memory->savedata, address, value);
 		} else if (memory->savedata.type == SAVEDATA_SRAM) {
@@ -1061,9 +1076,12 @@ void GBAStore8(struct ARMCore* cpu, uint32_t address, int8_t value, int* cycleCo
 			} else {
 				memory->savedata.data[address & (SIZE_CART_SRAM - 1)] = value;
 			}
-			memory->savedata.dirty |= SAVEDATA_DIRT_NEW;
+			memory->savedata.dirty |= mSAVEDATA_DIRT_NEW;
 		} else if (memory->hw.devices & HW_TILT) {
 			GBAHardwareTiltWrite(&memory->hw, address & OFFSET_MASK, value);
+		} else if (memory->savedata.type == SAVEDATA_SRAM512) {
+			memory->savedata.data[address & (SIZE_CART_SRAM512 - 1)] = value;
+			memory->savedata.dirty |= mSAVEDATA_DIRT_NEW;
 		} else {
 			mLOG(GBA_MEM, GAME_ERROR, "Writing to non-existent SRAM: 0x%08X", address);
 		}

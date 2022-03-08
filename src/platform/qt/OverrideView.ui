@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>444</width>
-    <height>284</height>
+    <height>288</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -143,7 +143,17 @@
               </item>
               <item>
                <property name="text">
-                <string>EEPROM</string>
+                <string>EEPROM 8kB</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>EEPROM 512 bytes</string>
+               </property>
+              </item>
+              <item>
+               <property name="text">
+                <string>SRAM 64kB (bootlegs only)</string>
                </property>
               </item>
              </widget>
@@ -186,6 +196,12 @@
             <property name="text">
              <string>VBA bug compatibility mode</string>
               </property>
+            <property name="tristate">
+             <bool>true</bool>
+            </property>
+            <property name="checkState">
+             <enum>Qt::PartiallyChecked</enum>
+            </property>
             <property name="tristate">
              <bool>true</bool>
             </property>
@@ -269,14 +285,14 @@
          </item>
         </widget>
        </item>
-       <item row="2" column="0">
+       <item row="3" column="0">
         <widget class="QLabel" name="label_5">
          <property name="text">
           <string>Background Colors</string>
          </property>
         </widget>
        </item>
-       <item row="2" column="1">
+       <item row="3" column="1">
         <layout class="QHBoxLayout" name="horizontalLayout">
          <item>
           <widget class="QFrame" name="color0">
@@ -356,21 +372,21 @@
          </item>
         </layout>
        </item>
-       <item row="3" column="0">
+       <item row="4" column="0">
         <widget class="QLabel" name="label_6">
          <property name="text">
           <string>Sprite Colors 1</string>
          </property>
         </widget>
        </item>
-       <item row="4" column="0">
+       <item row="5" column="0">
         <widget class="QLabel" name="label_7">
          <property name="text">
           <string>Sprite Colors 2</string>
          </property>
         </widget>
        </item>
-       <item row="3" column="1">
+       <item row="4" column="1">
         <layout class="QHBoxLayout" name="horizontalLayout_3">
          <item>
           <widget class="QFrame" name="color4">
@@ -450,7 +466,7 @@
          </item>
         </layout>
        </item>
-       <item row="4" column="1">
+       <item row="5" column="1">
         <layout class="QHBoxLayout" name="horizontalLayout_4">
          <item>
           <widget class="QFrame" name="color8">
@@ -529,6 +545,16 @@
           </widget>
          </item>
         </layout>
+       </item>
+       <item row="2" column="1">
+        <widget class="QComboBox" name="colorPreset"/>
+       </item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="label_15">
+         <property name="text">
+          <string>Palette preset</string>
+         </property>
+        </widget>
        </item>
       </layout>
      </widget>

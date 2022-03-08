@@ -116,7 +116,7 @@ typedef intptr_t ssize_t;
 #define ATOMIC_LOAD_PTR(DST, SRC) ATOMIC_LOAD(DST, SRC)
 #endif
 
-#if defined(_3DS) || defined(GEKKO) || defined(PSP2)
+#if defined(__3DS__) || defined(GEKKO) || defined(PSP2)
 // newlib doesn't support %z properly by default
 #define PRIz ""
 #elif defined(_MSC_VER)
@@ -252,9 +252,9 @@ typedef intptr_t ssize_t;
 #define ATTRIBUTE_NOINLINE
 // Adapted from https://stackoverflow.com/a/2390626
 #define _CONSTRUCTOR(FN, PRE) \
-    static void FN(void); \
-    __declspec(allocate(".CRT$XCU")) void (*_CONSTRUCTOR_ ## FN)(void) = FN; \
-    static void FN(void)
+	static void FN(void); \
+	__declspec(allocate(".CRT$XCU")) void (*_CONSTRUCTOR_ ## FN)(void) = FN; \
+	static void FN(void)
 #ifdef _WIN64
 #define CONSTRUCTOR(FN) _CONSTRUCTOR(FN, "")
 #else

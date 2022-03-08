@@ -16,7 +16,7 @@
 #include <mgba-util/string.h>
 #include <mgba-util/vfs.h>
 
-#ifdef _3DS
+#ifdef __3DS__
 #include <3ds.h>
 #endif
 #ifdef __SWITCH__
@@ -81,10 +81,10 @@ static Socket _socket = INVALID_SOCKET;
 static Socket _server = INVALID_SOCKET;
 
 int main(int argc, char** argv) {
-#ifdef _3DS
+#ifdef __3DS__
 	UNUSED(_mPerfShutdown);
-    gfxInitDefault();
-    osSetSpeedupEnable(true);
+	gfxInitDefault();
+	osSetSpeedupEnable(true);
 	consoleInit(GFX_BOTTOM, NULL);
 #elif defined(__SWITCH__)
 	UNUSED(_mPerfShutdown);
@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
 	cleanup:
 	freeArguments(&args);
 
-#ifdef _3DS
+#ifdef __3DS__
 	gfxExit();
 	acExit();
 #elif defined(__SWITCH__)

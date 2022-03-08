@@ -132,7 +132,11 @@ static void* _vfdMap(struct VFile* vf, size_t size, int flags) {
 	if (flags & MAP_WRITE) {
 		mmapFlags = MAP_SHARED;
 	}
-	return mmap(0, size, PROT_READ | PROT_WRITE, mmapFlags, vfd->fd, 0);
+	void* mapped = mmap(0, size, PROT_READ | PROT_WRITE, mmapFlags, vfd->fd, 0);
+	if (mapped == MAP_FAILED) {
+		return NULL;
+	}
+	return mapped;
 }
 
 static void _vfdUnmap(struct VFile* vf, void* memory, size_t size) {
@@ -200,9 +204,9 @@ static bool _vfdSync(struct VFile* vf, void* buffer, size_t size) {
 	UNUSED(size);
 	struct VFileFD* vfd = (struct VFileFD*) vf;
 #ifndef _WIN32
-#ifdef __HAIKU__
+#ifdef HAVE_FUTIMENS
 	futimens(vfd->fd, NULL);
-#else
+#elif defined(HAVE_FUTIMES)
 	futimes(vfd->fd, NULL);
 #endif
 	if (buffer && size) {

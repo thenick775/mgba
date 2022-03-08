@@ -125,6 +125,7 @@ public:
 	bool videoSync() const { return m_videoSync; }
 
 	void addFrameAction(std::function<void ()> callback);
+	uint64_t frameCounter() const { return m_frameCounter; }
 
 public slots:
 	void start();
@@ -133,12 +134,17 @@ public slots:
 	void setPaused(bool paused);
 	void frameAdvance();
 	void setSync(bool enable);
+	void showResetInfo(bool enable);
 
 	void setRewinding(bool);
 	void rewind(int count = 0);
 
 	void setFastForward(bool);
 	void forceFastForward(bool);
+
+	void changePlayer(int id);
+
+	void overrideMute(bool);
 
 	void loadState(int slot = 0);
 	void loadState(const QString& path, int flags = -1);
@@ -150,6 +156,7 @@ public slots:
 	void saveBackupState();
 
 	void loadSave(const QString&, bool temporary);
+	void loadSave(VFile*, bool temporary);
 	void loadPatch(const QString&);
 	void scanCard(const QString&);
 	void replaceGame(const QString&);
@@ -223,6 +230,8 @@ private:
 	int updateAutofire();
 	void finishFrame();
 
+	void updatePlayerSave();
+
 	void updateFastForward();
 
 	void updateROMInfo();
@@ -234,6 +243,7 @@ private:
 	uint32_t m_crc32;
 	QString m_internalTitle;
 	QString m_dbTitle;
+	bool m_showResetInfo = false;
 
 	QByteArray m_activeBuffer;
 	QByteArray m_completeBuffer;
@@ -242,6 +252,7 @@ private:
 	std::unique_ptr<mCacheSet> m_cacheSet;
 	std::unique_ptr<Override> m_override;
 
+	uint64_t m_frameCounter;
 	QList<std::function<void()>> m_resetActions;
 	QList<std::function<void()>> m_frameActions;
 	QMutex m_actionMutex{QMutex::Recursive};
@@ -275,6 +286,8 @@ private:
 	float m_fastForwardRatio = -1.f;
 	float m_fastForwardHeldRatio = -1.f;
 	float m_fpsTarget;
+
+	bool m_mute;
 
 	InputController* m_inputController = nullptr;
 	LogController* m_log = nullptr;

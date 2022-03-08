@@ -164,6 +164,7 @@ enum mColorFormat {
 	mCOLOR_BGRA5  = 0x08000,
 	mCOLOR_RGB8   = 0x10000,
 	mCOLOR_BGR8   = 0x20000,
+	mCOLOR_L8     = 0x40000,
 
 	mCOLOR_ANY    = -1
 };
@@ -181,6 +182,7 @@ struct mCoreCallbacks {
 	void (*shutdown)(void* context);
 	void (*keysRead)(void* context);
 	void (*savedataUpdated)(void* context);
+	void (*alarm)(void* context);
 };
 
 DECLARE_VECTOR(mCoreCallbacksList, struct mCoreCallbacks);
@@ -194,6 +196,7 @@ struct mAVStream {
 
 struct mKeyCallback {
 	uint16_t (*readKeys)(struct mKeyCallback*);
+	bool requireOpposingDirections;
 };
 
 enum mPeripheral {

@@ -159,6 +159,7 @@ static void mGLES2ContextInit(struct VideoBackend* v, WHandle handle) {
 	mGLES2ShaderInit(&context->finalShader, 0, 0, 0, 0, false, 0, 0);
 	mGLES2ShaderInit(&context->interframeShader, 0, _interframeFragmentShader, -1, -1, false, 0, 0);
 
+#ifdef BUILD_GLES3
 	if (context->initialShader.vao != (GLuint) -1) {
 		glBindVertexArray(context->initialShader.vao);
 		glBindBuffer(GL_ARRAY_BUFFER, context->vbo);
@@ -168,6 +169,7 @@ static void mGLES2ContextInit(struct VideoBackend* v, WHandle handle) {
 		glBindBuffer(GL_ARRAY_BUFFER, context->vbo);
 		glBindVertexArray(0);
 	}
+#endif
 
 	glDeleteFramebuffers(1, &context->finalShader.fbo);
 	glDeleteTextures(1, &context->finalShader.tex);
@@ -233,13 +235,16 @@ static void mGLES2ContextResized(struct VideoBackend* v, unsigned w, unsigned h)
 			context->shaders[n].dirty = true;
 		}
 	}
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	context->finalShader.dirty = true;
+	glBindTexture(GL_TEXTURE_2D, context->finalShader.tex);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, drawW, drawH, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, context->finalShader.fbo);
 	glViewport((w - drawW) / 2, (h - drawH) / 2, drawW, drawH);
 }
 
 static void mGLES2ContextClear(struct VideoBackend* v) {
-	UNUSED(v);
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	struct mGLES2Context* context = (struct mGLES2Context*) v;
+	glBindFramebuffer(GL_FRAMEBUFFER, context->finalShader.fbo);
 	glClearColor(0.f, 0.f, 0.f, 1.f);
 	glClear(GL_COLOR_BUFFER_BIT);
 }
@@ -275,7 +280,7 @@ void _drawShader(struct mGLES2Context* context, struct mGLES2Shader* shader) {
 			GLint oldTex;
 			glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTex);
 			glBindTexture(GL_TEXTURE_2D, shader->tex);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, drawW, drawH, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, drawW + padW * 2, drawH + padH * 2, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 			glBindTexture(GL_TEXTURE_2D, oldTex);
 		}
 		shader->dirty = false;
@@ -297,9 +302,12 @@ void _drawShader(struct mGLES2Context* context, struct mGLES2Shader* shader) {
 	glUseProgram(shader->program);
 	glUniform1i(shader->texLocation, 0);
 	glUniform2f(shader->texSizeLocation, context->d.width - padW, context->d.height - padH);
+#ifdef BUILD_GLES3
 	if (shader->vao != (GLuint) -1) {
 		glBindVertexArray(shader->vao);
-	} else {
+	} else
+#endif
+	{
 		glBindBuffer(GL_ARRAY_BUFFER, context->vbo);
 		glEnableVertexAttribArray(shader->positionLocation);
 		glVertexAttribPointer(shader->positionLocation, 2, GL_FLOAT, GL_FALSE, 0, NULL);
@@ -368,7 +376,6 @@ void mGLES2ContextDrawFrame(struct VideoBackend* v) {
 	glGetIntegerv(GL_VIEWPORT, viewport);
 
 	context->finalShader.filter = v->filter;
-	context->finalShader.dirty = true;
 	_drawShader(context, &context->initialShader);
 	if (v->interframeBlending) {
 		context->interframeShader.blend = true;
@@ -391,9 +398,11 @@ void mGLES2ContextDrawFrame(struct VideoBackend* v) {
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glUseProgram(0);
+#ifdef BUILD_GLES3
 	if (context->finalShader.vao != (GLuint) -1) {
 		glBindVertexArray(0);
 	}
+#endif
 }
 
 void mGLES2ContextPostFrame(struct VideoBackend* v, const void* frame) {
@@ -425,6 +434,26 @@ void mGLES2ContextCreate(struct mGLES2Context* context) {
 	context->d.clearMessage = 0;
 	context->shaders = 0;
 	context->nShaders = 0;
+}
+
+void mGLES2ContextUseFramebuffer(struct mGLES2Context* context) {
+	if (!context->finalShader.fbo) {
+		glGenFramebuffers(1, &context->finalShader.fbo);
+	}
+	if (!context->finalShader.tex) {
+		glGenTextures(1, &context->finalShader.tex);
+
+		glBindTexture(GL_TEXTURE_2D, context->finalShader.tex);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glBindTexture(GL_TEXTURE_2D, 0);
+	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, context->finalShader.fbo);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, context->finalShader.tex, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void mGLES2ShaderInit(struct mGLES2Shader* shader, const char* vs, const char* fs, int width, int height, bool integerScaling, struct mGLES2Uniform* uniforms, size_t nUniforms) {
@@ -508,6 +537,7 @@ void mGLES2ShaderInit(struct mGLES2Shader* shader, const char* vs, const char* f
 		shader->uniforms[i].location = glGetUniformLocation(shader->program, shader->uniforms[i].name);
 	}
 
+#ifdef BUILD_GLES3
 	const GLubyte* extensions = glGetString(GL_EXTENSIONS);
 	if (shaderBuffer[0] == _gles2Header || version[0] >= '3' || (extensions && strstr((const char*) extensions, "_vertex_array_object") != NULL)) {
 		glGenVertexArrays(1, &shader->vao);
@@ -515,7 +545,9 @@ void mGLES2ShaderInit(struct mGLES2Shader* shader, const char* vs, const char* f
 		glEnableVertexAttribArray(shader->positionLocation);
 		glVertexAttribPointer(shader->positionLocation, 2, GL_FLOAT, GL_FALSE, 0, NULL);
 		glBindVertexArray(0);
-	} else {
+	} else
+#endif
+	{
 		shader->vao = -1;
 	}
 
@@ -527,9 +559,11 @@ void mGLES2ShaderDeinit(struct mGLES2Shader* shader) {
 	glDeleteShader(shader->fragmentShader);
 	glDeleteProgram(shader->program);
 	glDeleteFramebuffers(1, &shader->fbo);
+#ifdef BUILD_GLES3
 	if (shader->vao != (GLuint) -1) {
 		glDeleteVertexArrays(1, &shader->vao);
 	}
+#endif
 }
 
 void mGLES2ShaderAttach(struct mGLES2Context* context, struct mGLES2Shader* shaders, size_t nShaders) {
@@ -547,16 +581,20 @@ void mGLES2ShaderAttach(struct mGLES2Context* context, struct mGLES2Shader* shad
 		glClearColor(0.f, 0.f, 0.f, 1.f);
 		glClear(GL_COLOR_BUFFER_BIT);
 
+#ifdef BUILD_GLES3
 		if (context->shaders[i].vao != (GLuint) -1) {
 			glBindVertexArray(context->shaders[i].vao);
 			glBindBuffer(GL_ARRAY_BUFFER, context->vbo);
 			glEnableVertexAttribArray(context->shaders[i].positionLocation);
 			glVertexAttribPointer(context->shaders[i].positionLocation, 2, GL_FLOAT, GL_FALSE, 0, NULL);
 		}
+#endif
 	}
+#ifdef BUILD_GLES3
 	if (context->initialShader.vao != (GLuint) -1) {
 		glBindVertexArray(0);
 	}
+#endif
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 

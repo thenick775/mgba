@@ -3,7 +3,7 @@ include("${VITASDK}/share/vita.cmake" REQUIRED)
 find_program(OBJCOPY ${cross_prefix}objcopy)
 find_file(NIDDB db.json PATHS ${VITASDK} ${VITASDK}/bin ${VITASDK}/share)
 
-set(OS_DEFINES IOAPI_NO_64)
+set(OS_DEFINES IOAPI_NO_64 _GNU_SOURCE)
 set(OS_DEFINES ${OS_DEFINES} PARENT_SCOPE)
 
 file(GLOB OS_SRC ${CMAKE_CURRENT_SOURCE_DIR}/psp2-*.c)
@@ -22,6 +22,7 @@ set(OS_LIB -lvita2d -l${M_LIBRARY}
     -lSceCtrl_stub
     -lSceDisplay_stub
     -lSceGxm_stub
+    -lSceIme_stub
     -lSceMotion_stub
     -lScePgf_stub
     -lScePhotoExport_stub

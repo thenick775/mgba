@@ -224,16 +224,14 @@ static void _GBCoreLoadConfig(struct mCore* core, const struct mCoreConfig* conf
 	mCoreConfigCopyValue(&core->config, config, "cgb.model");
 	mCoreConfigCopyValue(&core->config, config, "cgb.hybridModel");
 	mCoreConfigCopyValue(&core->config, config, "cgb.sgbModel");
+	mCoreConfigCopyValue(&core->config, config, "gb.colors");
 	mCoreConfigCopyValue(&core->config, config, "useCgbColors");
 	mCoreConfigCopyValue(&core->config, config, "allowOpposingDirections");
 
-	int fakeBool = 0;
-	mCoreConfigGetIntValue(config, "allowOpposingDirections", &fakeBool);
-	gb->allowOpposingDirections = fakeBool;
+	mCoreConfigGetBoolValue(config, "allowOpposingDirections", &gb->allowOpposingDirections);
 
-	if (mCoreConfigGetIntValue(config, "sgb.borders", &fakeBool)) {
-		gb->video.sgbBorders = fakeBool;
-		gb->video.renderer->enableSGBBorder(gb->video.renderer, fakeBool);
+	if (mCoreConfigGetBoolValue(config, "sgb.borders", &gb->video.sgbBorders)) {
+		gb->video.renderer->enableSGBBorder(gb->video.renderer, gb->video.sgbBorders);
 	}
 
 #if !defined(MINIMAL_CORE) || MINIMAL_CORE < 2
@@ -259,11 +257,8 @@ static void _GBCoreReloadConfigOption(struct mCore* core, const char* option, co
 		return;
 	}
 
-	int fakeBool;
 	if (strcmp("mute", option) == 0) {
-		if (mCoreConfigGetIntValue(config, "mute", &fakeBool)) {
-			core->opts.mute = fakeBool;
-
+		if (mCoreConfigGetBoolValue(config, "mute", &core->opts.mute)) {
 			if (core->opts.mute) {
 				gb->audio.masterVolume = 0;
 			} else {
@@ -288,16 +283,58 @@ static void _GBCoreReloadConfigOption(struct mCore* core, const char* option, co
 		if (config != &core->config) {
 			mCoreConfigCopyValue(&core->config, config, "allowOpposingDirections");
 		}
-		if (mCoreConfigGetIntValue(config, "allowOpposingDirections", &fakeBool)) {
-			gb->allowOpposingDirections = fakeBool;
-		}
+		mCoreConfigGetBoolValue(config, "allowOpposingDirections", &gb->allowOpposingDirections);
 		return;
 	}
 	if (strcmp("sgb.borders", option) == 0) {
-		if (mCoreConfigGetIntValue(config, "sgb.borders", &fakeBool)) {
-			gb->video.sgbBorders = fakeBool;
-			gb->video.renderer->enableSGBBorder(gb->video.renderer, fakeBool);
+		if (mCoreConfigGetBoolValue(config, "sgb.borders", &gb->video.sgbBorders)) {
+			gb->video.renderer->enableSGBBorder(gb->video.renderer, gb->video.sgbBorders);
 }
+	}
+
+	if (strcmp("gb.pal", option) == 0) {
+		int color;
+		if (mCoreConfigGetIntValue(config, "gb.pal[0]", &color)) {
+			GBVideoSetPalette(&gb->video, 0, color);
+		}
+		if (mCoreConfigGetIntValue(config, "gb.pal[1]", &color)) {
+			GBVideoSetPalette(&gb->video, 1, color);
+		}
+		if (mCoreConfigGetIntValue(config, "gb.pal[2]", &color)) {
+			GBVideoSetPalette(&gb->video, 2, color);
+		}
+		if (mCoreConfigGetIntValue(config, "gb.pal[3]", &color)) {
+			GBVideoSetPalette(&gb->video, 3, color);
+		}
+		if (mCoreConfigGetIntValue(config, "gb.pal[4]", &color)) {
+			GBVideoSetPalette(&gb->video, 4, color);
+		}
+		if (mCoreConfigGetIntValue(config, "gb.pal[5]", &color)) {
+			GBVideoSetPalette(&gb->video, 5, color);
+		}
+		if (mCoreConfigGetIntValue(config, "gb.pal[6]", &color)) {
+			GBVideoSetPalette(&gb->video, 6, color);
+		}
+		if (mCoreConfigGetIntValue(config, "gb.pal[7]", &color)) {
+			GBVideoSetPalette(&gb->video, 7, color);
+		}
+		if (mCoreConfigGetIntValue(config, "gb.pal[8]", &color)) {
+			GBVideoSetPalette(&gb->video, 8, color);
+		}
+		if (mCoreConfigGetIntValue(config, "gb.pal[9]", &color)) {
+			GBVideoSetPalette(&gb->video, 9, color);
+		}
+		if (mCoreConfigGetIntValue(config, "gb.pal[10]", &color)) {
+			GBVideoSetPalette(&gb->video, 10, color);
+		}
+		if (mCoreConfigGetIntValue(config, "gb.pal[11]", &color)) {
+			GBVideoSetPalette(&gb->video, 11, color);
+		}
+		if (gb->model < GB_MODEL_SGB) {
+			GBVideoWritePalette(&gb->video, GB_REG_BGP, gb->memory.io[GB_REG_BGP]);
+			GBVideoWritePalette(&gb->video, GB_REG_OBP0, gb->memory.io[GB_REG_OBP0]);
+			GBVideoWritePalette(&gb->video, GB_REG_OBP1, gb->memory.io[GB_REG_OBP1]);
+		}
 	}
 }
 
@@ -416,7 +453,7 @@ static void _GBCoreUnloadROM(struct mCore* core) {
 		mCheatDeviceDestroy(gbcore->cheatDevice);
 		gbcore->cheatDevice = NULL;
 	}
-	return GBUnloadROM(core->board);
+	GBUnloadROM(core->board);
 }
 
 static void _GBCoreChecksum(const struct mCore* core, void* data, enum mCoreChecksumType type) {
@@ -437,16 +474,22 @@ static void _GBCoreReset(struct mCore* core) {
 	}
 
 	if (gb->memory.rom) {
-		int doColorOverride = 0;
-		mCoreConfigGetIntValue(&core->config, "useCgbColors", &doColorOverride);
+		int doColorOverride = GB_COLORS_NONE;
+		mCoreConfigGetIntValue(&core->config, "gb.colors", &doColorOverride);
+
+		if (doColorOverride == GB_COLORS_NONE) {
+			// Backwards compat for renamed setting
+			mCoreConfigGetIntValue(&core->config, "useCgbColors", &doColorOverride);
+		}
 
 		struct GBCartridgeOverride override;
 		const struct GBCartridge* cart = (const struct GBCartridge*) &gb->memory.rom[0x100];
 		override.headerCrc32 = doCrc32(cart, sizeof(*cart));
-		bool modelOverride = GBOverrideFind(gbcore->overrides, &override) || (doColorOverride && GBOverrideColorFind(&override));
+		bool modelOverride = GBOverrideFind(gbcore->overrides, &override) || (doColorOverride && GBOverrideColorFind(&override, doColorOverride));
 		if (modelOverride) {
 			GBOverrideApply(gb, &override);
-		} else {
+		}
+		if (!modelOverride || override.model == GB_MODEL_AUTODETECT) {
 			const char* modelGB = mCoreConfigGetValue(&core->config, "gb.model");
 			const char* modelSGB = mCoreConfigGetValue(&core->config, "sgb.model");
 			const char* modelCGB = mCoreConfigGetValue(&core->config, "cgb.model");
@@ -514,6 +557,7 @@ static void _GBCoreReset(struct mCore* core) {
 				break;
 			case GB_MODEL_CGB:
 			case GB_MODEL_AGB:
+			case GB_MODEL_SCGB:
 				configPath = mCoreConfigGetValue(&core->config, "gbc.bios");
 				break;
 			default:
@@ -543,6 +587,7 @@ static void _GBCoreReset(struct mCore* core) {
 				break;
 			case GB_MODEL_CGB:
 			case GB_MODEL_AGB:
+			case GB_MODEL_SCGB:
 				strncat(path, PATH_SEP "gbc_bios.bin", PATH_MAX - strlen(path));
 				break;
 			default:
@@ -591,7 +636,7 @@ static void _GBCoreReset(struct mCore* core) {
 
 static void _GBCoreRunFrame(struct mCore* core) {
 	struct GB* gb = core->board;
-	int32_t frameCounter = gb->video.frameCounter;
+	uint32_t frameCounter = gb->video.frameCounter;
 	while (gb->video.frameCounter == frameCounter) {
 		SM83Run(core->cpu);
 	}
@@ -643,7 +688,7 @@ static void _GBCoreClearKeys(struct mCore* core, uint32_t keys) {
 	gbcore->keys &= ~keys;
 }
 
-static int32_t _GBCoreFrameCounter(const struct mCore* core) {
+static uint32_t _GBCoreFrameCounter(const struct mCore* core) {
 	const struct GB* gb = core->board;
 	return gb->video.frameCounter;
 }
@@ -770,13 +815,13 @@ void* _GBGetMemoryBlock(struct mCore* core, size_t id, size_t* sizeOut) {
 		*sizeOut = gb->memory.romSize;
 		return gb->memory.rom;
 	case GB_REGION_VRAM:
-		*sizeOut = GB_SIZE_WORKING_RAM_BANK0 * (isCgb ? 1 : 2);
+		*sizeOut = GB_SIZE_VRAM_BANK0 * (isCgb ? 1 : 2);
 		return gb->video.vram;
 	case GB_REGION_EXTERNAL_RAM:
 		*sizeOut = gb->sramSize;
 		return gb->memory.sram;
 	case GB_REGION_WORKING_RAM_BANK0:
-		*sizeOut = GB_SIZE_VRAM * (isCgb ? 8 : 2);
+		*sizeOut = GB_SIZE_WORKING_RAM_BANK0 * (isCgb ? 8 : 2);
 		return gb->memory.wram;
 	case GB_BASE_OAM:
 		*sizeOut = GB_SIZE_OAM;

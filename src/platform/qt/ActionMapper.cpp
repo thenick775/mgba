@@ -79,6 +79,20 @@ void ActionMapper::rebuildMenu(const QString& menu, QMenu* qmenu, QWidget* conte
 		} else if (!m_defaultShortcuts[actionName].isEmpty()) {
 			qaction->setShortcut(m_defaultShortcuts[actionName][0]);
 		}
+		switch (action->role()) {
+		case Action::Role::NO_ROLE:
+			qaction->setMenuRole(QAction::NoRole);
+			break;
+		case Action::Role::SETTINGS:
+			qaction->setMenuRole(QAction::PreferencesRole);
+			break;
+		case Action::Role::ABOUT:
+			qaction->setMenuRole(QAction::AboutRole);
+			break;
+		case Action::Role::QUIT:
+			qaction->setMenuRole(QAction::QuitRole);
+			break;
+		}
 		QObject::connect(qaction, &QAction::triggered, [qaction, action](bool enabled) {
 			if (qaction->isCheckable()) {
 				action->trigger(enabled);
@@ -87,7 +101,13 @@ void ActionMapper::rebuildMenu(const QString& menu, QMenu* qmenu, QWidget* conte
 			}
 		});
 		QObject::connect(action, &Action::enabled, qaction, &QAction::setEnabled);
-		QObject::connect(action, &Action::activated, qaction, &QAction::setChecked);
+		QObject::connect(action, &Action::activated, [qaction, action](bool active) {
+			if (qaction->isCheckable()) {
+				qaction->setChecked(active);
+			} else if (active) {
+				action->setActive(false);
+			}
+		});
 		QObject::connect(action, &Action::destroyed, qaction, &QAction::deleteLater);
 		if (shortcut) {
 			QObject::connect(shortcut, &Shortcut::shortcutChanged, qaction, [qaction](int shortcut) {

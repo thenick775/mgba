@@ -11,10 +11,13 @@
 #include "MultiplayerController.h"
 #include "Override.h"
 
+#include <QAbstractButton>
 #include <QDateTime>
+#include <QMessageBox>
 #include <QMutexLocker>
 
 #include <mgba/core/serialize.h>
+#include <mgba/core/version.h>
 #include <mgba/feature/video-logger.h>
 #ifdef M_CORE_GBA
 #include <mgba/internal/gba/gba.h>
@@ -69,6 +72,7 @@ CoreController::CoreController(mCore* core, QObject* parent)
 
 		if (controller->m_multiplayer) {
 			controller->m_multiplayer->attachGame(controller);
+			controller->updatePlayerSave();
 		}
 
 		QMetaObject::invokeMethod(controller, "started");
@@ -86,12 +90,17 @@ CoreController::CoreController(mCore* core, QObject* parent)
 		}
 
 		controller->m_resetActions.clear();
+		controller->m_frameCounter = -1;
 
 		if (!controller->m_hwaccel) {
 			context->core->setVideoBuffer(context->core, reinterpret_cast<color_t*>(controller->m_activeBuffer.data()), controller->screenDimensions().width());
 		}
 
+		QString message(tr("Reset r%1-%2 %3").arg(gitRevision).arg(QLatin1String(gitCommitShort)).arg(controller->m_crc32, 8, 16, QLatin1Char('0')));
 		QMetaObject::invokeMethod(controller, "didReset");
+		if (controller->m_showResetInfo) {
+			QMetaObject::invokeMethod(controller, "statusPosted", Q_ARG(const QString&, message));
+		}
 		controller->finishFrame();
 	};
 
@@ -183,13 +192,17 @@ CoreController::CoreController(mCore* core, QObject* parent)
 					return;
 				}
 			}
-			message = QString().vsprintf(format, args);
+			va_list argc;
+			va_copy(argc, args);
+			message = QString().vsprintf(format, argc);
+			va_end(argc);
 			QMetaObject::invokeMethod(controller, "statusPosted", Q_ARG(const QString&, message));
 		}
 		message = QString().vsprintf(format, args);
 		QMetaObject::invokeMethod(controller, "logPosted", Q_ARG(int, level), Q_ARG(int, category), Q_ARG(const QString&, message));
 		if (level == mLOG_FATAL) {
-			QMetaObject::invokeMethod(controller, "crashed", Q_ARG(const QString&, QString().vsprintf(format, args)));
+			mCoreThreadMarkCrashed(controller->thread());
+			QMetaObject::invokeMethod(controller, "crashed", Q_ARG(const QString&, message));
 		}
 	};
 }
@@ -275,6 +288,13 @@ void CoreController::loadConfig(ConfigController* config) {
 	mCoreConfigCopyValue(&m_threadContext.core->config, config->config(), "volume");
 	mCoreConfigCopyValue(&m_threadContext.core->config, config->config(), "mute");
 
+	int playerId = m_multiplayer->playerId(this) + 1;
+	QVariant savePlayerId = config->getOption("savePlayerId");
+	if (m_multiplayer->attached() < 2 && savePlayerId.canConvert<int>()) {
+		playerId = savePlayerId.toInt();
+	}
+	mCoreConfigSetOverrideIntValue(&m_threadContext.core->config, "savePlayerId", playerId);
+
 	QSize sizeBefore = screenDimensions();
 	m_activeBuffer.resize(256 * 224 * sizeof(color_t));
 	m_threadContext.core->setVideoBuffer(m_threadContext.core, reinterpret_cast<color_t*>(m_activeBuffer.data()), sizeBefore.width());
@@ -289,14 +309,15 @@ void CoreController::loadConfig(ConfigController* config) {
 		updateFastForward();
 		mCoreThreadRewindParamsChanged(&m_threadContext);
 	}
-	if (sizeBefore != sizeAfter) {
 #ifdef M_CORE_GB
+	if (sizeBefore != sizeAfter) {
 		mCoreConfigSetIntValue(&m_threadContext.core->config, "sgb.borders", 0);
 		m_threadContext.core->reloadConfigOption(m_threadContext.core, "sgb.borders", nullptr);
 		mCoreConfigCopyValue(&m_threadContext.core->config, config->config(), "sgb.borders");
 		m_threadContext.core->reloadConfigOption(m_threadContext.core, "sgb.borders", nullptr);
-#endif
 	}
+	m_threadContext.core->reloadConfigOption(m_threadContext.core, "gb.pal", config->config());
+#endif
 }
 
 #ifdef USE_DEBUGGERS
@@ -473,8 +494,15 @@ void CoreController::setSync(bool sync) {
 	}
 }
 
+void CoreController::showResetInfo(bool enable) {
+	m_showResetInfo = enable;
+}
+
 void CoreController::setRewinding(bool rewind) {
 	if (!m_threadContext.core->opts.rewindEnable) {
+		if (rewind) {
+			emit statusPosted(tr("Rewinding not currently enabled"));
+		}
 		return;
 	}
 	if (rewind && m_multiplayer && m_multiplayer->attached() > 1) {
@@ -489,17 +517,22 @@ void CoreController::setRewinding(bool rewind) {
 }
 
 void CoreController::rewind(int states) {
-	{
-		Interrupter interrupter(this);
-		if (!states) {
-			states = INT_MAX;
-		}
-		for (int i = 0; i < states; ++i) {
-			if (!mCoreRewindRestore(&m_threadContext.impl->rewind, m_threadContext.core)) {
-				break;
-			}
+	if (!states) {
+		return;
+	}
+	if (!m_threadContext.core->opts.rewindEnable) {
+		emit statusPosted(tr("Rewinding not currently enabled"));
+	}
+	Interrupter interrupter(this);
+	if (!states) {
+		states = INT_MAX;
+	}
+	for (int i = 0; i < states; ++i) {
+		if (!mCoreRewindRestore(&m_threadContext.impl->rewind, m_threadContext.core)) {
+			break;
 		}
 	}
+	interrupter.resume();
 	emit frameAvailable();
 	emit rewound();
 }
@@ -520,6 +553,58 @@ void CoreController::forceFastForward(bool enable) {
 	m_fastForwardForced = enable;
 	updateFastForward();
 	emit fastForwardChanged(enable || m_fastForward);
+}
+
+void CoreController::changePlayer(int id) {
+	Interrupter interrupter(this);
+	int playerId = 0;
+	mCoreConfigGetIntValue(&m_threadContext.core->config, "savePlayerId", &playerId);
+	if (id == playerId) {
+		return;
+	}
+	interrupter.resume();
+
+	QMessageBox* resetPrompt = new QMessageBox(QMessageBox::Question, tr("Reset the game?"),
+		tr("Most games will require a reset to load the new save. Do you want to reset now?"),
+		QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+	connect(resetPrompt, &QMessageBox::buttonClicked, this, [this, resetPrompt, id](QAbstractButton* button) {
+		Interrupter interrupter(this);
+		switch (resetPrompt->standardButton(button)) {
+		default:
+			return;
+		case QMessageBox::Yes:
+			mCoreConfigSetOverrideIntValue(&m_threadContext.core->config, "savePlayerId", id);
+			m_resetActions.append([this]() {
+				updatePlayerSave();
+			});
+			interrupter.resume();
+			reset();
+			break;
+		case QMessageBox::No:
+			mCoreConfigSetOverrideIntValue(&m_threadContext.core->config, "savePlayerId", id);
+			updatePlayerSave();
+			break;
+		}
+	});
+	resetPrompt->setAttribute(Qt::WA_DeleteOnClose);
+	resetPrompt->show();
+}
+
+void CoreController::overrideMute(bool override) {
+	m_mute = override;
+
+	Interrupter interrupter(this);
+	mCore* core = m_threadContext.core;
+	if (m_mute) {
+		core->opts.mute = true;
+	} else {
+		if (m_fastForward || m_fastForwardForced) {
+			core->opts.mute = m_fastForwardMute >= 0;
+		} else {
+			mCoreConfigGetBoolValue(&core->config, "mute", &core->opts.mute);
+		}
+	}
+	core->reloadConfigOption(core, NULL, NULL);
 }
 
 void CoreController::loadState(int slot) {
@@ -702,7 +787,22 @@ void CoreController::loadSave(const QString& path, bool temporary) {
 			m_threadContext.core->loadSave(m_threadContext.core, vf);
 		}
 	});
-	reset();
+	if (hasStarted()) {
+		reset();
+	}
+}
+
+void CoreController::loadSave(VFile* vf, bool temporary) {
+	m_resetActions.append([this, vf, temporary]() {
+		if (temporary) {
+			m_threadContext.core->loadTemporarySave(m_threadContext.core, vf);
+		} else {
+			m_threadContext.core->loadSave(m_threadContext.core, vf);
+		}
+	});
+	if (hasStarted()) {
+		reset();
+	}
 }
 
 void CoreController::loadPatch(const QString& patchPath) {
@@ -812,7 +912,7 @@ void CoreController::scanCard(const QString& path) {
 
 	mCoreThreadRunFunction(&m_threadContext, [](mCoreThread* thread) {
 		CoreController* controller = static_cast<CoreController*>(thread->userData);
-		GBAEReaderQueueCard(static_cast<GBA*>(thread->core->board), controller->m_eReaderData.constData(), controller->m_eReaderData.size());
+		GBACartEReaderQueueCard(static_cast<GBA*>(thread->core->board), controller->m_eReaderData.constData(), controller->m_eReaderData.size());
 	});
 #endif
 }
@@ -830,6 +930,7 @@ void CoreController::importSharkport(const QString& path) {
 	}
 	Interrupter interrupter(this);
 	GBASavedataImportSharkPort(static_cast<GBA*>(m_threadContext.core->board), vf, false);
+	GBASavedataImportGSV(static_cast<GBA*>(m_threadContext.core->board), vf, false);
 	vf->close(vf);
 #endif
 }
@@ -1058,10 +1159,31 @@ void CoreController::finishFrame() {
 				mCoreThreadPauseFromThread(&m_threadContext);
 			}
 		}
+		++m_frameCounter;
 	}
 	updateKeys();
 
 	QMetaObject::invokeMethod(this, "frameAvailable");
+}
+
+void CoreController::updatePlayerSave() {
+	int savePlayerId = 0;
+	mCoreConfigGetIntValue(&m_threadContext.core->config, "savePlayerId", &savePlayerId);
+	if (savePlayerId == 0 || m_multiplayer->attached() > 1) {
+		savePlayerId = m_multiplayer->playerId(this) + 1;
+	}
+
+	QString saveSuffix;
+	if (savePlayerId < 2) {
+		saveSuffix = QLatin1String(".sav");
+	} else {
+		saveSuffix = QString(".sa%1").arg(savePlayerId);
+	}
+	QByteArray saveSuffixBin(saveSuffix.toUtf8());
+	VFile* save = mDirectorySetOpenSuffix(&m_threadContext.core->dirs, m_threadContext.core->dirs.save, saveSuffixBin.constData(), O_CREAT | O_RDWR);
+	if (save) {
+		m_threadContext.core->loadSave(m_threadContext.core, save);
+	}
 }
 
 void CoreController::updateFastForward() {
@@ -1072,7 +1194,7 @@ void CoreController::updateFastForward() {
 			m_threadContext.core->opts.volume = m_fastForwardVolume;
 		}
 		if (m_fastForwardMute >= 0) {
-			m_threadContext.core->opts.mute = m_fastForwardMute;
+			m_threadContext.core->opts.mute = m_fastForwardMute || m_mute;
 		}
 
 		// If we aren't holding the fast forward button
@@ -1098,9 +1220,7 @@ void CoreController::updateFastForward() {
 		if (!mCoreConfigGetIntValue(&m_threadContext.core->config, "volume", &m_threadContext.core->opts.volume)) {
 			m_threadContext.core->opts.volume = 0x100;
 		}
-		int fakeBool = 0;
-		mCoreConfigGetIntValue(&m_threadContext.core->config, "mute", &fakeBool);
-		m_threadContext.core->opts.mute = fakeBool;
+		mCoreConfigGetBoolValue(&m_threadContext.core->config, "mute", &m_threadContext.core->opts.mute);
 		m_threadContext.impl->sync.fpsTarget = m_fpsTarget;
 		setSync(true);
 	}

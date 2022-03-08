@@ -226,7 +226,7 @@ static const int _isValidRegister[REG_MAX >> 1] = {
 	1, 1, 1, 1, 1, 0, 0, 0,
 	1, 1, 1, 0, 0, 0, 0, 0,
 	1, 0, 0, 0, 0, 0, 0, 0,
-	1, 0, 1, 0, 1, 0, 0, 0,
+	1, 1, 1, 1, 1, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
@@ -268,7 +268,7 @@ static const int _isRSpecialRegister[REG_MAX >> 1] = {
 	1, 1, 1, 1, 1, 0, 0, 0,
 	1, 1, 1, 0, 0, 0, 0, 0,
 	1, 0, 0, 0, 0, 0, 0, 0,
-	1, 0, 1, 0, 1, 0, 0, 0,
+	1, 1, 1, 1, 1, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
@@ -309,7 +309,7 @@ static const int _isWSpecialRegister[REG_MAX >> 1] = {
 	1, 1, 1, 1, 1, 0, 0, 0,
 	1, 1, 1, 0, 0, 0, 0, 0,
 	1, 0, 0, 0, 0, 0, 0, 0,
-	1, 0, 1, 0, 1, 0, 0, 0,
+	1, 1, 1, 1, 1, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
@@ -547,6 +547,9 @@ void GBAIOWrite(struct GBA* gba, uint32_t address, uint16_t value) {
 	// Interrupts and misc
 	case REG_KEYCNT:
 		value &= 0xC3FF;
+		if (gba->keysLast < 0x400) {
+			gba->keysLast &= gba->memory.io[address >> 1] | ~value;
+		}
 		gba->memory.io[address >> 1] = value;
 		GBATestKeypadIRQ(gba);
 		return;
@@ -743,28 +746,28 @@ uint16_t GBAIORead(struct GBA* gba, uint32_t address) {
 					callbacks->keysRead(callbacks->context);
 				}
 			}
-			uint16_t input = 0;
+			bool allowOpposingDirections = gba->allowOpposingDirections;
 			if (gba->keyCallback) {
-				input = gba->keyCallback->readKeys(gba->keyCallback);
-				if (gba->keySource) {
-					*gba->keySource = input;
-				}
-			} else if (gba->keySource) {
-				input = *gba->keySource;
-				if (!gba->allowOpposingDirections) {
-					unsigned rl = input & 0x030;
-					unsigned ud = input & 0x0C0;
-					input &= 0x30F;
-					if (rl != 0x030) {
-						input |= rl;
-					}
-					if (ud != 0x0C0) {
-						input |= ud;
-					}
+				gba->keysActive = gba->keyCallback->readKeys(gba->keyCallback);
+				if (!allowOpposingDirections) {
+					allowOpposingDirections = gba->keyCallback->requireOpposingDirections;
 				}
 			}
-			return 0x3FF ^ input;
+			uint16_t input = gba->keysActive;
+			if (!allowOpposingDirections) {
+				unsigned rl = input & 0x030;
+				unsigned ud = input & 0x0C0;
+				input &= 0x30F;
+				if (rl != 0x030) {
+					input |= rl;
+				}
+				if (ud != 0x0C0) {
+					input |= ud;
+				}
+			}
+			gba->memory.io[address >> 1] = 0x3FF ^ input;
 		}
+		break;
 	case REG_SIOCNT:
 		return gba->sio.siocnt;
 	case REG_RCNT:
@@ -919,6 +922,7 @@ uint16_t GBAIORead(struct GBA* gba, uint32_t address) {
 		// Handled transparently by registers
 		break;
 	case 0x066:
+	case 0x06A:
 	case 0x06E:
 	case 0x076:
 	case 0x07A:
@@ -973,6 +977,9 @@ void GBAIOSerialize(struct GBA* gba, struct GBASerializedState* state) {
 }
 
 void GBAIODeserialize(struct GBA* gba, const struct GBASerializedState* state) {
+	LOAD_16(gba->memory.io[REG_SOUNDCNT_X >> 1], REG_SOUNDCNT_X, state->io);
+	GBAAudioWriteSOUNDCNT_X(&gba->audio, gba->memory.io[REG_SOUNDCNT_X >> 1]);
+
 	int i;
 	for (i = 0; i < REG_MAX; i += 2) {
 		if (_isWSpecialRegister[i >> 1]) {
@@ -1003,7 +1010,6 @@ void GBAIODeserialize(struct GBA* gba, const struct GBASerializedState* state) {
 		LOAD_32(gba->memory.dma[i].nextCount, 0, &state->dma[i].nextCount);
 		LOAD_32(gba->memory.dma[i].when, 0, &state->dma[i].when);
 	}
-	GBAAudioWriteSOUNDCNT_X(&gba->audio, gba->memory.io[REG_SOUNDCNT_X >> 1]);
 	gba->sio.siocnt = gba->memory.io[REG_SIOCNT >> 1];
 	GBASIOWriteRCNT(&gba->sio, gba->memory.io[REG_RCNT >> 1]);
 

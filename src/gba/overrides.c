@@ -6,7 +6,8 @@
 #include <mgba/internal/gba/overrides.h>
 
 #include <mgba/internal/gba/gba.h>
-#include <mgba/internal/gba/hardware.h>
+#include <mgba/internal/gba/cart/ereader.h>
+#include <mgba/internal/gba/cart/gpio.h>
 
 #include <mgba-util/configuration.h>
 
@@ -240,6 +241,9 @@ bool GBAOverrideFind(const struct Configuration* config, struct GBACartridgeOver
 			if (strcasecmp(savetype, "SRAM") == 0) {
 				found = true;
 				override->savetype = SAVEDATA_SRAM;
+			} else if (strcasecmp(savetype, "SRAM512") == 0) {
+				found = true;
+				override->savetype = SAVEDATA_SRAM512;
 			} else if (strcasecmp(savetype, "EEPROM") == 0) {
 				found = true;
 				override->savetype = SAVEDATA_EEPROM;
@@ -286,6 +290,9 @@ void GBAOverrideSave(struct Configuration* config, const struct GBACartridgeOver
 	switch (override->savetype) {
 	case SAVEDATA_SRAM:
 		savetype = "SRAM";
+		break;
+	case SAVEDATA_SRAM512:
+		savetype = "SRAM512";
 		break;
 	case SAVEDATA_EEPROM:
 		savetype = "EEPROM";
@@ -351,7 +358,7 @@ void GBAOverrideApply(struct GBA* gba, const struct GBACartridgeOverride* overri
 		}
 
 		if (override->hardware & HW_EREADER) {
-			GBAHardwareInitEReader(&gba->memory.hw);
+			GBACartEReaderInit(&gba->memory.ereader);
 		}
 
 		if (override->hardware & HW_GB_PLAYER_DETECTION) {

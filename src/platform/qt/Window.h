@@ -63,7 +63,10 @@ public:
 
 	void resizeFrame(const QSize& size);
 
-	void updateMultiplayerStatus(bool canOpenAnother) { m_multiWindow->setEnabled(canOpenAnother); }
+	void updateMultiplayerStatus(bool canOpenAnother);
+	void updateMultiplayerActive(bool active);
+
+	InputController* inputController() { return &m_inputController; }
 
 signals:
 	void startDrawing();
@@ -82,6 +85,7 @@ public slots:
 	void selectState(bool load);
 	void selectPatch();
 	void scanCard();
+	void parseCard();
 	void enterFullScreen();
 	void exitFullScreen();
 	void toggleFullScreen();
@@ -138,12 +142,14 @@ private slots:
 
 	void tryMakePortable();
 	void mustRestart();
+	void mustReset();
 
 	void recordFrame();
 	void showFPS();
 	void focusCheck();
 
 	void updateFrame();
+	void updateMute();
 
 	void setLogo();
 
@@ -152,6 +158,7 @@ private:
 	static const int MUST_RESTART_TIMEOUT = 10000;
 
 	void setupMenu(QMenuBar*);
+	void setupOptions();
 	void openStateWindow(LoadSave);
 
 	void attachWidget(QWidget* widget);
@@ -209,6 +216,7 @@ private:
 	QElapsedTimer m_frameTimer;
 	QTimer m_fpsTimer;
 	QTimer m_mustRestart;
+	QTimer m_mustReset;
 	QList<QString> m_mruFiles;
 	ShortcutController* m_shortcutController;
 #if defined(BUILD_GL) || defined(BUILD_GLES2)
@@ -224,6 +232,10 @@ private:
 	bool m_pendingClose = false;
 
 	bool m_hitUnimplementedBiosCall;
+
+	bool m_inactiveMute = false;
+	bool m_multiActive = true;
+	int m_playerId;
 
 	std::unique_ptr<OverrideView> m_overrideView;
 	std::unique_ptr<SensorView> m_sensorView;

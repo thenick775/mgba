@@ -30,13 +30,13 @@
    <item row="0" column="1">
     <widget class="QLabel" name="name">
      <property name="text">
-      <string>{NAME}</string>
+      <string notr="true">{NAME}</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>
      </property>
      <property name="textInteractionFlags">
-      <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
+      <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
      </property>
     </widget>
    </item>
@@ -50,10 +50,10 @@
    <item row="1" column="1">
     <widget class="QLabel" name="title">
      <property name="text">
-      <string>{TITLE}</string>
+      <string notr="true">{TITLE}</string>
      </property>
      <property name="textInteractionFlags">
-      <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
+      <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
      </property>
     </widget>
    </item>
@@ -67,10 +67,10 @@
    <item row="2" column="1">
     <widget class="QLabel" name="id">
      <property name="text">
-      <string>{ID}</string>
+      <string notr="true">{ID}</string>
      </property>
      <property name="textInteractionFlags">
-      <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
+      <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
      </property>
     </widget>
    </item>
@@ -84,10 +84,10 @@
    <item row="3" column="1">
     <widget class="QLabel" name="size">
      <property name="text">
-      <string>{SIZE}</string>
+      <string notr="true">{SIZE}</string>
      </property>
      <property name="textInteractionFlags">
-      <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
+      <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
      </property>
     </widget>
    </item>
@@ -101,10 +101,10 @@
    <item row="4" column="1">
     <widget class="QLabel" name="crc">
      <property name="text">
-      <string>{CRC}</string>
+      <string notr="true">{CRC}</string>
      </property>
      <property name="textInteractionFlags">
-      <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByMouse</set>
+      <set>Qt::LinksAccessibleByMouse|Qt::TextSelectableByKeyboard|Qt::TextSelectableByMouse</set>
      </property>
     </widget>
    </item>

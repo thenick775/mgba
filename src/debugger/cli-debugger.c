@@ -760,7 +760,7 @@ static bool _doTrace(struct CLIDebugger* debugger) {
 		if (debugger->traceVf) {
 			debugger->traceVf->close(debugger->traceVf);
 			debugger->traceVf = NULL;
-}
+		}
 		return false;
 	}
 	return true;

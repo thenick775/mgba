@@ -99,8 +99,6 @@ void GIFView::setFilename(const QString& filename) {
 			m_ui.fmtApng->setChecked(true);
 		} else if (filename.endsWith(".webp")) {
 			m_ui.fmtWebP->setChecked(true);
-		} else if (filename.endsWith(".webp")) {
-			m_ui.fmtWebP->setChecked(Qt::Checked);
 		}
 	}
 }

@@ -220,7 +220,6 @@ void ARMDecodeThumb(uint16_t opcode, struct ARMInstructionInfo* info);
 bool ARMDecodeThumbCombine(struct ARMInstructionInfo* info1, struct ARMInstructionInfo* info2,
                            struct ARMInstructionInfo* out);
 uint32_t ARMResolveMemoryAccess(struct ARMInstructionInfo* info, struct ARMRegisterFile* regs, uint32_t pc);
-uint32_t ARMResolveMemoryAccess(struct ARMInstructionInfo* info, struct ARMRegisterFile* regs, uint32_t pc);
 
 #ifdef USE_DEBUGGERS
 struct mDebuggerSymbols;

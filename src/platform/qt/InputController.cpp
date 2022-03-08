@@ -93,7 +93,6 @@ InputController::InputController(int playerId, QWidget* topLevel, QObject* paren
 		InputControllerImage* image = static_cast<InputControllerImage*>(context);
 		image->w = w;
 		image->h = h;
-		image->p->m_cameraActive = true;
 		if (image->image.isNull()) {
 			image->image.load(":/res/no-cam.png");
 		}

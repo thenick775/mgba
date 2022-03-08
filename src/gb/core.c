@@ -289,7 +289,7 @@ static void _GBCoreReloadConfigOption(struct mCore* core, const char* option, co
 	if (strcmp("sgb.borders", option) == 0) {
 		if (mCoreConfigGetBoolValue(config, "sgb.borders", &gb->video.sgbBorders)) {
 			gb->video.renderer->enableSGBBorder(gb->video.renderer, gb->video.sgbBorders);
-}
+		}
 	}
 
 	if (strcmp("gb.pal", option) == 0) {
@@ -525,7 +525,7 @@ static void _GBCoreReset(struct mCore* core) {
 					}
 					break;
 				}
-	}
+			}
 		}
 	}
 
@@ -803,7 +803,7 @@ size_t _GBListMemoryBlocks(const struct mCore* core, const struct mCoreMemoryBlo
 	struct GBCore* gbcore = (struct GBCore*) core;
 	*blocks = gbcore->memoryBlocks;
 	return sizeof(gbcore->memoryBlocks) / sizeof(*gbcore->memoryBlocks);
-	}
+}
 
 void* _GBGetMemoryBlock(struct mCore* core, size_t id, size_t* sizeOut) {
 	struct GB* gb = core->board;

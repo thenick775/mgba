@@ -185,22 +185,16 @@
            </widget>
           </item>
           <item>
-             <widget class="QCheckBox" name="hwGBPlayer">
-              <property name="text">
-               <string>Game Boy Player features</string>
-              </property>
-             </widget>
-            </item>
-            <item>
+           <widget class="QCheckBox" name="hwGBPlayer">
+            <property name="text">
+             <string>Game Boy Player features</string>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QCheckBox" name="vbaBugCompat">
             <property name="text">
              <string>VBA bug compatibility mode</string>
-              </property>
-            <property name="tristate">
-             <bool>true</bool>
-            </property>
-            <property name="checkState">
-             <enum>Qt::PartiallyChecked</enum>
             </property>
             <property name="tristate">
              <bool>true</bool>
@@ -209,8 +203,8 @@
              <enum>Qt::PartiallyChecked</enum>
             </property>
            </widget>
-            </item>
-           </layout>
+          </item>
+         </layout>
         </widget>
        </item>
        <item row="1" column="1">
@@ -261,26 +255,6 @@
          <item>
           <property name="text">
            <string>Autodetect</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>Wisdom Tree (Unlicensed)</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>BBD (Unlicensed)</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>Hitek (Unlicensed)</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>Pokemon Jade/Diamond (Unlicensed)</string>
           </property>
          </item>
         </widget>

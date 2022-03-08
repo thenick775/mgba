@@ -221,7 +221,7 @@ void GBIOReset(struct GB* gb) {
 
 	if (gb->model & GB_MODEL_SGB) {
 		GBIOWrite(gb, GB_REG_JOYP, 0xFF);
-}
+	}
 	GBIOWrite(gb, GB_REG_IE, 0x00);
 }
 
@@ -527,8 +527,8 @@ void GBIOWrite(struct GB* gb, unsigned address, uint8_t value) {
 		}
 		failed:
 		mLOG(GB_IO, GAME_ERROR, "Writing to unknown register FF%02X:%02X", address, value);
-			return;
-		}
+		return;
+	}
 	success:
 	gb->memory.io[address] = value;
 }
@@ -684,14 +684,14 @@ uint8_t GBIORead(struct GB* gb, unsigned address) {
 	case GB_REG_PSWX:
 	case GB_REG_PSWY:
 	case GB_REG_UNK75:
-				// Handled transparently by the registers
+		// Handled transparently by the registers
 		if (gb->model < GB_MODEL_CGB) {
 			// In DMG mode, these all get initialized to 0xFF during reset
 			// But in DMG-on-CGB mode, they get initialized by the CGB reset so they can be non-zero
 			mLOG(GB_IO, GAME_ERROR, "Reading from CGB register FF%02X in DMG mode", address);
 		}
 		break;
-			default:
+	default:
 		mLOG(GB_IO, STUB, "Reading from unknown register FF%02X", address);
 		return 0xFF;
 	}

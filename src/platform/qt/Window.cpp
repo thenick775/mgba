@@ -199,7 +199,7 @@ void Window::argumentsPassed(mArguments* args) {
 
 	if (args->fname) {
 		setController(m_manager->loadGame(args->fname), args->fname);
-}
+	}
 }
 
 void Window::resizeFrame(const QSize& size) {
@@ -403,14 +403,14 @@ void Window::selectSave(bool temporary) {
 
 void Window::selectState(bool load) {
 	QStringList formats{"*.ss0", "*.ss1", "*.ss2", "*.ss3", "*.ss4", "*.ss5", "*.ss6", "*.ss7", "*.ss8", "*.ss9"};
-	QString filter = tr("mGBA savestate files (%1)").arg(formats.join(QChar(' ')));
+	QString filter = tr("mGBA save state files (%1)").arg(formats.join(QChar(' ')));
 	if (load) {
-		QString filename = GBAApp::app()->getOpenFileName(this, tr("Select savestate"), filter);
+		QString filename = GBAApp::app()->getOpenFileName(this, tr("Select save state"), filter);
 		if (!filename.isEmpty()) {
 			m_controller->loadState(filename);
 		}
 	} else {
-		QString filename = GBAApp::app()->getSaveFileName(this, tr("Select savestate"), filter);
+		QString filename = GBAApp::app()->getSaveFileName(this, tr("Select save state"), filter);
 		if (!filename.isEmpty()) {
 			m_controller->saveState(filename);
 		}
@@ -707,7 +707,6 @@ void Window::showEvent(QShowEvent* event) {
 	resizeFrame(m_screenWidget->sizeHint());
 	QVariant windowPos = m_config->getQtOption("windowPos", m_playerId > 0 ? QString("player%0").arg(m_playerId) : QString());
 	bool maximized = m_config->getQtOption("maximized").toBool();
-	bool maximized = m_config->getQtOption("maximized").toBool();
 	QRect geom = windowHandle()->screen()->availableGeometry();
 	if (!windowPos.isNull() && geom.contains(windowPos.toPoint())) {
 		move(windowPos.toPoint());
@@ -748,7 +747,6 @@ void Window::hideEvent(QHideEvent* event) {
 void Window::closeEvent(QCloseEvent* event) {
 	emit shutdown();
 	m_config->setQtOption("windowPos", pos(), m_playerId > 0 ? QString("player%0").arg(m_playerId) : QString());
-	m_config->setQtOption("maximized", isMaximized());
 	m_config->setQtOption("maximized", isMaximized());
 
 	if (m_savedScale > 0) {
@@ -1528,7 +1526,7 @@ void Window::setupMenu(QMenuBar* menubar) {
 			m_display->filter(value.toBool());
 		}
 		if (m_controller) {
-		m_screenWidget->filter(value.toBool());
+			m_screenWidget->filter(value.toBool());
 		}
 	}, this);
 	m_config->updateOption("resampleVideo");

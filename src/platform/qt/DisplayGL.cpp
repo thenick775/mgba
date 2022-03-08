@@ -155,7 +155,7 @@ DisplayGL::DisplayGL(const QSurfaceFormat& format, QWidget* parent)
 		emit drawingStarted();
 	});
 	m_drawThread.start();
-	}
+}
 
 DisplayGL::~DisplayGL() {
 	stopDrawing();
@@ -301,22 +301,22 @@ void DisplayGL::forceDraw() {
 void DisplayGL::lockAspectRatio(bool lock) {
 	Display::lockAspectRatio(lock);
 	QMetaObject::invokeMethod(m_painter.get(), "lockAspectRatio", Q_ARG(bool, lock));
-	}
+}
 
 void DisplayGL::lockIntegerScaling(bool lock) {
 	Display::lockIntegerScaling(lock);
 	QMetaObject::invokeMethod(m_painter.get(), "lockIntegerScaling", Q_ARG(bool, lock));
-	}
+}
 
 void DisplayGL::interframeBlending(bool enable) {
 	Display::interframeBlending(enable);
 	QMetaObject::invokeMethod(m_painter.get(), "interframeBlending", Q_ARG(bool, enable));
-	}
+}
 
 void DisplayGL::showOSDMessages(bool enable) {
 	Display::showOSDMessages(enable);
 	QMetaObject::invokeMethod(m_painter.get(), "showOSD", Q_ARG(bool, enable));
-	}
+}
 
 void DisplayGL::showFrameCounter(bool enable) {
 	Display::showFrameCounter(enable);
@@ -326,16 +326,16 @@ void DisplayGL::showFrameCounter(bool enable) {
 void DisplayGL::filter(bool filter) {
 	Display::filter(filter);
 	QMetaObject::invokeMethod(m_painter.get(), "filter", Q_ARG(bool, filter));
-	}
+}
 
 void DisplayGL::framePosted() {
-		m_painter->enqueue(m_context->drawContext());
+	m_painter->enqueue(m_context->drawContext());
 	QMetaObject::invokeMethod(m_painter.get(), "draw");
-	}
+}
 
 void DisplayGL::setShaders(struct VDir* shaders) {
 	QMetaObject::invokeMethod(m_painter.get(), "setShaders", Qt::BlockingQueuedConnection, Q_ARG(struct VDir*, shaders));
-	}
+}
 
 void DisplayGL::clearShaders() {
 	QMetaObject::invokeMethod(m_painter.get(), "clearShaders", Qt::BlockingQueuedConnection);
@@ -344,7 +344,7 @@ void DisplayGL::clearShaders() {
 void DisplayGL::resizeContext() {
 	m_painter->interrupt();
 	QMetaObject::invokeMethod(m_painter.get(), "resizeContext");
-	}
+}
 
 void DisplayGL::setVideoScale(int scale) {
 	if (m_context) {
@@ -497,7 +497,7 @@ void PainterGL::create() {
 	m_backend->filter = false;
 	m_backend->lockAspectRatio = false;
 	m_backend->interframeBlending = false;
-	}
+}
 
 void PainterGL::destroy() {
 	if (!m_gl) {
@@ -659,15 +659,15 @@ void PainterGL::stop() {
 	m_started = false;
 	dequeueAll(false);
 	if (m_context) {
-	if (m_videoProxy) {
+		if (m_videoProxy) {
 			m_videoProxy->detach(m_context.get());
-	}
+		}
 		m_context->setFramebufferHandle(-1);
-	m_context.reset();
-	if (m_videoProxy) {
+		m_context.reset();
+		if (m_videoProxy) {
 			m_videoProxy->processData();
+		}
 	}
-}
 	if (m_videoProxy) {
 		m_videoProxy->reset();
 		m_videoProxy->moveToThread(m_window->thread());
@@ -769,7 +769,7 @@ void PainterGL::setShaders(struct VDir* dir) {
 		mGLES2ShaderFree(&m_shader);
 	}
 	mGLES2ShaderLoad(&m_shader, dir);
-		mGLES2ShaderAttach(reinterpret_cast<mGLES2Context*>(m_backend), static_cast<mGLES2Shader*>(m_shader.passes), m_shader.nPasses);
+	mGLES2ShaderAttach(reinterpret_cast<mGLES2Context*>(m_backend), static_cast<mGLES2Shader*>(m_shader.passes), m_shader.nPasses);
 #endif
 }
 

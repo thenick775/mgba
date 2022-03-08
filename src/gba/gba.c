@@ -894,8 +894,8 @@ void GBAFrameEnded(struct GBA* gba) {
 		}
 		if (callbacks->savedataUpdated && wasDirty && !gba->memory.savedata.dirty) {
 			callbacks->savedataUpdated(callbacks->context);
+		}
 	}
-}
 }
 
 void GBATestKeypadIRQ(struct GBA* gba) {

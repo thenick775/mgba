@@ -102,20 +102,20 @@ void GBMBCSwitchHalfBank(struct GB* gb, int half, int bank) {
 		}
 		bankStart += gb->sramSize - GB_SIZE_MBC6_FLASH;
 	} else {
-	if (bankStart + GB_SIZE_CART_HALFBANK > gb->memory.romSize) {
-		mLOG(GB_MBC, GAME_ERROR, "Attempting to switch to an invalid ROM bank: %0X", bank);
+		if (bankStart + GB_SIZE_CART_HALFBANK > gb->memory.romSize) {
+			mLOG(GB_MBC, GAME_ERROR, "Attempting to switch to an invalid ROM bank: %0X", bank);
 			bankStart &= gb->memory.romSize - 1;
-		bank = bankStart / GB_SIZE_CART_HALFBANK;
-		if (!bank) {
-			++bank;
+			bank = bankStart / GB_SIZE_CART_HALFBANK;
+			if (!bank) {
+				++bank;
+			}
 		}
-	}
 	}
 	if (!half) {
 		if (isFlash) {
 			gb->memory.romBank = &gb->memory.sram[bankStart];
 		} else {
-		gb->memory.romBank = &gb->memory.rom[bankStart];
+			gb->memory.romBank = &gb->memory.rom[bankStart];
 		}
 		gb->memory.currentBank = bank;
 	} else {

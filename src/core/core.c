@@ -411,7 +411,7 @@ const struct mCoreMemoryBlock* mCoreGetMemoryBlockInfo(struct mCore* core, uint3
 			continue;
 		}
 		return &blocks[i];
-		}
+	}
 	return NULL;
 }
 

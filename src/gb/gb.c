@@ -240,7 +240,6 @@ bool GBLoadSave(struct GB* gb, struct VFile* vf) {
 			GBMBCHuC3Read(gb);
 		}
 	}
-	}
 	return vf;
 }
 
@@ -338,8 +337,8 @@ void GBSramClean(struct GB* gb, uint32_t frameCount) {
 			struct mCoreCallbacks* callbacks = mCoreCallbacksListGetPointer(&gb->coreCallbacks, c);
 			if (callbacks->savedataUpdated) {
 				callbacks->savedataUpdated(callbacks->context);
-	}
-}
+			}
+		}
 	}
 }
 
@@ -848,7 +847,7 @@ void GBProcessEvents(struct SM83Core* cpu) {
 			gb->timing.globalCycles += nextEvent;
 #endif
 			nextEvent = mTimingTick(&gb->timing, nextEvent);
-		} while (gb->cpuBlocked && !gb->earlyExit);
+		} while (gb->cpuBlocked);
 		// This loop cannot early exit until the SM83 run loop properly handles mid-M-cycle-exits
 		cpu->nextEvent = nextEvent;
 
@@ -941,9 +940,9 @@ void GBStop(struct SM83Core* cpu) {
 				callbacks->sleep(callbacks->context);
 			} else if (callbacks->shutdown) {
 				callbacks->shutdown(callbacks->context);
+			}
 		}
 	}
-}
 }
 
 void GBIllegal(struct SM83Core* cpu) {

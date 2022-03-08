@@ -13,8 +13,6 @@
 
 #include <mgba-util/math.h>
 
-#include <mgba-util/math.h>
-
 #include <QMap>
 
 using namespace QGBA;

@@ -605,10 +605,6 @@ static void _GBACoreReset(struct mCore* core) {
 	bool vbaBugCompat = true;
 	mCoreConfigGetBoolValue(&core->config, "gba.forceGbp", &forceGbp);
 	mCoreConfigGetBoolValue(&core->config, "vbaBugCompat", &vbaBugCompat);
-	bool vbaBugCompat = true;
-	if (mCoreConfigGetIntValue(&core->config, "vbaBugCompat", &fakeBool)) {
-		vbaBugCompat = fakeBool;
-	}
 	if (!forceGbp) {
 		gba->memory.hw.devices &= ~HW_GB_PLAYER_DETECTION;
 	}

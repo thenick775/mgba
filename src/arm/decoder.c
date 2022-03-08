@@ -150,7 +150,7 @@ static int _decodePCRelative(uint32_t address, const struct mDebuggerSymbols* sy
 		label = mDebuggerSymbolReverseLookup(symbols, address, -1);
 		if (!label && thumbBranch) {
 			label = mDebuggerSymbolReverseLookup(symbols, address | 1, -1);
-}
+		}
 	}
 	if (label) {
 		return strlcpy(buffer, label, blen);
@@ -175,8 +175,8 @@ static int _decodeMemory(struct ARMMemoryAccess memory, struct ARMCore* cpu, con
 				strlcpy(buffer, "[", blen);
 				ADVANCE(1);
 				written = _decodePCRelative(addrBase, symbols, pc & 0xFFFFFFFC, false, buffer, blen);
-			ADVANCE(written);
-		} else {
+				ADVANCE(written);
+			} else {
 				uint32_t value;
 				_decodePCRelative(addrBase, symbols, pc & 0xFFFFFFFC, false, comment, sizeof(comment));
 				addrBase += pc & 0xFFFFFFFC; // Thumb does not have PC-relative LDRH/LDRB

@@ -22,6 +22,7 @@ Features
 - Solar sensor support for Boktai games.
 - Game Boy Camera and Game Boy Printer support.
 - A built-in BIOS implementation, and ability to load external BIOS files.
+- Scripting support using Lua.
 - Turbo/fast-forward support by holding Tab.
 - Rewind by holding Backquote.
 - Frameskip, configurable up to 10.

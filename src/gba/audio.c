@@ -67,13 +67,16 @@ void GBAAudioReset(struct GBAAudio* audio) {
 	audio->chA.internalSample = 0;
 	audio->chA.internalRemaining = 0;
 	memset(audio->chA.fifo, 0, sizeof(audio->chA.fifo));
-	audio->chA.sample = 0;
 	audio->chB.fifoWrite = 0;
 	audio->chB.fifoRead = 0;
 	audio->chB.internalSample = 0;
 	audio->chB.internalRemaining = 0;
 	memset(audio->chB.fifo, 0, sizeof(audio->chB.fifo));
-	audio->chB.sample = 0;
+	int i;
+	for (i = 0; i < 8; ++i) {
+		audio->chA.samples[i] = 0;
+		audio->chB.samples[i] = 0;
+	}
 	audio->sampleRate = 0x8000;
 	audio->soundbias = 0x200;
 	audio->volume = 0;
@@ -301,7 +304,17 @@ void GBAAudioSampleFIFO(struct GBAAudio* audio, int fifoId, int32_t cycles) {
 			channel->fifoRead = 0;
 		}
 	}
-	channel->sample = channel->internalSample;
+	int32_t until = mTimingUntil(&audio->p->timing, &audio->sampleEvent) - 1;
+	int bits = 1 << GBARegisterSOUNDBIASGetResolution(audio->soundbias);
+	until += 1 << (9 - GBARegisterSOUNDBIASGetResolution(audio->soundbias));
+	until >>= 9 - GBARegisterSOUNDBIASGetResolution(audio->soundbias);
+	int i;
+	for (i = bits - until; i < bits; ++i) {
+		if (i < 0 || i >= bits) {
+			abort();
+		}
+		channel->samples[i] = channel->internalSample;
+	}
 	if (channel->internalRemaining) {
 		channel->internalSample >>= 8;
 		--channel->internalRemaining;
@@ -339,21 +352,21 @@ static void _sample(struct mTiming* timing, void* user, uint32_t cyclesLate) {
 		if (!audio->externalMixing) {
 			if (!audio->forceDisableChA) {
 				if (audio->chALeft) {
-					sampleLeft += (audio->chA.sample << 2) >> !audio->volumeChA;
+					sampleLeft += (audio->chA.samples[sample] << 2) >> !audio->volumeChA;
 				}
 
 				if (audio->chARight) {
-					sampleRight += (audio->chA.sample << 2) >> !audio->volumeChA;
+					sampleRight += (audio->chA.samples[sample] << 2) >> !audio->volumeChA;
 				}
 			}
 
 			if (!audio->forceDisableChB) {
 				if (audio->chBLeft) {
-					sampleLeft += (audio->chB.sample << 2) >> !audio->volumeChB;
+					sampleLeft += (audio->chB.samples[sample] << 2) >> !audio->volumeChB;
 				}
 
 				if (audio->chBRight) {
-					sampleRight += (audio->chB.sample << 2) >> !audio->volumeChB;
+					sampleRight += (audio->chB.samples[sample] << 2) >> !audio->volumeChB;
 				}
 			}
 		}
@@ -363,6 +376,9 @@ static void _sample(struct mTiming* timing, void* user, uint32_t cyclesLate) {
 		samplesLeft[sample] = sampleLeft;
 		samplesRight[sample] = sampleRight;
 	}
+
+	memset(audio->chA.samples, audio->chA.samples[sample - 1], sizeof(audio->chA.samples));
+	memset(audio->chB.samples, audio->chB.samples[sample - 1], sizeof(audio->chB.samples));
 
 	mCoreSyncLockAudio(audio->p->sync);
 	unsigned produced;
@@ -406,8 +422,8 @@ void GBAAudioSerialize(const struct GBAAudio* audio, struct GBASerializedState* 
 
 	STORE_32(audio->chA.internalSample, 0, &state->audio.internalA);
 	STORE_32(audio->chB.internalSample, 0, &state->audio.internalB);
-	state->audio.sampleA = audio->chA.sample;
-	state->audio.sampleB = audio->chB.sample;
+	memcpy(state->samples.chA, audio->chA.samples, sizeof(audio->chA.samples));
+	memcpy(state->samples.chB, audio->chB.samples, sizeof(audio->chB.samples));
 
 	int readA = audio->chA.fifoRead;
 	int readB = audio->chB.fifoRead;
@@ -453,8 +469,8 @@ void GBAAudioDeserialize(struct GBAAudio* audio, const struct GBASerializedState
 
 	LOAD_32(audio->chA.internalSample, 0, &state->audio.internalA);
 	LOAD_32(audio->chB.internalSample, 0, &state->audio.internalB);
-	audio->chA.sample = state->audio.sampleA;
-	audio->chB.sample = state->audio.sampleB;
+	memcpy(audio->chA.samples, state->samples.chA, sizeof(audio->chA.samples));
+	memcpy(audio->chB.samples, state->samples.chB, sizeof(audio->chB.samples));
 
 	int readA = 0;
 	int readB = 0;

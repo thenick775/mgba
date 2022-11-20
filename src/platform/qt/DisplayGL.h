@@ -194,6 +194,7 @@ private:
 	void performDraw();
 	void dequeue();
 	void dequeueAll(bool keep = false);
+	void resetTiming();
 
 	std::array<std::array<uint32_t, 0x100000>, 3> m_buffers;
 	QList<uint32_t*> m_free;
@@ -220,6 +221,7 @@ private:
 	bool m_active = false;
 	bool m_started = false;
 	QTimer m_drawTimer;
+	qint64 m_timerResidue;
 	std::shared_ptr<CoreController> m_context;
 	CoreController::Interrupter m_interrupter;
 	bool m_supportsShaders;

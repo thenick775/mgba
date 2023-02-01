@@ -1,6 +1,78 @@
 mGBA
 ====
 
+This is my fork of endrift's personal fork of mGBA. My goal here was to make a fully functional wasm setup condensing some of the work in the surrounding community.
+
+To build this branch, run the following:
+```
+docker run --rm -t -v $PWD:/home/mgba/src mgba/wasm
+```
+
+Once this has completed, your compiled files can be found at:
+```
+./build-wasm/wasm/mgba.js
+./build-wasm/wasm/mgba.wasm
+```
+
+Include these files in your client's resources, and then instanciate your emulator as follows:
+```
+let canvas_id = 'screen'
+var Module = {
+	canvas: (function () {
+		return document.getElementById(canvas_id);
+	})()
+};
+
+mGBA(this.module).then(function (Module) {
+	mGBAVersion =
+		Module.version.projectName +
+		' ' +
+		Module.version.projectVersion;
+		
+    console.log(mGBAVersion);
+	Module.FSInit();
+});
+```
+
+Now you will have access to the following contract:
+```
+Module.buttonPress(name)
+Module.buttonUnpress(name)
+Module.FSInit()
+Module.getMainLoopTiming()
+Module.getSave()
+Module.getVolume()
+Module.listRoms()
+Module.listSaves()
+Module.loadGame(name)
+Module.loadSaveOrSaveState(file)
+Module.pauseGame()
+Module.quickReload()
+Module.quitGame()
+Module.quitMgba()
+Module.resumeGame()
+Module.setMainLoopTiming(mode, value)
+Module.setVolume(percent)
+Module.toggleInput()
+```
+
+As well as all the other emscripten Module convienence functions such as `Module.FS.writeFile(file, buf)` and many others.
+
+The contract is defined in these 2 files:
+```
+./src/platform/wasm/main.c
+./src/platform/wasm/pre.js
+```
+
+TODO
+----
+
+- Cheat entry/toggle
+- Debugger
+
+Original Readme Below
+--------
+
 mGBA is an emulator for running Game Boy Advance games. It aims to be faster and more accurate than many existing Game Boy Advance emulators, as well as adding features that other emulators lack. It also supports Game Boy and Game Boy Color games.
 
 Up-to-date news and downloads can be found at [mgba.io](https://mgba.io/).

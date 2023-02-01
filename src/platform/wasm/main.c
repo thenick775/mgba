@@ -87,6 +87,81 @@ void testLoop() {
 	}
 }
 
+EMSCRIPTEN_KEEPALIVE void buttonPress(int id) {
+  core->addKeys(core, 1 << id);
+}
+
+EMSCRIPTEN_KEEPALIVE void buttonUnpress(int id) {
+  core->clearKeys(core, 1 << id);
+}
+
+EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
+	if (vol > 2.0 || vol < 0)
+		return; // this is a percentage so more than 200% is insane.
+
+	int volume = (int) (vol * 0x100);
+	if (core) {
+		if (volume == 0)
+			return mSDLPauseAudio(&audio);
+		else {
+			mCoreConfigSetDefaultIntValue(&core->config, "volume", volume);
+			core->reloadConfigOption(core, "volume", &core->config);
+			mSDLResumeAudio(&audio);
+		}
+	}
+}
+
+EMSCRIPTEN_KEEPALIVE int getVolume() {
+  // TODO if this is called before setVolume, it always returns zero!
+  return core->opts.volume;
+}
+
+EMSCRIPTEN_KEEPALIVE int getMainLoopTiming() {
+  int mode = -1;
+  int value = -1;
+  emscripten_get_main_loop_timing(&mode, &value);
+  return value;
+}
+
+EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
+  emscripten_set_main_loop_timing(mode, value);
+}
+
+EMSCRIPTEN_KEEPALIVE void quitGame() {
+  if (core) {
+  	mSDLPauseAudio(&audio);
+  	emscripten_pause_main_loop();
+    core->deinit(core);
+    core = NULL;
+  }
+}
+
+EMSCRIPTEN_KEEPALIVE void quitMgba() {
+  exit(0);
+}
+
+EMSCRIPTEN_KEEPALIVE void quickReload() {
+  core->reset(core);
+}
+
+EMSCRIPTEN_KEEPALIVE void pauseGame() {
+	emscripten_pause_main_loop();
+}
+
+EMSCRIPTEN_KEEPALIVE void resumeGame() {
+	emscripten_resume_main_loop();
+}
+
+EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
+    int state = toggle ? SDL_ENABLE : SDL_DISABLE;
+    SDL_EventState(SDL_TEXTINPUT, state);
+    SDL_EventState(SDL_KEYDOWN, state);
+    SDL_EventState(SDL_KEYUP, state);
+    SDL_EventState(SDL_MOUSEMOTION, state);
+    SDL_EventState(SDL_MOUSEBUTTONDOWN, state);
+    SDL_EventState(SDL_MOUSEBUTTONUP, state);
+}
+
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	if (core) {
 		core->deinit(core);
@@ -124,6 +199,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	SDL_SetWindowSize(window, w, h);
 	audio.core = core;
 	mSDLResumeAudio(&audio);
+	emscripten_resume_main_loop();
 	return true;
 }
 
@@ -162,13 +238,6 @@ int main() {
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 	mSDLInitAudio(&audio, NULL);
 
-	EM_ASM(
-		FS.mkdir('/data');
-		FS.mount(IDBFS, {}, '/data');
-		FS.mkdir('/data/saves');
-		FS.mkdir('/data/states');
-		FS.syncfs(true, function (err) {});
-	);
 	emscripten_set_main_loop(testLoop, 0, 1);
 	return 0;
 }

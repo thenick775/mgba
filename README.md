@@ -3,7 +3,7 @@ mGBA
 
 This is my fork of endrift's personal fork of mGBA. My goal here was to make a fully functional wasm setup condensing some of the work in the surrounding community.
 
-To build this branch, run the following:
+To build this branch, run the following in the repo's root directory:
 ```
 docker run --rm -t -v $PWD:/home/mgba/src mgba/wasm
 ```
@@ -14,7 +14,7 @@ Once this has completed, your compiled files can be found at:
 ./build-wasm/wasm/mgba.wasm
 ```
 
-Include these files in your client's resources, and then instanciate your emulator as follows:
+Include these files in your client's resources, and then instanciate your emulator as follows in your javascript:
 ```
 let canvas_id = 'screen'
 var Module = {

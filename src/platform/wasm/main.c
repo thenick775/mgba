@@ -13,6 +13,7 @@
 
 #include <emscripten.h>
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_keyboard.h>
 
 static struct mCore* core = NULL;
 static color_t* buffer = NULL;
@@ -160,6 +161,14 @@ EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
     SDL_EventState(SDL_MOUSEMOTION, state);
     SDL_EventState(SDL_MOUSEBUTTONDOWN, state);
     SDL_EventState(SDL_MOUSEBUTTONUP, state);
+}
+
+// bindingName is the key name of what you want to bind to an input
+// inputCode is the code of the key input, see keyBindings in pre.js
+// this should work for a good variety of keys, but not all are supported yet
+EMSCRIPTEN_KEEPALIVE void bindKey(char* bindingName, int inputCode) {
+	int bindingSDLKeyCode = SDL_GetKeyFromName(bindingName);
+	mInputBindKey(&core->inputMap, SDL_BINDING_KEY, bindingSDLKeyCode, inputCode);
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {

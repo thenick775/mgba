@@ -63,31 +63,34 @@ Module.loadSaveOrSaveState = function(file) {
 	FS.writeFile(dir+name, new Uint8Array(buffer));
 }
 
-//vancise what to do about this
-const buttonNameToId = new Map();
-buttonNameToId.set('a', 0);
-buttonNameToId.set('b', 1);
-buttonNameToId.set('select', 2);
-buttonNameToId.set('start', 3);
-buttonNameToId.set('right', 4);
-buttonNameToId.set('left', 5);
-buttonNameToId.set('up', 6);
-buttonNameToId.set('down', 7);
-buttonNameToId.set('r', 8);
-buttonNameToId.set('l', 9);
-const buttonIdToName = new Map();
-for (const [key, value] of buttonNameToId) {
-  buttonIdToName.set(value, key);
-}
+const keyBindings = new Map([
+	['a', 0],
+	['b', 1],
+	['select', 2],
+	['start', 3],
+	['right', 4],
+	['left', 5],
+	['up', 6],
+	['down', 7],
+	['r', 8],
+	['l', 9],
+]);
 
 Module.buttonPress = function (name) {
 	var buttonPress = cwrap('buttonPress', null, ['number']);
-	buttonPress(buttonNameToId.get(name.toLowerCase()));
+	buttonPress(keyBindings.get(name.toLowerCase()));
 }
 
 Module.buttonUnpress = function (name) {
 	var buttonUnpress = cwrap('buttonUnpress', null, ['number']);
-	buttonUnpress(buttonNameToId.get(name.toLowerCase()));
+	buttonUnpress(keyBindings.get(name.toLowerCase()));
+}
+
+// bindingName is the key name you want to associate to an input, ex. 'p' key binding -> 'a' input
+// inputName is the name of the input to bind to, ex 'a', 'b', 'up' etc.
+Module.bindKey = function (bindingName, inputName) {
+	var bindKey = cwrap('bindKey', null, ['string', 'number']);
+	bindKey(bindingName, keyBindings.get(inputName.toLowerCase()));
 }
 
 Module.pauseGame = function () {

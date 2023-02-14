@@ -5,7 +5,8 @@ Module.loadGame = (function() {
 			var arr = name.split('.');
 			arr.pop();
 			Module.gameName = name;
-			Module.saveName = arr.join('.') + '.sav';
+			var saveName = arr.join('.') + '.sav';
+			Module.saveName = saveName.replace('/data/games/','/data/saves/');
 			return true;
 		}
 		return false;
@@ -13,15 +14,15 @@ Module.loadGame = (function() {
 })();
 
 Module.getSave = function() {
-	return FS.readFile('/data/saves/' + Module.saveName);
+	return FS.readFile(Module.saveName);
 }
 
 Module.listRoms = function(){
-	return FS.readdir("/data/games/")
+	return FS.readdir('/data/games/')
 }
 
 Module.listSaves = function(){
-	return FS.readdir("/data/saves/")
+	return FS.readdir('/data/saves/')
 }
 
 // yanked from main.c for ease of use

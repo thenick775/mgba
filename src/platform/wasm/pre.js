@@ -11,7 +11,8 @@ Module.loadFile = (name) => {
 			var arr = name.split('.');
 			arr.pop();
 			Module.gameName = name;
-			Module.saveName = arr.join('.') + '.sav';
+			var saveName = arr.join('.') + '.sav';
+			Module.saveName = saveName.replace('/data/games/','/data/saves/');
 			return true;
 		}
 		return false;

@@ -142,3 +142,10 @@ Module.toggleInput = function (toggle) {
 	var setEventEnable = cwrap('setEventEnable', null, ['boolean'])
 	setEventEnable(toggle);
 }
+
+Module.screenShot = function (callback) {
+	ptr = addFunction(callback);
+	var screenShot = cwrap('screenShot', null, ['number']);
+	screenShot(ptr);
+	removeFunction(ptr);
+}

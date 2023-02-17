@@ -88,6 +88,34 @@ void testLoop() {
 	}
 }
 
+// fills the webgl canvas buffer so that it can be copied to a
+// 2d canvas context with in the js function pointer callback
+EMSCRIPTEN_KEEPALIVE void screenShot(void(*callback)(void)){
+	if (core) {
+		unsigned w, h;
+		core->desiredVideoDimensions(core, &w, &h);
+
+		SDL_Rect rect = {
+			.x = 0,
+			.y = 0,
+			.w = w,
+			.h = h
+		};
+		SDL_UnlockTexture(tex);
+		SDL_RenderCopy(renderer, tex, &rect, &rect);
+		SDL_RenderPresent(renderer);
+
+		int stride;
+		SDL_LockTexture(tex, 0, (void**) &buffer, &stride);
+		core->setVideoBuffer(core, buffer, stride / BYTES_PER_PIXEL);
+
+		// call js screenshot code
+		// this should copy the webgl canvas 
+		// context to a 2d canvas context
+	  (*callback)();
+	}
+}
+
 EMSCRIPTEN_KEEPALIVE void buttonPress(int id) {
   core->addKeys(core, 1 << id);
 }

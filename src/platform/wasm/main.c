@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include <mgba/core/core.h>
+#include <mgba/core/serialize.h>
 #include <mgba/core/version.h>
 #include <mgba/internal/gba/input.h>
 #include <mgba-util/vfs.h>
@@ -197,6 +198,14 @@ EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
 EMSCRIPTEN_KEEPALIVE void bindKey(char* bindingName, int inputCode) {
 	int bindingSDLKeyCode = SDL_GetKeyFromName(bindingName);
 	mInputBindKey(&core->inputMap, SDL_BINDING_KEY, bindingSDLKeyCode, inputCode);
+}
+
+EMSCRIPTEN_KEEPALIVE bool saveState(int slot) {
+	return mCoreSaveState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
+}
+
+EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
+	return mCoreLoadState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {

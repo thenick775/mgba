@@ -43,7 +43,7 @@ Module.FSInit = function(){
 	} catch (e) {}
 }
 
-Module.loadSaveOrSaveState = function(file) {
+Module.uploadSaveOrSaveState = function(file) {
     const split = file.name.split('.');
     if (split.length < 2) {
       window.alert('unrecognized file extension: ' + file.name);
@@ -148,4 +148,14 @@ Module.screenShot = function (callback) {
 	var screenShot = cwrap('screenShot', null, ['number']);
 	screenShot(ptr);
 	removeFunction(ptr);
+}
+
+Module.saveState = function(slot) {
+	var saveState = cwrap('saveState', 'boolean', ['number'])
+	return saveState(slot);
+}
+
+Module.loadState = function(slot) {
+	var loadState = cwrap('loadState', 'boolean', ['number'])
+	return loadState(slot);
 }

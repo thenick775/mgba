@@ -36,6 +36,7 @@ mGBA(this.module).then(function (Module) {
 
 Now you will have access to the following contract:
 ```
+Module.autoLoadCheats()
 Module.bindKey(bindingName, inputName)
 Module.buttonPress(name)
 Module.buttonUnpress(name)

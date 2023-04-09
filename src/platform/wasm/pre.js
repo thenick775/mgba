@@ -41,6 +41,9 @@ Module.FSInit = function(){
 	try {
 		FS.mkdir('/data/games');
 	} catch (e) {}
+	try {
+		FS.mkdir('/data/cheats');
+	} catch (e) {}
 }
 
 Module.uploadSaveOrSaveState = function(file) {
@@ -158,4 +161,9 @@ Module.saveState = function(slot) {
 Module.loadState = function(slot) {
 	var loadState = cwrap('loadState', 'boolean', ['number'])
 	return loadState(slot);
+}
+
+Module.autoLoadCheats = function() {
+	var autoLoadCheats = cwrap('autoLoadCheats', 'bool', [])
+	return autoLoadCheats();
 }

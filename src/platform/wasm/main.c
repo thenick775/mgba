@@ -208,6 +208,17 @@ EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
 	return mCoreLoadState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
 }
 
+// loads all cheats files located in the cores cheatsPath,
+// cheat files must match the name of the rom they are
+// to be applied to, and must end with the extension .cheats
+// supported cheat formats: 
+//  - mGBA custom format
+//  - libretro format
+//  - EZFCht format
+EMSCRIPTEN_KEEPALIVE bool autoLoadCheats() {
+	return mCoreAutoloadCheats(core);
+}
+
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	if (core) {
 		core->deinit(core);
@@ -220,12 +231,14 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	core->init(core);
 	core->opts.savegamePath = strdup("/data/saves");
 	core->opts.savestatePath = strdup("/data/states");
+	core->opts.cheatsPath = strdup("/data/cheats");
 
 	mCoreLoadFile(core, name);
 	mCoreConfigInit(&core->config, "wasm");
 	mInputMapInit(&core->inputMap, &GBAInputInfo);
 	mDirectorySetMapOptions(&core->dirs, &core->opts);
 	mCoreAutoloadSave(core);
+	mCoreAutoloadCheats(core);
 	mSDLInitBindingsGBA(&core->inputMap);
 
 	unsigned w, h;

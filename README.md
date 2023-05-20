@@ -72,7 +72,6 @@ The contract is defined in these 2 files:
 TODO
 ----
 
-- Cheat entry/toggle
 - Debugger
 
 Original Readme Below

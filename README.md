@@ -1,20 +1,22 @@
-mGBA
-====
+# mGBA
 
 This is my fork of endrift's personal fork of mGBA. My goal here was to make a fully functional wasm setup condensing some of the work in the surrounding community.
 
 To build this branch, run the following in the repo's root directory:
+
 ```
 docker run --rm -t -v $PWD:/home/mgba/src mgba/wasm
 ```
 
 Once this has completed, your compiled files can be found at:
+
 ```
 ./build-wasm/wasm/mgba.js
 ./build-wasm/wasm/mgba.wasm
 ```
 
 Include these files in your client's resources, and then instanciate your emulator as follows in your javascript:
+
 ```
 let canvas_id = 'screen'
 var Module = {
@@ -28,18 +30,20 @@ mGBA(this.module).then(function (Module) {
 		Module.version.projectName +
 		' ' +
 		Module.version.projectVersion;
-		
+
     console.log(mGBAVersion);
 	Module.FSInit();
 });
 ```
 
 Now you will have access to the following contract:
+
 ```
 Module.autoLoadCheats()
 Module.bindKey(bindingName, inputName)
 Module.buttonPress(name)
 Module.buttonUnpress(name)
+Module.filePaths()
 Module.FSInit()
 Module.getMainLoopTiming()
 Module.getSave()
@@ -64,18 +68,17 @@ Module.uploadSaveOrSaveState(file)
 As well as all the other emscripten Module convienence functions such as `Module.FS.writeFile(file, buf)` and many others.
 
 The contract is defined in these 2 files:
+
 ```
 ./src/platform/wasm/main.c
 ./src/platform/wasm/pre.js
 ```
 
-TODO
-----
+## TODO
 
 - Debugger
 
-Original Readme Below
---------
+## Original Readme Below
 
 mGBA is an emulator for running Game Boy Advance games. It aims to be faster and more accurate than many existing Game Boy Advance emulators, as well as adding features that other emulators lack. It also supports Game Boy and Game Boy Color games.
 
@@ -84,8 +87,7 @@ Up-to-date news and downloads can be found at [mgba.io](https://mgba.io/).
 [![Build status](https://buildbot.mgba.io/badges/build-win32.svg)](https://buildbot.mgba.io)
 [![Translation status](https://hosted.weblate.org/widgets/mgba/-/svg-badge.svg)](https://hosted.weblate.org/engage/mgba)
 
-Features
---------
+## Features
 
 - Highly accurate Game Boy Advance hardware support[<sup>[1]</sup>](#missing).
 - Game Boy/Game Boy Color hardware support.
@@ -159,8 +161,7 @@ The following mappers are partially supported:
 - A comprehensive debug suite.
 - Wireless adapter support.
 
-Supported Platforms
--------------------
+## Supported Platforms
 
 - Windows 7 or newer
 - OS X 10.9 (Mavericks)[<sup>[3]</sup>](#osxver) or newer
@@ -177,13 +178,11 @@ Other Unix-like platforms, such as OpenBSD, are known to work as well, but are u
 
 Requirements are minimal. Any computer that can run Windows Vista or newer should be able to handle emulation. Support for OpenGL 1.1 or newer is also required, with OpenGL 3.2 or newer for shaders and advanced features.
 
-Downloads
----------
+## Downloads
 
 Downloads can be found on the official website, in the [Downloads][downloads] section. The source code can be found on [GitHub][source].
 
-Controls
---------
+## Controls
 
 Controls are configurable in the settings menu. Many game controllers should be automatically mapped by default. The default keyboard controls are as follows:
 
@@ -194,8 +193,7 @@ Controls are configurable in the settings menu. Many game controllers should be 
 - **Start**: Enter
 - **Select**: Backspace
 
-Compiling
----------
+## Compiling
 
 Compiling requires using CMake 3.1 or newer. GCC, Clang, and Visual Studio 2019 are known to work for compiling mGBA.
 
@@ -229,11 +227,11 @@ If you want to speed up the build process, consider adding the flag `-e MAKEFLAG
 
 To use CMake to build on a Unix-based system, the recommended commands are as follows:
 
-	mkdir build
-	cd build
-	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
-	make
-	sudo make install
+    mkdir build
+    cd build
+    cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
+    make
+    sudo make install
 
 This will build and install mGBA into `/usr/bin` and `/usr/lib`. Dependencies that are installed will be automatically detected, and features that are disabled if the dependencies are not found will be shown after running the `cmake` command after warnings about being unable to find them.
 
@@ -257,14 +255,14 @@ To build on Windows for development, using MSYS2 is recommended. Follow the inst
 
 Check out the source code by running this command:
 
-	git clone https://github.com/mgba-emu/mgba.git
+    git clone https://github.com/mgba-emu/mgba.git
 
 Then finally build it by running these commands:
 
-	mkdir -p mgba/build
-	cd mgba/build
-	cmake .. -G "MSYS Makefiles"
-	make -j$(nproc --ignore=1)
+    mkdir -p mgba/build
+    cd mgba/build
+    cmake .. -G "MSYS Makefiles"
+    make -j$(nproc --ignore=1)
 
 Please note that this build of mGBA for Windows is not suitable for distribution, due to the scattering of DLLs it needs to run, but is perfect for development. However, if distributing such a build is desired (e.g. for testing on machines that don't have the MSYS2 environment installed), running `cpack -G ZIP` will prepare a zip file with all of the necessary DLLs.
 
@@ -286,10 +284,10 @@ Next, open Visual Studio, select Clone Repository, and enter `https://github.com
 
 If you have devkitARM (for 3DS), devkitPPC (for Wii), devkitA64 (for Switch), or vitasdk (for PS Vita), you can use the following commands for building:
 
-	mkdir build
-	cd build
-	cmake -DCMAKE_TOOLCHAIN_FILE=../src/platform/3ds/CMakeToolchain.txt ..
-	make
+    mkdir build
+    cd build
+    cmake -DCMAKE_TOOLCHAIN_FILE=../src/platform/3ds/CMakeToolchain.txt ..
+    make
 
 Replace the `-DCMAKE_TOOLCHAIN_FILE` parameter for the following platforms:
 
@@ -315,8 +313,7 @@ mGBA has no hard dependencies, however, the following optional dependencies are 
 
 SQLite3, libpng, and zlib are included with the emulator, so they do not need to be externally compiled first.
 
-Footnotes
----------
+## Footnotes
 
 <a name="missing">[1]</a> Currently missing features are
 
@@ -329,8 +326,7 @@ Footnotes
 [downloads]: http://mgba.io/downloads.html
 [source]: https://github.com/mgba-emu/mgba/
 
-Copyright
----------
+## Copyright
 
 mGBA is Copyright © 2013 – 2023 Jeffrey Pfau. It is distributed under the [Mozilla Public License version 2.0](https://www.mozilla.org/MPL/2.0/). A copy of the license is available in the distributed LICENSE file.
 

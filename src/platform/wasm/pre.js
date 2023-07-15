@@ -58,7 +58,7 @@ Module.filePaths = function () {
 Module.uploadSaveOrSaveState = function (file) {
   const split = file.name.split('.');
   if (split.length < 2) {
-    window.alert('unrecognized file extension: ' + file.name);
+    console.warn('unrecognized file extension: ' + file.name);
     return;
   }
   const extension = split[split.length - 1].toLowerCase();
@@ -69,11 +69,16 @@ Module.uploadSaveOrSaveState = function (file) {
   } else if (extension.startsWith('ss')) {
     dir = '/data/states/';
   } else {
-    window.alert('unrecognized file extension: ' + extension);
+    console.warn('unrecognized file extension: ' + extension);
     return;
   }
 
-  FS.writeFile(dir + name, new Uint8Array(buffer));
+  var reader = new FileReader();
+  reader.onload = function (e) {
+    FS.writeFile(dir + file.name, new Uint8Array(e.target.result));
+  };
+
+  reader.readAsArrayBuffer(file);
 };
 
 const keyBindings = new Map([

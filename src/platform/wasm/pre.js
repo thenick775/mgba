@@ -55,7 +55,7 @@ Module.filePaths = function () {
   };
 };
 
-Module.uploadSaveOrSaveState = function (file) {
+Module.uploadSaveOrSaveState = function (file, callback) {
   const split = file.name.split('.');
   if (split.length < 2) {
     console.warn('unrecognized file extension: ' + file.name);
@@ -76,12 +76,15 @@ Module.uploadSaveOrSaveState = function (file) {
   var reader = new FileReader();
   reader.onload = function (e) {
     FS.writeFile(dir + file.name, new Uint8Array(e.target.result));
+    if (callback) {
+      callback();
+    }
   };
 
   reader.readAsArrayBuffer(file);
 };
 
-Module.uploadRom = function (file) {
+Module.uploadRom = function (file, callback) {
   const split = file.name.split('.');
   if (split.length < 2) {
     console.warn('unrecognized file extension: ' + file.name);
@@ -100,12 +103,15 @@ Module.uploadRom = function (file) {
   var reader = new FileReader();
   reader.onload = function (e) {
     FS.writeFile(dir + file.name, new Uint8Array(e.target.result));
+    if (callback) {
+      callback();
+    }
   };
 
   reader.readAsArrayBuffer(file);
 };
 
-Module.uploadCheats = function (file) {
+Module.uploadCheats = function (file, callback) {
   const split = file.name.split('.');
   if (split.length < 2) {
     console.warn('unrecognized file extension: ' + file.name);
@@ -124,6 +130,9 @@ Module.uploadCheats = function (file) {
   var reader = new FileReader();
   reader.onload = function (e) {
     FS.writeFile(dir + file.name, new Uint8Array(e.target.result));
+    if (callback) {
+      callback();
+    }
   };
 
   reader.readAsArrayBuffer(file);

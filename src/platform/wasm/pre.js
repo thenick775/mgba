@@ -81,6 +81,54 @@ Module.uploadSaveOrSaveState = function (file) {
   reader.readAsArrayBuffer(file);
 };
 
+Module.uploadRom = function (file) {
+  const split = file.name.split('.');
+  if (split.length < 2) {
+    console.warn('unrecognized file extension: ' + file.name);
+    return;
+  }
+  const extension = split[split.length - 1].toLowerCase();
+
+  let dir = null;
+  if (extension == 'gba' || extension == 'gbc' || extension == 'gb') {
+    dir = '/data/games/';
+  } else {
+    console.warn('unrecognized file extension: ' + extension);
+    return;
+  }
+
+  var reader = new FileReader();
+  reader.onload = function (e) {
+    FS.writeFile(dir + file.name, new Uint8Array(e.target.result));
+  };
+
+  reader.readAsArrayBuffer(file);
+};
+
+Module.uploadCheats = function (file) {
+  const split = file.name.split('.');
+  if (split.length < 2) {
+    console.warn('unrecognized file extension: ' + file.name);
+    return;
+  }
+  const extension = split[split.length - 1].toLowerCase();
+
+  let dir = null;
+  if (extension == 'cheats') {
+    dir = '/data/cheats/';
+  } else {
+    console.warn('unrecognized file extension: ' + extension);
+    return;
+  }
+
+  var reader = new FileReader();
+  reader.onload = function (e) {
+    FS.writeFile(dir + file.name, new Uint8Array(e.target.result));
+  };
+
+  reader.readAsArrayBuffer(file);
+};
+
 const keyBindings = new Map([
   ['a', 0],
   ['b', 1],

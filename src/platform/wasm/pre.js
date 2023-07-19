@@ -189,7 +189,8 @@ Module.setVolume = function (percent) {
 };
 
 Module.getMainLoopTiming = function () {
-  var getMainLoopTiming = cwrap('getMainLoopTiming', null, []);
+  var getMainLoopTiming = cwrap('getMainLoopTiming', 'number', []);
+  return getMainLoopTiming();
 };
 
 Module.setMainLoopTiming = function (mode, value) {

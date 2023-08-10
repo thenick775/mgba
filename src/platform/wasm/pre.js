@@ -222,7 +222,7 @@ Module.toggleInput = function (toggle) {
 };
 
 Module.screenShot = function (callback) {
-  ptr = addFunction(callback);
+  const ptr = addFunction(callback);
   var screenShot = cwrap('screenShot', null, ['number']);
   screenShot(ptr);
   removeFunction(ptr);

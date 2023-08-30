@@ -26,9 +26,20 @@ Module.listSaves = function () {
 };
 
 // yanked from main.c for ease of use
-Module.FSInit = function () {
+Module.FSInit = function (callback) {
   FS.mkdir('/data');
   FS.mount(FS.filesystems.IDBFS, {}, '/data');
+
+  // load data from IDBFS
+  FS.syncfs(true, function (err) {
+    if (err) {
+      console.warn('Error syncing app data from IndexedDB: ', err);
+    }
+    // using a callback to indicate fs ready state if desired
+    if (callback) {
+      callback();
+    }
+  });
 
   // When we read from indexedb, these directories may or may not exist.
   // If we mkdir and they already exist they throw, so just catch all of them.
@@ -46,8 +57,18 @@ Module.FSInit = function () {
   } catch (e) {}
 };
 
+Module.FSSync = function () {
+  // write data to IDBFS
+  FS.syncfs(function (err) {
+    if (err) {
+      console.warn('Error syncing app data to IndexedDB', err);
+    }
+  });
+};
+
 Module.filePaths = function () {
   return {
+    root: '/data',
     cheatsPath: '/data/cheats',
     gamePath: '/data/games',
     savePath: '/data/saves',

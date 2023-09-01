@@ -35,26 +35,27 @@ Module.FSInit = function (callback) {
     if (err) {
       console.warn('Error syncing app data from IndexedDB: ', err);
     }
+
+    // When we read from indexedb, these directories may or may not exist.
+    // If we mkdir and they already exist they throw, so just catch all of them.
+    try {
+      FS.mkdir('/data/saves');
+    } catch (e) {}
+    try {
+      FS.mkdir('/data/states');
+    } catch (e) {}
+    try {
+      FS.mkdir('/data/games');
+    } catch (e) {}
+    try {
+      FS.mkdir('/data/cheats');
+    } catch (e) {}
+
     // using a callback to indicate fs ready state if desired
     if (callback) {
       callback();
     }
   });
-
-  // When we read from indexedb, these directories may or may not exist.
-  // If we mkdir and they already exist they throw, so just catch all of them.
-  try {
-    FS.mkdir('/data/saves');
-  } catch (e) {}
-  try {
-    FS.mkdir('/data/states');
-  } catch (e) {}
-  try {
-    FS.mkdir('/data/games');
-  } catch (e) {}
-  try {
-    FS.mkdir('/data/cheats');
-  } catch (e) {}
 };
 
 Module.FSSync = function () {

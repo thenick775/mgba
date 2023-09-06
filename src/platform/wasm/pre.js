@@ -1,37 +1,39 @@
-Module.loadGame = (function () {
-  var loadGame = cwrap('loadGame', 'number', ['string']);
-  return function (name) {
-    if (loadGame(name)) {
-      var arr = name.split('.');
-      arr.pop();
-      Module.gameName = name;
-      var saveName = arr.join('.') + '.sav';
-      Module.saveName = saveName.replace('/data/games/', '/data/saves/');
-      return true;
-    }
-    return false;
-  };
-})();
+Module.loadGame = (name) => {
+  const loadGame = cwrap('loadGame', 'number', ['string']);
 
-Module.getSave = function () {
+  if (loadGame(name)) {
+    const arr = name.split('.');
+    arr.pop();
+
+    const saveName = arr.join('.') + '.sav';
+
+    Module.gameName = name;
+    Module.saveName = saveName.replace('/data/games/', '/data/saves/');
+    return true;
+  }
+
+  return false;
+};
+
+Module.getSave = () => {
   return FS.readFile(Module.saveName);
 };
 
-Module.listRoms = function () {
+Module.listRoms = () => {
   return FS.readdir('/data/games/');
 };
 
-Module.listSaves = function () {
+Module.listSaves = () => {
   return FS.readdir('/data/saves/');
 };
 
 // yanked from main.c for ease of use
-Module.FSInit = function (callback) {
+Module.FSInit = (callback) => {
   FS.mkdir('/data');
   FS.mount(FS.filesystems.IDBFS, {}, '/data');
 
   // load data from IDBFS
-  FS.syncfs(true, function (err) {
+  FS.syncfs(true, (err) => {
     if (err) {
       console.warn('Error syncing app data from IndexedDB: ', err);
     }
@@ -58,16 +60,16 @@ Module.FSInit = function (callback) {
   });
 };
 
-Module.FSSync = function () {
+Module.FSSync = () => {
   // write data to IDBFS
-  FS.syncfs(function (err) {
+  FS.syncfs((err) => {
     if (err) {
       console.warn('Error syncing app data to IndexedDB', err);
     }
   });
 };
 
-Module.filePaths = function () {
+Module.filePaths = () => {
   return {
     root: '/data',
     cheatsPath: '/data/cheats',
@@ -77,7 +79,7 @@ Module.filePaths = function () {
   };
 };
 
-Module.uploadSaveOrSaveState = function (file, callback) {
+Module.uploadSaveOrSaveState = (file, callback) => {
   const split = file.name.split('.');
   if (split.length < 2) {
     console.warn('unrecognized file extension: ' + file.name);
@@ -95,8 +97,8 @@ Module.uploadSaveOrSaveState = function (file, callback) {
     return;
   }
 
-  var reader = new FileReader();
-  reader.onload = function (e) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
     FS.writeFile(dir + file.name, new Uint8Array(e.target.result));
     if (callback) {
       callback();
@@ -106,7 +108,7 @@ Module.uploadSaveOrSaveState = function (file, callback) {
   reader.readAsArrayBuffer(file);
 };
 
-Module.uploadRom = function (file, callback) {
+Module.uploadRom = (file, callback) => {
   const split = file.name.split('.');
   if (split.length < 2) {
     console.warn('unrecognized file extension: ' + file.name);
@@ -122,8 +124,8 @@ Module.uploadRom = function (file, callback) {
     return;
   }
 
-  var reader = new FileReader();
-  reader.onload = function (e) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
     FS.writeFile(dir + file.name, new Uint8Array(e.target.result));
     if (callback) {
       callback();
@@ -133,7 +135,7 @@ Module.uploadRom = function (file, callback) {
   reader.readAsArrayBuffer(file);
 };
 
-Module.uploadCheats = function (file, callback) {
+Module.uploadCheats = (file, callback) => {
   const split = file.name.split('.');
   if (split.length < 2) {
     console.warn('unrecognized file extension: ' + file.name);
@@ -149,8 +151,8 @@ Module.uploadCheats = function (file, callback) {
     return;
   }
 
-  var reader = new FileReader();
-  reader.onload = function (e) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
     FS.writeFile(dir + file.name, new Uint8Array(e.target.result));
     if (callback) {
       callback();
@@ -173,94 +175,94 @@ const keyBindings = new Map([
   ['l', 9],
 ]);
 
-Module.buttonPress = function (name) {
-  var buttonPress = cwrap('buttonPress', null, ['number']);
+Module.buttonPress = (name) => {
+  const buttonPress = cwrap('buttonPress', null, ['number']);
   buttonPress(keyBindings.get(name.toLowerCase()));
 };
 
-Module.buttonUnpress = function (name) {
-  var buttonUnpress = cwrap('buttonUnpress', null, ['number']);
+Module.buttonUnpress = (name) => {
+  const buttonUnpress = cwrap('buttonUnpress', null, ['number']);
   buttonUnpress(keyBindings.get(name.toLowerCase()));
 };
 
 // bindingName is the key name you want to associate to an input, ex. 'p' key binding -> 'a' input
 // inputName is the name of the input to bind to, ex 'a', 'b', 'up' etc.
-Module.bindKey = function (bindingName, inputName) {
-  var bindKey = cwrap('bindKey', null, ['string', 'number']);
+Module.bindKey = (bindingName, inputName) => {
+  const bindKey = cwrap('bindKey', null, ['string', 'number']);
   bindKey(bindingName, keyBindings.get(inputName.toLowerCase()));
 };
 
-Module.pauseGame = function () {
-  var pauseGame = cwrap('pauseGame', null, []);
+Module.pauseGame = () => {
+  const pauseGame = cwrap('pauseGame', null, []);
   pauseGame();
 };
 
-Module.resumeGame = function () {
-  var resumeGame = cwrap('resumeGame', null, []);
+Module.resumeGame = () => {
+  const resumeGame = cwrap('resumeGame', null, []);
   resumeGame();
 };
 
-Module.getVolume = function () {
-  var getVolume = cwrap('getVolume', 'number', []);
+Module.getVolume = () => {
+  const getVolume = cwrap('getVolume', 'number', []);
   return getVolume();
 };
 
-Module.setVolume = function (percent) {
-  var setVolume = cwrap('setVolume', null, ['number']);
+Module.setVolume = (percent) => {
+  const setVolume = cwrap('setVolume', null, ['number']);
   setVolume(percent);
 };
 
-Module.getMainLoopTiming = function () {
-  var getMainLoopTiming = cwrap('getMainLoopTiming', 'number', []);
+Module.getMainLoopTiming = () => {
+  const getMainLoopTiming = cwrap('getMainLoopTiming', 'number', []);
   return getMainLoopTiming();
 };
 
-Module.setMainLoopTiming = function (mode, value) {
-  var setMainLoopTiming = cwrap('setMainLoopTiming', 'number', [
+Module.setMainLoopTiming = (mode, value) => {
+  const setMainLoopTiming = cwrap('setMainLoopTiming', 'number', [
     'number',
     'number',
   ]);
   setMainLoopTiming(mode, value);
 };
 
-Module.quitGame = function () {
-  var quitGame = cwrap('quitGame', null, []);
+Module.quitGame = () => {
+  const quitGame = cwrap('quitGame', null, []);
   quitGame();
 };
 
-Module.quitMgba = function () {
-  var quitMgba = cwrap('quitMgba', null, []);
+Module.quitMgba = () => {
+  const quitMgba = cwrap('quitMgba', null, []);
   quitMgba();
 };
 
-Module.quickReload = function () {
-  var quickReload = cwrap('quickReload', null, []);
+Module.quickReload = () => {
+  const quickReload = cwrap('quickReload', null, []);
   quickReload();
 };
 
-Module.toggleInput = function (toggle) {
-  var setEventEnable = cwrap('setEventEnable', null, ['boolean']);
+Module.toggleInput = (toggle) => {
+  const setEventEnable = cwrap('setEventEnable', null, ['boolean']);
   setEventEnable(toggle);
 };
 
-Module.screenShot = function (callback) {
+Module.screenShot = (callback) => {
   const ptr = addFunction(callback);
-  var screenShot = cwrap('screenShot', null, ['number']);
+  const screenShot = cwrap('screenShot', null, ['number']);
   screenShot(ptr);
   removeFunction(ptr);
 };
 
-Module.saveState = function (slot) {
-  var saveState = cwrap('saveState', 'boolean', ['number']);
+Module.saveState = (slot) => {
+  const saveState = cwrap('saveState', 'boolean', ['number']);
   return saveState(slot);
 };
 
-Module.loadState = function (slot) {
-  var loadState = cwrap('loadState', 'boolean', ['number']);
+Module.loadState = (slot) => {
+  const loadState = cwrap('loadState', 'boolean', ['number']);
   return loadState(slot);
 };
 
-Module.autoLoadCheats = function () {
-  var autoLoadCheats = cwrap('autoLoadCheats', 'bool', []);
+Module.autoLoadCheats = () => {
+  const autoLoadCheats = cwrap('autoLoadCheats', 'bool', []);
   return autoLoadCheats();
 };

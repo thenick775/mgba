@@ -68,7 +68,7 @@ void testLoop() {
 		core->runFrame(core);
 
 		unsigned w, h;
-		core->desiredVideoDimensions(core, &w, &h);
+		core->currentVideoSize(core, &w, &h);
 
 		SDL_Rect rect = {
 			.x = 0,
@@ -108,7 +108,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	mSDLInitBindingsGBA(&core->inputMap);
 
 	unsigned w, h;
-	core->desiredVideoDimensions(core, &w, &h);
+	core->baseVideoSize(core, &w, &h);
 	if (tex) {
 		SDL_DestroyTexture(tex);
 	}
@@ -120,7 +120,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 
 	core->reset(core);
 
-	core->desiredVideoDimensions(core, &w, &h);
+	core->currentVideoSize(core, &w, &h);
 	SDL_SetWindowSize(window, w, h);
 	audio.core = core;
 	mSDLResumeAudio(&audio);

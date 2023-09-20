@@ -127,6 +127,20 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	return true;
 }
 
+EMSCRIPTEN_KEEPALIVE bool saveStateSlot(int slot, int flags) {
+	if (!core) {
+		return false;
+	}
+	return mCoreSaveState(core, slot, flags);
+}
+
+EMSCRIPTEN_KEEPALIVE bool loadStateSlot(int slot, int flags) {
+	if (!core) {
+		return false;
+	}
+	return mCoreLoadState(core, slot, flags);
+}
+
 void _log(struct mLogger* logger, int category, enum mLogLevel level, const char* format, va_list args) {
 	UNUSED(logger);
 	UNUSED(category);

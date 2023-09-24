@@ -3,11 +3,12 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+#include <mgba-util/vfs.h>
 #include <mgba/core/core.h>
 #include <mgba/core/serialize.h>
 #include <mgba/core/version.h>
+#include <mgba/gba/interface.h>
 #include <mgba/internal/gba/input.h>
-#include <mgba-util/vfs.h>
 
 #include "platform/sdl/sdl-audio.h"
 #include "platform/sdl/sdl-events.h"
@@ -293,7 +294,7 @@ int main() {
 	mLogSetDefaultLogger(&logCtx);
 
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS);
-	window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 480, 320, SDL_WINDOW_OPENGL);
+	window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 	mSDLInitAudio(&audio, NULL);
 

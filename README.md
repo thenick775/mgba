@@ -2,9 +2,19 @@
 
 This is my fork of endrift's personal fork of mGBA. My goal here was to make a fully functional wasm setup condensing some of the work in the surrounding community.
 
-To build this branch, run the following in the repo's root directory:
+To build this branch and obtain a WASM and js file, run either of the following in the repo's root directory:
 
 ```
+# using newer emscripten/emsdk:3.1.46
+# see Dockerfile for more information
+cd ./src/platform/wasm/docker;
+docker build -t local-mgba/wasm:1.0 .;
+cd ./../../../..;
+docker run --rm -t -v $PWD:/home/mgba/src <generated image ID>;
+```
+
+```
+# using older mgba/wasm image based on trzeci/emscripten-slim
 docker run --rm -t -v $PWD:/home/mgba/src mgba/wasm
 ```
 
@@ -15,7 +25,15 @@ Once this has completed, your compiled files can be found at:
 ./build-wasm/wasm/mgba.wasm
 ```
 
-Include these files in your client's resources, and then instanciate your emulator as follows in your javascript:
+Include these files in your client's resources, and then instanciate your emulator as follows in your html/javascript:
+
+```
+<canvas
+    id="screen"
+    width="240"
+    height="160"
+/>
+```
 
 ```
 let canvas_id = 'screen'

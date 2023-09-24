@@ -28,35 +28,34 @@ Module.listSaves = () => {
 };
 
 // yanked from main.c for ease of use
-Module.FSInit = (callback) => {
-  FS.mkdir('/data');
-  FS.mount(FS.filesystems.IDBFS, {}, '/data');
+Module.FSInit = () => {
+  return new Promise((resolve, reject) => {
+    FS.mkdir('/data');
+    FS.mount(FS.filesystems.IDBFS, {}, '/data');
 
-  // load data from IDBFS
-  FS.syncfs(true, (err) => {
-    if (err) {
-      console.warn('Error syncing app data from IndexedDB: ', err);
-    }
+    // load data from IDBFS
+    FS.syncfs(true, (err) => {
+      if (err) {
+        reject(new Error(`Error syncing app data from IndexedDB: ${err}`));
+      }
 
-    // When we read from indexedb, these directories may or may not exist.
-    // If we mkdir and they already exist they throw, so just catch all of them.
-    try {
-      FS.mkdir('/data/saves');
-    } catch (e) {}
-    try {
-      FS.mkdir('/data/states');
-    } catch (e) {}
-    try {
-      FS.mkdir('/data/games');
-    } catch (e) {}
-    try {
-      FS.mkdir('/data/cheats');
-    } catch (e) {}
+      // When we read from indexedb, these directories may or may not exist.
+      // If we mkdir and they already exist they throw, so just catch all of them.
+      try {
+        FS.mkdir('/data/saves');
+      } catch (e) {}
+      try {
+        FS.mkdir('/data/states');
+      } catch (e) {}
+      try {
+        FS.mkdir('/data/games');
+      } catch (e) {}
+      try {
+        FS.mkdir('/data/cheats');
+      } catch (e) {}
 
-    // using a callback to indicate fs ready state if desired
-    if (callback) {
-      callback();
-    }
+      resolve();
+    });
   });
 };
 

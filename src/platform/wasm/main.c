@@ -119,11 +119,15 @@ EMSCRIPTEN_KEEPALIVE void screenShot(void(*callback)(void)){
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonPress(int id) {
-  core->addKeys(core, 1 << id);
+  if (core) {
+    core->addKeys(core, 1 << id);
+  }
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonUnpress(int id) {
-  core->clearKeys(core, 1 << id);
+  if (core) {
+    core->clearKeys(core, 1 << id);
+  }
 }
 
 EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
@@ -202,11 +206,17 @@ EMSCRIPTEN_KEEPALIVE void bindKey(char* bindingName, int inputCode) {
 }
 
 EMSCRIPTEN_KEEPALIVE bool saveState(int slot) {
-	return mCoreSaveState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
+  if (core) {
+	  return mCoreSaveState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
+  }
+  return false;
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
-	return mCoreLoadState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
+  if (core) {
+    return mCoreLoadState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
+  }
+  return false;
 }
 
 // loads all cheats files located in the cores cheatsPath,

@@ -32,7 +32,7 @@ static void _log(struct mLogger*, int category, enum mLogLevel level, const char
 static struct mLogger logCtx = { .log = _log };
 
 static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
-	if (event->keysym.sym == SDLK_TAB) {
+	if (event->keysym.sym == SDLK_f) {
 		emscripten_set_main_loop_timing(event->type == SDL_KEYDOWN ? EM_TIMING_SETTIMEOUT : EM_TIMING_RAF, 0);
 		return;
 	}
@@ -300,6 +300,18 @@ CONSTRUCTOR(premain) {
 	setupConstants();
 }
 
+int excludeKeys(void *userdata, SDL_Event *event) {
+	UNUSED(userdata);
+
+	switch (event->key.keysym.sym) {
+		case SDLK_TAB: // ignored for a11y during gameplay
+		case SDLK_SPACE:
+			return 0; // Value will be ignored
+		default:
+			return 1;
+	};
+}
+
 int main() {
 	mLogSetDefaultLogger(&logCtx);
 
@@ -307,6 +319,9 @@ int main() {
 	window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 	mSDLInitAudio(&audio, NULL);
+	
+	// exclude specific key events
+	SDL_SetEventFilter(excludeKeys, NULL);
 
 	emscripten_set_main_loop(testLoop, 0, 1);
 	return 0;

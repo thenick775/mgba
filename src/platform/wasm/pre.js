@@ -245,7 +245,7 @@ Module.toggleInput = (toggle) => {
 };
 
 Module.screenShot = (callback) => {
-  const ptr = addFunction(callback);
+  const ptr = addFunction(callback, 'v');
   const screenShot = cwrap('screenShot', null, ['number']);
   screenShot(ptr);
   removeFunction(ptr);

@@ -1,20 +1,40 @@
-mGBA
-====
+# mGBA
 
 This is my fork of endrift's personal fork of mGBA. My goal here was to make a fully functional wasm setup condensing some of the work in the surrounding community.
 
-To build this branch, run the following in the repo's root directory:
+To build this branch and obtain a WASM and js file, run either of the following in the repo's root directory:
+
 ```
+# using newer emscripten/emsdk:3.1.46
+# see Dockerfile for more information
+cd ./src/platform/wasm/docker;
+docker build -t local-mgba/wasm:1.0 .;
+cd ./../../../..;
+docker run --rm -t -v $PWD:/home/mgba/src <generated image ID>;
+```
+
+```
+# using older mgba/wasm image based on trzeci/emscripten-slim
 docker run --rm -t -v $PWD:/home/mgba/src mgba/wasm
 ```
 
 Once this has completed, your compiled files can be found at:
+
 ```
 ./build-wasm/wasm/mgba.js
 ./build-wasm/wasm/mgba.wasm
 ```
 
-Include these files in your client's resources, and then instanciate your emulator as follows in your javascript:
+Include these files in your client's resources, and then instanciate your emulator as follows in your html/javascript:
+
+```
+<canvas
+    id="screen"
+    width="240"
+    height="160"
+/>
+```
+
 ```
 let canvas_id = 'screen'
 var Module = {
@@ -28,19 +48,22 @@ mGBA(this.module).then(function (Module) {
 		Module.version.projectName +
 		' ' +
 		Module.version.projectVersion;
-		
+
     console.log(mGBAVersion);
 	Module.FSInit();
 });
 ```
 
 Now you will have access to the following contract:
+
 ```
 Module.autoLoadCheats()
 Module.bindKey(bindingName, inputName)
 Module.buttonPress(name)
 Module.buttonUnpress(name)
+Module.filePaths()
 Module.FSInit()
+Module.FSSync()
 Module.getMainLoopTiming()
 Module.getSave()
 Module.getVolume()
@@ -58,24 +81,25 @@ Module.screenShot(callback)
 Module.setMainLoopTiming(mode, value)
 Module.setVolume(percent)
 Module.toggleInput()
-Module.uploadSaveOrSaveState(file)
+Module.uploadCheats(file, callback)
+Module.uploadRom(file, callback)
+Module.uploadSaveOrSaveState(file, callback)
 ```
 
 As well as all the other emscripten Module convienence functions such as `Module.FS.writeFile(file, buf)` and many others.
 
 The contract is defined in these 2 files:
+
 ```
 ./src/platform/wasm/main.c
 ./src/platform/wasm/pre.js
 ```
 
-TODO
-----
+## TODO
 
 - Debugger
 
-Original Readme Below
---------
+## Original Readme Below
 
 mGBA is an emulator for running Game Boy Advance games. It aims to be faster and more accurate than many existing Game Boy Advance emulators, as well as adding features that other emulators lack. It also supports Game Boy and Game Boy Color games.
 
@@ -84,8 +108,7 @@ Up-to-date news and downloads can be found at [mgba.io](https://mgba.io/).
 [![Build status](https://buildbot.mgba.io/badges/build-win32.svg)](https://buildbot.mgba.io)
 [![Translation status](https://hosted.weblate.org/widgets/mgba/-/svg-badge.svg)](https://hosted.weblate.org/engage/mgba)
 
-Features
---------
+## Features
 
 - Highly accurate Game Boy Advance hardware support[<sup>[1]</sup>](#missing).
 - Game Boy/Game Boy Color hardware support.
@@ -153,8 +176,7 @@ The following mappers are partially supported:
 - A comprehensive debug suite.
 - Wireless adapter support.
 
-Supported Platforms
--------------------
+## Supported Platforms
 
 - Windows 7 or newer
 - OS X 10.8 (Mountain Lion)[<sup>[3]</sup>](#osxver) or newer
@@ -171,13 +193,11 @@ Other Unix-like platforms, such as OpenBSD, are known to work as well, but are u
 
 Requirements are minimal. Any computer that can run Windows Vista or newer should be able to handle emulation. Support for OpenGL 1.1 or newer is also required, with OpenGL 3.2 or newer for shaders and advanced features.
 
-Downloads
----------
+## Downloads
 
 Downloads can be found on the official website, in the [Downloads][downloads] section. The source code can be found on [GitHub][source].
 
-Controls
---------
+## Controls
 
 Controls are configurable in the settings menu. Many game controllers should be automatically mapped by default. The default keyboard controls are as follows:
 
@@ -188,8 +208,7 @@ Controls are configurable in the settings menu. Many game controllers should be 
 - **Start**: Enter
 - **Select**: Backspace
 
-Compiling
----------
+## Compiling
 
 Compiling requires using CMake 3.1 or newer. GCC and Clang are both known to work to compile mGBA, but Visual Studio 2013 and older are known not to work. Support for Visual Studio 2015 and newer is coming soon.
 
@@ -199,7 +218,7 @@ The recommended way to build for most platforms is to use Docker. Several Docker
 
 To use a Docker image to build mGBA, simply run the following command while in the root of an mGBA checkout:
 
-	docker run --rm -t -v $PWD:/home/mgba/src mgba/windows:w32
+    docker run --rm -t -v $PWD:/home/mgba/src mgba/windows:w32
 
 This will produce a `build-win32` directory with the build products. Replace `mgba/windows:w32` with another Docker image for other platforms, which will produce a corresponding other directory. The following Docker images available on Docker Hub:
 
@@ -215,25 +234,25 @@ This will produce a `build-win32` directory with the build products. Replace `mg
 - mgba/windows:w32
 - mgba/windows:w64
 
-#### *nix building
+#### \*nix building
 
 To use CMake to build on a Unix-based system, the recommended commands are as follows:
 
-	mkdir build
-	cd build
-	cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
-	make
-	sudo make install
+    mkdir build
+    cd build
+    cmake -DCMAKE_INSTALL_PREFIX:PATH=/usr ..
+    make
+    sudo make install
 
 This will build and install mGBA into `/usr/bin` and `/usr/lib`. Dependencies that are installed will be automatically detected, and features that are disabled if the dependencies are not found will be shown after running the `cmake` command after warnings about being unable to find them.
 
 If you are on macOS, the steps are a little different. Assuming you are using the homebrew package manager, the recommended commands to obtain the dependencies and build are:
 
-	brew install cmake ffmpeg libzip qt5 sdl2 libedit pkg-config
-	mkdir build
-	cd build
-	cmake -DCMAKE_PREFIX_PATH=`brew --prefix qt5` ..
-	make
+    brew install cmake ffmpeg libzip qt5 sdl2 libedit pkg-config
+    mkdir build
+    cd build
+    cmake -DCMAKE_PREFIX_PATH=`brew --prefix qt5` ..
+    make
 
 Note that you should not do a `make install` on macOS, as it will not work properly.
 
@@ -243,18 +262,18 @@ Note that you should not do a `make install` on macOS, as it will not work prope
 
 To build on Windows for development, using MSYS2 is recommended. Follow the installation steps found on their [website](https://msys2.github.io). Make sure you're running the 32-bit version ("MSYS2 MinGW 32-bit") (or the 64-bit version "MSYS2 MinGW 64-bit" if you want to build for x86_64) and run this additional command (including the braces) to install the needed dependencies (please note that this involves downloading over 1100MiB of packages, so it will take a long time):
 
-	pacman -Sy --needed base-devel git ${MINGW_PACKAGE_PREFIX}-{cmake,ffmpeg,gcc,gdb,libelf,libepoxy,libzip,pkgconf,qt5,SDL2,ntldd-git}
+    pacman -Sy --needed base-devel git ${MINGW_PACKAGE_PREFIX}-{cmake,ffmpeg,gcc,gdb,libelf,libepoxy,libzip,pkgconf,qt5,SDL2,ntldd-git}
 
 Check out the source code by running this command:
 
-	git clone https://github.com/mgba-emu/mgba.git
+    git clone https://github.com/mgba-emu/mgba.git
 
 Then finally build it by running these commands:
 
-	mkdir -p mgba/build
-	cd mgba/build
-	cmake .. -G "MSYS Makefiles"
-	make -j$(nproc --ignore=1)
+    mkdir -p mgba/build
+    cd mgba/build
+    cmake .. -G "MSYS Makefiles"
+    make -j$(nproc --ignore=1)
 
 Please note that this build of mGBA for Windows is not suitable for distribution, due to the scattering of DLLs it needs to run, but is perfect for development. However, if distributing such a build is desired (e.g. for testing on machines that don't have the MSYS2 environment installed), running `cpack -G ZIP` will prepare a zip file with all of the necessary DLLs.
 
@@ -276,10 +295,10 @@ Next, open Visual Studio, select Clone Repository, and enter `https://github.com
 
 If you have devkitARM (for 3DS), devkitPPC (for Wii), devkitA64 (for Switch), or vitasdk (for PS Vita), you can use the following commands for building:
 
-	mkdir build
-	cd build
-	cmake -DCMAKE_TOOLCHAIN_FILE=../src/platform/3ds/CMakeToolchain.txt ..
-	make
+    mkdir build
+    cd build
+    cmake -DCMAKE_TOOLCHAIN_FILE=../src/platform/3ds/CMakeToolchain.txt ..
+    make
 
 Replace the `-DCMAKE_TOOLCHAIN_FILE` parameter for the following platforms:
 
@@ -303,8 +322,7 @@ mGBA has no hard dependencies, however, the following optional dependencies are 
 
 SQLite3, libpng, and zlib are included with the emulator, so they do not need to be externally compiled first.
 
-Footnotes
----------
+## Footnotes
 
 <a name="missing">[1]</a> Currently missing features are
 
@@ -317,8 +335,7 @@ Footnotes
 [downloads]: http://mgba.io/downloads.html
 [source]: https://github.com/mgba-emu/mgba/
 
-Copyright
----------
+## Copyright
 
 mGBA is Copyright © 2013 – 2022 Jeffrey Pfau. It is distributed under the [Mozilla Public License version 2.0](https://www.mozilla.org/MPL/2.0/). A copy of the license is available in the distributed LICENSE file.
 

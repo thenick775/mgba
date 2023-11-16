@@ -3,11 +3,12 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+#include <mgba-util/vfs.h>
 #include <mgba/core/core.h>
 #include <mgba/core/serialize.h>
 #include <mgba/core/version.h>
+#include <mgba/gba/interface.h>
 #include <mgba/internal/gba/input.h>
-#include <mgba-util/vfs.h>
 
 #include "platform/sdl/sdl-audio.h"
 #include "platform/sdl/sdl-events.h"
@@ -31,7 +32,7 @@ static void _log(struct mLogger*, int category, enum mLogLevel level, const char
 static struct mLogger logCtx = { .log = _log };
 
 static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
-	if (event->keysym.sym == SDLK_TAB) {
+	if (event->keysym.sym == SDLK_f) {
 		emscripten_set_main_loop_timing(event->type == SDL_KEYDOWN ? EM_TIMING_SETTIMEOUT : EM_TIMING_RAF, 0);
 		return;
 	}
@@ -118,11 +119,15 @@ EMSCRIPTEN_KEEPALIVE void screenShot(void(*callback)(void)){
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonPress(int id) {
-  core->addKeys(core, 1 << id);
+  if (core) {
+    core->addKeys(core, 1 << id);
+  }
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonUnpress(int id) {
-  core->clearKeys(core, 1 << id);
+  if (core) {
+    core->clearKeys(core, 1 << id);
+  }
 }
 
 EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
@@ -201,11 +206,17 @@ EMSCRIPTEN_KEEPALIVE void bindKey(char* bindingName, int inputCode) {
 }
 
 EMSCRIPTEN_KEEPALIVE bool saveState(int slot) {
-	return mCoreSaveState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
+  if (core) {
+	  return mCoreSaveState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
+  }
+  return false;
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
-	return mCoreLoadState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
+  if (core) {
+    return mCoreLoadState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
+  }
+  return false;
 }
 
 // loads all cheats files located in the cores cheatsPath,
@@ -289,13 +300,28 @@ CONSTRUCTOR(premain) {
 	setupConstants();
 }
 
+int excludeKeys(void *userdata, SDL_Event *event) {
+	UNUSED(userdata);
+
+	switch (event->key.keysym.sym) {
+		case SDLK_TAB: // ignored for a11y during gameplay
+		case SDLK_SPACE:
+			return 0; // Value will be ignored
+		default:
+			return 1;
+	};
+}
+
 int main() {
 	mLogSetDefaultLogger(&logCtx);
 
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS);
-	window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 16, 16, SDL_WINDOW_OPENGL);
+	window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 	mSDLInitAudio(&audio, NULL);
+	
+	// exclude specific key events
+	SDL_SetEventFilter(excludeKeys, NULL);
 
 	emscripten_set_main_loop(testLoop, 0, 1);
 	return 0;

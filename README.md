@@ -71,12 +71,14 @@ Module.listRoms()
 Module.listSaves()
 Module.loadGame(name)
 Module.loadState(slot)
+Module.loadStateSlot(slot, flags)
 Module.pauseGame()
 Module.quickReload()
 Module.quitGame()
 Module.quitMgba()
 Module.resumeGame()
 Module.saveState(slot)
+Module.saveStateSlot(slot, flags)
 Module.screenShot(callback)
 Module.setMainLoopTiming(mode, value)
 Module.setVolume(percent)
@@ -226,7 +228,7 @@ Note: If you are on an older Windows system before Windows 10, you may need to c
 
 To use a Docker image to build mGBA, simply run the following command while in the root of an mGBA checkout:
 
-	docker run --rm -it -v ${PWD}:/home/mgba/src mgba/windows:w32
+    docker run --rm -it -v ${PWD}:/home/mgba/src mgba/windows:w32
 
 After starting the Docker container, it will produce a `build-win32` directory with the build products. Replace `mgba/windows:w32` with another Docker image for other platforms, which will produce a corresponding other directory. The following Docker images available on Docker Hub:
 
@@ -244,7 +246,7 @@ After starting the Docker container, it will produce a `build-win32` directory w
 
 If you want to speed up the build process, consider adding the flag `-e MAKEFLAGS=-jN` to do a parallel build for mGBA with `N` number of CPU cores.
 
-#### *nix building
+#### \*nix building
 
 To use CMake to build on a Unix-based system, the recommended commands are as follows:
 
@@ -258,11 +260,11 @@ This will build and install mGBA into `/usr/bin` and `/usr/lib`. Dependencies th
 
 If you are on macOS, the steps are a little different. Assuming you are using the homebrew package manager, the recommended commands to obtain the dependencies and build are:
 
-	brew install cmake ffmpeg libzip qt5 sdl2 libedit lua pkg-config
-	mkdir build
-	cd build
-	cmake -DCMAKE_PREFIX_PATH=`brew --prefix qt5` ..
-	make
+    brew install cmake ffmpeg libzip qt5 sdl2 libedit lua pkg-config
+    mkdir build
+    cd build
+    cmake -DCMAKE_PREFIX_PATH=`brew --prefix qt5` ..
+    make
 
 Note that you should not do a `make install` on macOS, as it will not work properly.
 
@@ -272,7 +274,7 @@ Note that you should not do a `make install` on macOS, as it will not work prope
 
 To build on Windows for development, using MSYS2 is recommended. Follow the installation steps found on their [website](https://msys2.github.io). Make sure you're running the 32-bit version ("MSYS2 MinGW 32-bit") (or the 64-bit version "MSYS2 MinGW 64-bit" if you want to build for x86_64) and run this additional command (including the braces) to install the needed dependencies (please note that this involves downloading over 1100MiB of packages, so it will take a long time):
 
-	pacman -Sy --needed base-devel git ${MINGW_PACKAGE_PREFIX}-{cmake,ffmpeg,gcc,gdb,libelf,libepoxy,libzip,lua,pkgconf,qt5,SDL2,ntldd-git}
+    pacman -Sy --needed base-devel git ${MINGW_PACKAGE_PREFIX}-{cmake,ffmpeg,gcc,gdb,libelf,libepoxy,libzip,lua,pkgconf,qt5,SDL2,ntldd-git}
 
 Check out the source code by running this command:
 

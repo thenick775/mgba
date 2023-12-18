@@ -95,7 +95,7 @@ void testLoop() {
 EMSCRIPTEN_KEEPALIVE void screenShot(void(*callback)(void)){
 	if (core) {
 		unsigned w, h;
-		core->desiredVideoDimensions(core, &w, &h);
+		core->currentVideoSize(core, &w, &h);
 
 		SDL_Rect rect = {
 			.x = 0,

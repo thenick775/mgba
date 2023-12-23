@@ -267,6 +267,11 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 
 	core->currentVideoSize(core, &w, &h);
 	SDL_SetWindowSize(window, w, h);
+	EM_ASM({
+		Module.canvas.width = $0;
+		Module.canvas.height = $1;
+	}, w, h);
+
 	audio.core = core;
 	mSDLResumeAudio(&audio);
 	emscripten_resume_main_loop();

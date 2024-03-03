@@ -5,6 +5,9 @@
 *.pyc
 **/.DS_Store
 
+# Editor files
+**/.vscode/**
+
 # Build directories
 /build
 /build-*

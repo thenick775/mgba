@@ -18,3 +18,5 @@ set_target_properties(${BINARY_NAME}.js PROPERTIES
 	LINK_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/pre.js"
 	OUTPUT_NAME ${BINARY_NAME})
 target_link_libraries(${BINARY_NAME}.js ${BINARY_NAME} ${OS_LIB})
+
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/mgba.d.ts ${CMAKE_CURRENT_BINARY_DIR}/${BINARY_NAME}.d.ts)

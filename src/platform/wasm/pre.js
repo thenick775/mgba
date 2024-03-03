@@ -66,11 +66,15 @@ Module.FSInit = () => {
 };
 
 Module.FSSync = () => {
-  // write data to IDBFS
-  FS.syncfs((err) => {
-    if (err) {
-      console.warn('Error syncing app data to IndexedDB', err);
-    }
+  return new Promise((resolve, reject) => {
+    // write data to IDBFS
+    FS.syncfs((err) => {
+      if (err) {
+        reject(new Error(`Error syncing app data to IndexedDB: ${err}`));
+      }
+
+      resolve();
+    });
   });
 };
 

@@ -1,26 +1,26 @@
 # mGBA
 
-This is my fork of endrift's personal fork of mGBA. My goal here was to make a fully functional wasm setup condensing some of the work in the surrounding community.
+This is my fork of endrift's personal fork of mGBA. My goal here was to make a fully functional wasm setup condensing some of the work in the surrounding community, including javascript bindings for the most common emulator actions.
 
-To build this branch and obtain a WASM and js file, run either of the following in the repo's root directory:
+To build this branch and obtain a WASM, js, and type definition files, run either of the following in the repo's root directory:
 
 ```
-# using newer emscripten/emsdk:3.1.46
-# see Dockerfile for more information
-cd ./src/platform/wasm/docker;
-docker build -t local-mgba/wasm:1.0 .;
-cd ./../../../..;
+# using local build from pinned emcc from emscripten/emsdk:3.1.46
+cd ./src/platform/wasm/docker && \
+docker build -t local-mgba/wasm:1.0 . && \
+cd ./../../../.. && \
 docker run --rm -t -v $PWD:/home/mgba/src <generated image ID>;
 ```
 
 ```
-# using older mgba/wasm image based on trzeci/emscripten-slim
+# using the latest emcc version and public mgba/wasm image
 docker run --rm -t -v $PWD:/home/mgba/src mgba/wasm
 ```
 
 Once this has completed, your compiled files can be found at:
 
 ```
+./build-wasm/wasm/mgba.d.ts
 ./build-wasm/wasm/mgba.js
 ./build-wasm/wasm/mgba.wasm
 ```
@@ -90,15 +90,17 @@ Module.uploadSaveOrSaveState(file, callback)
 
 As well as all the other emscripten Module convienence functions such as `Module.FS.writeFile(file, buf)` and many others.
 
-The contract is defined in these 2 files:
+The contract is defined in these 3 files:
 
 ```
 ./src/platform/wasm/main.c
 ./src/platform/wasm/pre.js
+./src/platform/wasm/mgba.d.ts
 ```
 
 ## TODO
 
+- Rewind support (WASM)
 - Debugger
 
 ## Original Readme Below

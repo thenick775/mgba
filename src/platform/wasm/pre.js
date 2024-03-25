@@ -126,7 +126,7 @@ Module.uploadRom = (file, callback) => {
   const extension = split[split.length - 1].toLowerCase();
 
   let dir = null;
-  if (extension == 'gba' || extension == 'gbc' || extension == 'gb') {
+  if (['gba', 'gbc', 'gb', 'zip', '7z'].includes(extension)) {
     dir = '/data/games/';
   } else {
     console.warn('unrecognized file extension: ' + extension);

@@ -5,7 +5,7 @@ This is my fork of endrift's personal fork of mGBA. My goal here was to make a f
 To build this branch and obtain a WASM, js, and type definition files, run either of the following in the repo's root directory:
 
 ```
-# using local build from pinned emcc from emscripten/emsdk:3.1.46
+# using local build from pinned emcc from emscripten/emsdk:3.1.57
 cd ./src/platform/wasm/docker && \
 docker build -t local-mgba/wasm:1.0 . && \
 cd ./../../../.. && \
@@ -64,7 +64,8 @@ Module.buttonUnpress(name)
 Module.filePaths()
 Module.FSInit()
 Module.FSSync()
-Module.getMainLoopTiming()
+Module.getMainLoopTimingMode()
+Module.getMainLoopTimingValue()
 Module.getSave()
 Module.getVolume()
 Module.listRoms()

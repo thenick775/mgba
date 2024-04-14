@@ -151,7 +151,14 @@ EMSCRIPTEN_KEEPALIVE int getVolume() {
   return core->opts.volume;
 }
 
-EMSCRIPTEN_KEEPALIVE int getMainLoopTiming() {
+EMSCRIPTEN_KEEPALIVE int getMainLoopTimingMode() {
+  int mode = -1;
+  int value = -1;
+  emscripten_get_main_loop_timing(&mode, &value);
+  return mode;
+}
+
+EMSCRIPTEN_KEEPALIVE int getMainLoopTimingValue() {
   int mode = -1;
   int value = -1;
   emscripten_get_main_loop_timing(&mode, &value);

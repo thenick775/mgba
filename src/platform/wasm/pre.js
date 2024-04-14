@@ -221,9 +221,14 @@ Module.setVolume = (percent) => {
   setVolume(percent);
 };
 
-Module.getMainLoopTiming = () => {
-  const getMainLoopTiming = cwrap('getMainLoopTiming', 'number', []);
-  return getMainLoopTiming();
+Module.getMainLoopTimingMode = () => {
+  const getMainLoopTimingMode = cwrap('getMainLoopTimingMode', 'number', []);
+  return getMainLoopTimingMode();
+};
+
+Module.getMainLoopTimingValue = () => {
+  const getMainLoopTimingValue = cwrap('getMainLoopTimingValue', 'number', []);
+  return getMainLoopTimingValue();
 };
 
 Module.setMainLoopTiming = (mode, value) => {

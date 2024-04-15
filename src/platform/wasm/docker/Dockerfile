@@ -1,4 +1,4 @@
-FROM emscripten/emsdk:3.1.57
+FROM emscripten/emsdk:3.1.53
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends make cmake git && \

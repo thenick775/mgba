@@ -302,3 +302,19 @@ Module.autoLoadCheats = () => {
   const autoLoadCheats = cwrap('autoLoadCheats', 'bool', []);
   return autoLoadCheats();
 };
+
+Module.setFastForwardMultiplier = (multiplier) => {
+  const setFastForwardMultiplier = cwrap('setFastForwardMultiplier', null, [
+    'number',
+  ]);
+  setFastForwardMultiplier(multiplier);
+};
+
+Module.getFastForwardMultiplier = () => {
+  const getFastForwardMultiplier = cwrap(
+    'getFastForwardMultiplier',
+    'number',
+    []
+  );
+  return getFastForwardMultiplier();
+};

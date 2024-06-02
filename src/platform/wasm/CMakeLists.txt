@@ -5,11 +5,13 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
 	-s TOTAL_MEMORY=67108864 \
 	-s ALLOW_MEMORY_GROWTH=1 \
 	-s EXPORTED_RUNTIME_METHODS=[\"FS\",\"cwrap\",\"addFunction\",\"removeFunction\"] \
-	-s ENVIRONMENT='web,worker' \
+	-s ENVIRONMENT='web' \
 	-s EXPORT_ES6=1 \
 	-s MODULARIZE=1 \
 	-s EXPORT_NAME=${CMAKE_PROJECT_NAME} \
-	-s RESERVED_FUNCTION_POINTERS=20 \
+	-s RESERVED_FUNCTION_POINTERS=5 \
+	-s ELIMINATE_DUPLICATE_FUNCTIONS=1 \
+	--flto \
 	--pre-js ${CMAKE_CURRENT_SOURCE_DIR}/pre.js")
 add_executable(${BINARY_NAME}.js main.c memory.c ../sdl/sdl-audio.c ../sdl/sdl-events.c)
 set_target_properties(${BINARY_NAME}.js PROPERTIES

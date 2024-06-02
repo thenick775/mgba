@@ -28,12 +28,17 @@ static SDL_Window* window = NULL;
 static SDL_Renderer* renderer = NULL;
 static SDL_Texture* tex = NULL;
 
+// fps related variables
+static Uint32 emscriptenLastTick;
+static bool renderFirstFrame = true;
+static int fastForwardSpeed = 1;
+
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
 static struct mLogger logCtx = { .log = _log };
 
 static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
 	if (event->keysym.sym == SDLK_f) {
-		emscripten_set_main_loop_timing(event->type == SDL_KEYDOWN ? EM_TIMING_SETTIMEOUT : EM_TIMING_RAF, 0);
+		fastForwardSpeed = event->type == SDL_KEYDOWN ? 2 : 1;
 		return;
 	}
 	int key = -1;
@@ -49,11 +54,6 @@ static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
 	}
 }
 
-static void handleKeypress(const struct SDL_KeyboardEvent* event) {
-	UNUSED(event);
-	// Nothing here yet
-}
-
 void testLoop() {
 	union SDL_Event event;
 	while (SDL_PollEvent(&event)) {
@@ -63,12 +63,32 @@ void testLoop() {
 			if (core) {
 				handleKeypressCore(&event.key);
 			}
-			handleKeypress(&event.key);
 			break;
 		};
 	}
 	if (core) {
-		core->runFrame(core);
+		Uint32 current = SDL_GetTicks();
+		// determine how many ticks have passed, if this is the first tick, frame count will get set to 1
+		int elapsedTicks = current - (emscriptenLastTick > 0 ? emscriptenLastTick : current);
+		// internally render at 60fps by default
+		int numFrames = round((float) elapsedTicks / 16);
+		// store last tick
+		emscriptenLastTick = current;
+
+		if (numFrames == 0)
+			numFrames = 1;
+
+		if (fastForwardSpeed > 1)
+			numFrames *= fastForwardSpeed;
+
+		if (renderFirstFrame) {
+			renderFirstFrame = false;
+			core->runFrame(core);
+		} else {
+			for (int i = 0; i < numFrames; i++) {
+				core->runFrame(core);
+			}
+		}
 
 		unsigned w, h;
 		core->currentVideoSize(core, &w, &h);
@@ -87,6 +107,11 @@ void testLoop() {
 		SDL_LockTexture(tex, 0, (void**) &buffer, &stride);
 		core->setVideoBuffer(core, buffer, stride / BYTES_PER_PIXEL);
 		return;
+	} else {
+		// dont run the main loop if there is no core,  we don't
+		// want to handle events unless the core is running for now
+		renderFirstFrame = true;
+		emscripten_pause_main_loop();
 	}
 }
 
@@ -146,9 +171,8 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 	}
 }
 
-EMSCRIPTEN_KEEPALIVE int getVolume() {
-  // TODO if this is called before setVolume, it always returns zero!
-  return core->opts.volume;
+EMSCRIPTEN_KEEPALIVE float getVolume() {
+  return (float) core->opts.volume / 0x100;
 }
 
 EMSCRIPTEN_KEEPALIVE int getMainLoopTimingMode() {
@@ -169,10 +193,20 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
   emscripten_set_main_loop_timing(mode, value);
 }
 
+EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
+	if (multiplier > 0)
+		fastForwardSpeed = multiplier;
+}
+
+EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
+	return fastForwardSpeed;
+}
+
 EMSCRIPTEN_KEEPALIVE void quitGame() {
   if (core) {
-  	mSDLPauseAudio(&audio);
-  	emscripten_pause_main_loop();
+	renderFirstFrame = true;
+	mSDLPauseAudio(&audio);
+	emscripten_pause_main_loop();
     core->deinit(core);
     core = NULL;
   }
@@ -183,10 +217,12 @@ EMSCRIPTEN_KEEPALIVE void quitMgba() {
 }
 
 EMSCRIPTEN_KEEPALIVE void quickReload() {
+  renderFirstFrame = true;
   core->reset(core);
 }
 
 EMSCRIPTEN_KEEPALIVE void pauseGame() {
+	renderFirstFrame = true;
 	emscripten_pause_main_loop();
 }
 
@@ -214,14 +250,14 @@ EMSCRIPTEN_KEEPALIVE void bindKey(char* bindingName, int inputCode) {
 
 EMSCRIPTEN_KEEPALIVE bool saveState(int slot) {
   if (core) {
-	  return mCoreSaveState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
+	  return mCoreSaveState(core, slot, SAVESTATE_ALL);
   }
   return false;
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
   if (core) {
-    return mCoreLoadState(core, slot, SAVESTATE_SCREENSHOT | SAVESTATE_SAVEDATA | SAVESTATE_CHEATS | SAVESTATE_RTC | SAVESTATE_METADATA);
+    return mCoreLoadState(core, slot, SAVESTATE_ALL);
   }
   return false;
 }
@@ -253,6 +289,8 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 
 	mCoreLoadFile(core, name);
 	mCoreConfigInit(&core->config, "wasm");
+	mCoreConfigSetDefaultValue(&core->config, "idleOptimization", "detect");
+	mCoreConfigSetDefaultIntValue(&core->config, "volume", 0x100);
 	mInputMapInit(&core->inputMap, &GBAInputInfo);
 	mDirectorySetMapOptions(&core->dirs, &core->opts);
 	mCoreAutoloadSave(core);
@@ -341,14 +379,14 @@ int excludeKeys(void *userdata, SDL_Event *event) {
 int main() {
 	mLogSetDefaultLogger(&logCtx);
 
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS);
+	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO| SDL_INIT_TIMER | SDL_INIT_EVENTS);
 	window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
-	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	mSDLInitAudio(&audio, NULL);
 	
 	// exclude specific key events
 	SDL_SetEventFilter(excludeKeys, NULL);
 
-	emscripten_set_main_loop(testLoop, 0, 1);
+	emscripten_set_main_loop(testLoop, 0, 0);
 	return 0;
 }

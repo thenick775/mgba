@@ -115,32 +115,29 @@ void testLoop() {
 	}
 }
 
-// fills the webgl canvas buffer so that it can be copied to a
-// 2d canvas context with in the js function pointer callback
-EMSCRIPTEN_KEEPALIVE void screenShot(void(*callback)(void)){
-	if (core) {
-		unsigned w, h;
-		core->currentVideoSize(core, &w, &h);
+EMSCRIPTEN_KEEPALIVE bool screenshot(char* fileName) {
+	bool success = false;
+	int mode = O_CREAT | O_TRUNC | O_WRONLY;
+	struct VFile* vf;
 
-		SDL_Rect rect = {
-			.x = 0,
-			.y = 0,
-			.w = w,
-			.h = h
-		};
-		SDL_UnlockTexture(tex);
-		SDL_RenderCopy(renderer, tex, &rect, &rect);
-		SDL_RenderPresent(renderer);
+	if (!core)
+		return false;
 
-		int stride;
-		SDL_LockTexture(tex, 0, (void**) &buffer, &stride);
-		core->setVideoBuffer(core, buffer, stride / BYTES_PER_PIXEL);
+	struct VDir* dir = core->dirs.screenshot;
 
-		// call js screenshot code
-		// this should copy the webgl canvas 
-		// context to a 2d canvas context
-	  (*callback)();
+	if (strlen(fileName)) {
+		vf = dir->openFile(dir, fileName, mode);
+	} else {
+		vf = VDirFindNextAvailable(dir, core->dirs.baseName, "-", ".png", mode);
 	}
+
+	if (!vf)
+		return false;
+
+	success = mCoreTakeScreenshotVF(core, vf);
+	vf->close(vf);
+
+	return success;
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonPress(int id) {
@@ -286,6 +283,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	core->opts.savegamePath = strdup("/data/saves");
 	core->opts.savestatePath = strdup("/data/states");
 	core->opts.cheatsPath = strdup("/data/cheats");
+	core->opts.screenshotPath = strdup("/data/screenshots");
 
 	mCoreLoadFile(core, name);
 	mCoreConfigInit(&core->config, "wasm");

@@ -59,6 +59,9 @@ Module.FSInit = () => {
       try {
         FS.mkdir('/data/cheats');
       } catch (e) {}
+      try {
+        FS.mkdir('/data/screenshots');
+      } catch (e) {}
 
       resolve();
     });
@@ -85,6 +88,7 @@ Module.filePaths = () => {
     gamePath: '/data/games',
     savePath: '/data/saves',
     saveStatePath: '/data/states',
+    screenshotsPath: '/data/screenshots',
   };
 };
 
@@ -259,11 +263,9 @@ Module.toggleInput = (toggle) => {
   setEventEnable(toggle);
 };
 
-Module.screenShot = (callback) => {
-  const ptr = addFunction(callback, 'v');
-  const screenShot = cwrap('screenShot', null, ['number']);
-  screenShot(ptr);
-  removeFunction(ptr);
+Module.screenshot = (fileName) => {
+  const screenshot = cwrap('screenshot', 'boolean', ['string']);
+  return screenshot(fileName);
 };
 
 Module.saveState = (slot) => {

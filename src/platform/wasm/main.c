@@ -3,6 +3,9 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "main.h"
+
 #include <mgba-util/vfs.h>
 #include <mgba/core/core.h>
 #include <mgba/core/serialize.h>
@@ -10,107 +13,99 @@
 #include <mgba/gba/interface.h>
 #include <mgba/internal/gba/input.h>
 
-#include "platform/sdl/sdl-audio.h"
-#include "platform/sdl/sdl-events.h"
-
-#include <emscripten.h>
-#include <SDL2/SDL.h>
 #include <SDL2/SDL_keyboard.h>
-
-static struct mCore* core = NULL;
-static color_t* buffer = NULL;
-static struct mSDLAudio audio = {
-	.sampleRate = 48000,
-	.samples = 512
-};
-
-static SDL_Window* window = NULL;
-static SDL_Renderer* renderer = NULL;
-static SDL_Texture* tex = NULL;
-
-// fps related variables
-static Uint32 emscriptenLastTick;
-static bool renderFirstFrame = true;
-static int fastForwardSpeed = 1;
+#include <emscripten.h>
 
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
 static struct mLogger logCtx = { .log = _log };
 
+static struct mCoreOptions defaultConfigOpts = {
+	.useBios = true,
+	.rewindEnable = true,
+	.rewindBufferCapacity = 600,
+	.rewindBufferInterval = 1,
+	.videoSync = false,
+	.audioSync = true,
+	.volume = 0x100,
+	.logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL,
+};
+
+static struct mEmscriptenRenderer renderer = {
+	.audio = { .sampleRate = 48000, .samples = 512 },
+	.renderFirstFrame = true,
+	.fastForwardSpeed = 1,
+};
+
 static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
 	if (event->keysym.sym == SDLK_f) {
-		fastForwardSpeed = event->type == SDL_KEYDOWN ? 2 : 1;
+		renderer.fastForwardSpeed = event->type == SDL_KEYDOWN ? 2 : 1;
 		return;
 	}
 	int key = -1;
 	if (!(event->keysym.mod & ~(KMOD_NUM | KMOD_CAPS))) {
-		key = mInputMapKey(&core->inputMap, SDL_BINDING_KEY, event->keysym.sym);
+		key = mInputMapKey(&renderer.core->inputMap, SDL_BINDING_KEY, event->keysym.sym);
 	}
 	if (key != -1) {
 		if (event->type == SDL_KEYDOWN) {
-			core->addKeys(core, 1 << key);
+			renderer.core->addKeys(renderer.core, 1 << key);
 		} else {
-			core->clearKeys(core, 1 << key);
+			renderer.core->clearKeys(renderer.core, 1 << key);
 		}
 	}
 }
 
-void testLoop() {
+void runLoop() {
 	union SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 		switch (event.type) {
 		case SDL_KEYDOWN:
 		case SDL_KEYUP:
-			if (core) {
+			if (renderer.core) {
 				handleKeypressCore(&event.key);
 			}
 			break;
 		};
 	}
-	if (core) {
+	if (renderer.core) {
 		Uint32 current = SDL_GetTicks();
 		// determine how many ticks have passed, if this is the first tick, frame count will get set to 1
-		int elapsedTicks = current - (emscriptenLastTick > 0 ? emscriptenLastTick : current);
+		int elapsedTicks = current - (renderer.emscriptenLastTick > 0 ? renderer.emscriptenLastTick : current);
 		// internally render at 60fps by default
 		int numFrames = round((float) elapsedTicks / 16);
 		// store last tick
-		emscriptenLastTick = current;
+		renderer.emscriptenLastTick = current;
 
 		if (numFrames == 0)
 			numFrames = 1;
 
-		if (fastForwardSpeed > 1)
-			numFrames *= fastForwardSpeed;
+		if (renderer.fastForwardSpeed > 1)
+			numFrames *= renderer.fastForwardSpeed;
 
-		if (renderFirstFrame) {
-			renderFirstFrame = false;
-			core->runFrame(core);
+		if (renderer.renderFirstFrame) {
+			renderer.renderFirstFrame = false;
+			renderer.core->runFrame(renderer.core);
 		} else {
 			for (int i = 0; i < numFrames; i++) {
-				core->runFrame(core);
+				renderer.core->runFrame(renderer.core);
 			}
 		}
 
 		unsigned w, h;
-		core->currentVideoSize(core, &w, &h);
+		renderer.core->currentVideoSize(renderer.core, &w, &h);
 
-		SDL_Rect rect = {
-			.x = 0,
-			.y = 0,
-			.w = w,
-			.h = h
-		};
-		SDL_UnlockTexture(tex);
-		SDL_RenderCopy(renderer, tex, &rect, &rect);
-		SDL_RenderPresent(renderer);
+		SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
+		SDL_UnlockTexture(renderer.sdlTex);
+		SDL_RenderCopy(renderer.sdlRenderer, renderer.sdlTex, &rect, &rect);
+		SDL_RenderPresent(renderer.sdlRenderer);
 
 		int stride;
-		SDL_LockTexture(tex, 0, (void**) &buffer, &stride);
-		core->setVideoBuffer(core, buffer, stride / BYTES_PER_PIXEL);
+		SDL_LockTexture(renderer.sdlTex, 0, (void**) &renderer.outputBuffer, &stride);
+		renderer.core->setVideoBuffer(renderer.core, renderer.outputBuffer, stride / BYTES_PER_PIXEL);
 		return;
 	} else {
 		// dont run the main loop if there is no core,  we don't
 		// want to handle events unless the core is running for now
-		renderFirstFrame = true;
+		renderer.renderFirstFrame = true;
 		emscripten_pause_main_loop();
 	}
 }
@@ -120,36 +115,36 @@ EMSCRIPTEN_KEEPALIVE bool screenshot(char* fileName) {
 	int mode = O_CREAT | O_TRUNC | O_WRONLY;
 	struct VFile* vf;
 
-	if (!core)
+	if (!renderer.core)
 		return false;
 
-	struct VDir* dir = core->dirs.screenshot;
+	struct VDir* dir = renderer.core->dirs.screenshot;
 
 	if (strlen(fileName)) {
 		vf = dir->openFile(dir, fileName, mode);
 	} else {
-		vf = VDirFindNextAvailable(dir, core->dirs.baseName, "-", ".png", mode);
+		vf = VDirFindNextAvailable(dir, renderer.core->dirs.baseName, "-", ".png", mode);
 	}
 
 	if (!vf)
 		return false;
 
-	success = mCoreTakeScreenshotVF(core, vf);
+	success = mCoreTakeScreenshotVF(renderer.core, vf);
 	vf->close(vf);
 
 	return success;
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonPress(int id) {
-  if (core) {
-    core->addKeys(core, 1 << id);
-  }
+	if (renderer.core) {
+		renderer.core->addKeys(renderer.core, 1 << id);
+	}
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonUnpress(int id) {
-  if (core) {
-    core->clearKeys(core, 1 << id);
-  }
+	if (renderer.core) {
+		renderer.core->clearKeys(renderer.core, 1 << id);
+	}
 }
 
 EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
@@ -157,69 +152,72 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 		return; // this is a percentage so more than 200% is insane.
 
 	int volume = (int) (vol * 0x100);
-	if (core) {
+	if (renderer.core) {
 		if (volume == 0)
-			return mSDLPauseAudio(&audio);
+			return mSDLPauseAudio(&renderer.audio);
 		else {
-			mCoreConfigSetDefaultIntValue(&core->config, "volume", volume);
-			core->reloadConfigOption(core, "volume", &core->config);
-			mSDLResumeAudio(&audio);
+			mCoreConfigSetDefaultIntValue(&renderer.core->config, "volume", volume);
+			renderer.core->reloadConfigOption(renderer.core, "volume", &renderer.core->config);
+			mSDLResumeAudio(&renderer.audio);
 		}
 	}
 }
 
 EMSCRIPTEN_KEEPALIVE float getVolume() {
-  return (float) core->opts.volume / 0x100;
+	return (float) renderer.core->opts.volume / 0x100;
 }
 
 EMSCRIPTEN_KEEPALIVE int getMainLoopTimingMode() {
-  int mode = -1;
-  int value = -1;
-  emscripten_get_main_loop_timing(&mode, &value);
-  return mode;
+	int mode = -1;
+	int value = -1;
+	emscripten_get_main_loop_timing(&mode, &value);
+	return mode;
 }
 
 EMSCRIPTEN_KEEPALIVE int getMainLoopTimingValue() {
-  int mode = -1;
-  int value = -1;
-  emscripten_get_main_loop_timing(&mode, &value);
-  return value;
+	int mode = -1;
+	int value = -1;
+	emscripten_get_main_loop_timing(&mode, &value);
+	return value;
 }
 
 EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
-  emscripten_set_main_loop_timing(mode, value);
+	emscripten_set_main_loop_timing(mode, value);
 }
 
 EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
 	if (multiplier > 0)
-		fastForwardSpeed = multiplier;
+		renderer.fastForwardSpeed = multiplier;
 }
 
 EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
-	return fastForwardSpeed;
+	return renderer.fastForwardSpeed;
 }
 
 EMSCRIPTEN_KEEPALIVE void quitGame() {
-  if (core) {
-	renderFirstFrame = true;
-	mSDLPauseAudio(&audio);
-	emscripten_pause_main_loop();
-    core->deinit(core);
-    core = NULL;
-  }
+	if (renderer.core) {
+		renderer.renderFirstFrame = true;
+		mSDLPauseAudio(&renderer.audio);
+		emscripten_pause_main_loop();
+
+		mCoreConfigDeinit(&renderer.core->config);
+		mInputMapDeinit(&renderer.core->inputMap);
+		renderer.core->deinit(renderer.core);
+		renderer.core = NULL;
+	}
 }
 
 EMSCRIPTEN_KEEPALIVE void quitMgba() {
-  exit(0);
+	exit(0);
 }
 
 EMSCRIPTEN_KEEPALIVE void quickReload() {
-  renderFirstFrame = true;
-  core->reset(core);
+	renderer.renderFirstFrame = true;
+	renderer.core->reset(renderer.core);
 }
 
 EMSCRIPTEN_KEEPALIVE void pauseGame() {
-	renderFirstFrame = true;
+	renderer.renderFirstFrame = true;
 	emscripten_pause_main_loop();
 }
 
@@ -228,13 +226,13 @@ EMSCRIPTEN_KEEPALIVE void resumeGame() {
 }
 
 EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
-    int state = toggle ? SDL_ENABLE : SDL_DISABLE;
-    SDL_EventState(SDL_TEXTINPUT, state);
-    SDL_EventState(SDL_KEYDOWN, state);
-    SDL_EventState(SDL_KEYUP, state);
-    SDL_EventState(SDL_MOUSEMOTION, state);
-    SDL_EventState(SDL_MOUSEBUTTONDOWN, state);
-    SDL_EventState(SDL_MOUSEBUTTONUP, state);
+	int state = toggle ? SDL_ENABLE : SDL_DISABLE;
+	SDL_EventState(SDL_TEXTINPUT, state);
+	SDL_EventState(SDL_KEYDOWN, state);
+	SDL_EventState(SDL_KEYUP, state);
+	SDL_EventState(SDL_MOUSEMOTION, state);
+	SDL_EventState(SDL_MOUSEBUTTONDOWN, state);
+	SDL_EventState(SDL_MOUSEBUTTONUP, state);
 }
 
 // bindingName is the key name of what you want to bind to an input
@@ -242,97 +240,102 @@ EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
 // this should work for a good variety of keys, but not all are supported yet
 EMSCRIPTEN_KEEPALIVE void bindKey(char* bindingName, int inputCode) {
 	int bindingSDLKeyCode = SDL_GetKeyFromName(bindingName);
-	mInputBindKey(&core->inputMap, SDL_BINDING_KEY, bindingSDLKeyCode, inputCode);
+	mInputBindKey(&renderer.core->inputMap, SDL_BINDING_KEY, bindingSDLKeyCode, inputCode);
 }
 
 EMSCRIPTEN_KEEPALIVE bool saveState(int slot) {
-  if (core) {
-	  return mCoreSaveState(core, slot, SAVESTATE_ALL);
-  }
-  return false;
+	if (renderer.core) {
+		return mCoreSaveState(renderer.core, slot, SAVESTATE_ALL);
+	}
+	return false;
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
-  if (core) {
-    return mCoreLoadState(core, slot, SAVESTATE_ALL);
-  }
-  return false;
+	if (renderer.core) {
+		return mCoreLoadState(renderer.core, slot, SAVESTATE_ALL);
+	}
+	return false;
 }
 
 // loads all cheats files located in the cores cheatsPath,
 // cheat files must match the name of the rom they are
 // to be applied to, and must end with the extension .cheats
-// supported cheat formats: 
+// supported cheat formats:
 //  - mGBA custom format
 //  - libretro format
 //  - EZFCht format
 EMSCRIPTEN_KEEPALIVE bool autoLoadCheats() {
-	return mCoreAutoloadCheats(core);
+	return mCoreAutoloadCheats(renderer.core);
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
-	if (core) {
-		core->deinit(core);
-		core = NULL;
+	if (renderer.core) {
+		renderer.core->deinit(renderer.core);
+		renderer.core = NULL;
 	}
-	core = mCoreFind(name);
-	if (!core) {
+	renderer.core = mCoreFind(name);
+	if (!renderer.core) {
 		return false;
 	}
-	core->init(core);
-	core->opts.savegamePath = strdup("/data/saves");
-	core->opts.savestatePath = strdup("/data/states");
-	core->opts.cheatsPath = strdup("/data/cheats");
-	core->opts.screenshotPath = strdup("/data/screenshots");
+	renderer.core->init(renderer.core);
+	renderer.core->opts.savegamePath = strdup("/data/saves");
+	renderer.core->opts.savestatePath = strdup("/data/states");
+	renderer.core->opts.cheatsPath = strdup("/data/cheats");
+	renderer.core->opts.screenshotPath = strdup("/data/screenshots");
 
-	mCoreLoadFile(core, name);
-	mCoreConfigInit(&core->config, "wasm");
-	mCoreConfigSetDefaultValue(&core->config, "idleOptimization", "detect");
-	mCoreConfigSetDefaultIntValue(&core->config, "volume", 0x100);
-	mInputMapInit(&core->inputMap, &GBAInputInfo);
-	mDirectorySetMapOptions(&core->dirs, &core->opts);
-	mCoreAutoloadSave(core);
-	mCoreAutoloadCheats(core);
-	mSDLInitBindingsGBA(&core->inputMap);
+	mCoreConfigInit(&renderer.core->config, "wasm");
+	mCoreConfigLoadDefaults(&renderer.core->config, &defaultConfigOpts);
+	mCoreLoadConfig(renderer.core);
+
+	mCoreLoadFile(renderer.core, name);
+	mCoreConfigSetDefaultValue(&renderer.core->config, "idleOptimization", "detect");
+	mInputMapInit(&renderer.core->inputMap, &GBAInputInfo);
+	mDirectorySetMapOptions(&renderer.core->dirs, &renderer.core->opts);
+	mCoreAutoloadSave(renderer.core);
+	mCoreAutoloadCheats(renderer.core);
+	mSDLInitBindingsGBA(&renderer.core->inputMap);
 
 	unsigned w, h;
-	core->baseVideoSize(core, &w, &h);
-	if (tex) {
-		SDL_DestroyTexture(tex);
+	renderer.core->baseVideoSize(renderer.core, &w, &h);
+	if (renderer.sdlTex) {
+		SDL_DestroyTexture(renderer.sdlTex);
 	}
-	tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+	renderer.sdlTex =
+	    SDL_CreateTexture(renderer.sdlRenderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h);
 
 	int stride;
-	SDL_LockTexture(tex, 0, (void**) &buffer, &stride);
-	core->setVideoBuffer(core, buffer, stride / BYTES_PER_PIXEL);
+	SDL_LockTexture(renderer.sdlTex, 0, (void**) &renderer.outputBuffer, &stride);
+	renderer.core->setVideoBuffer(renderer.core, renderer.outputBuffer, stride / BYTES_PER_PIXEL);
 
-	core->reset(core);
+	renderer.core->reset(renderer.core);
 
-	core->currentVideoSize(core, &w, &h);
-	SDL_SetWindowSize(window, w, h);
-	EM_ASM({
-		Module.canvas.width = $0;
-		Module.canvas.height = $1;
-	}, w, h);
+	renderer.core->currentVideoSize(renderer.core, &w, &h);
+	SDL_SetWindowSize(renderer.window, w, h);
+	EM_ASM(
+	    {
+		    Module.canvas.width = $0;
+		    Module.canvas.height = $1;
+	    },
+	    w, h);
 
-	audio.core = core;
-	mSDLResumeAudio(&audio);
+	renderer.audio.core = renderer.core;
+	mSDLResumeAudio(&renderer.audio);
 	emscripten_resume_main_loop();
 	return true;
 }
 
 EMSCRIPTEN_KEEPALIVE bool saveStateSlot(int slot, int flags) {
-	if (!core) {
+	if (!renderer.core) {
 		return false;
 	}
-	return mCoreSaveState(core, slot, flags);
+	return mCoreSaveState(renderer.core, slot, flags);
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadStateSlot(int slot, int flags) {
-	if (!core) {
+	if (!renderer.core) {
 		return false;
 	}
-	return mCoreLoadState(core, slot, flags);
+	return mCoreLoadState(renderer.core, slot, flags);
 }
 
 void _log(struct mLogger* logger, int category, enum mLogLevel level, const char* format, va_list args) {
@@ -343,48 +346,50 @@ void _log(struct mLogger* logger, int category, enum mLogLevel level, const char
 	UNUSED(args);
 }
 
-
 EMSCRIPTEN_KEEPALIVE void setupConstants(void) {
 	EM_ASM(({
-		Module.version = {
-			gitCommit: UTF8ToString($0),
-			gitShort: UTF8ToString($1),
-			gitBranch: UTF8ToString($2),
-			gitRevision: $3,
-			binaryName: UTF8ToString($4),
-			projectName: UTF8ToString($5),
-			projectVersion: UTF8ToString($6)
-		};
-	}), gitCommit, gitCommitShort, gitBranch, gitRevision, binaryName, projectName, projectVersion);
+		       Module.version = {
+			       gitCommit : UTF8ToString($0),
+			       gitShort : UTF8ToString($1),
+			       gitBranch : UTF8ToString($2),
+			       gitRevision : $3,
+			       binaryName : UTF8ToString($4),
+			       projectName : UTF8ToString($5),
+			       projectVersion : UTF8ToString($6)
+		       };
+	       }),
+	       gitCommit, gitCommitShort, gitBranch, gitRevision, binaryName, projectName, projectVersion);
 }
 
 CONSTRUCTOR(premain) {
 	setupConstants();
 }
 
-int excludeKeys(void *userdata, SDL_Event *event) {
+int excludeKeys(void* userdata, SDL_Event* event) {
 	UNUSED(userdata);
 
 	switch (event->key.keysym.sym) {
-		case SDLK_TAB: // ignored for a11y during gameplay
-		case SDLK_SPACE:
-			return 0; // Value will be ignored
-		default:
-			return 1;
+	case SDLK_TAB: // ignored for a11y during gameplay
+	case SDLK_SPACE:
+		return 0; // Value will be ignored
+	default:
+		return 1;
 	};
 }
 
 int main() {
 	mLogSetDefaultLogger(&logCtx);
 
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO| SDL_INIT_TIMER | SDL_INIT_EVENTS);
-	window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
-	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-	mSDLInitAudio(&audio, NULL);
-	
+	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_EVENTS);
+	renderer.window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+	                                   GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
+	renderer.sdlRenderer =
+	    SDL_CreateRenderer(renderer.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	mSDLInitAudio(&renderer.audio, NULL);
+
 	// exclude specific key events
 	SDL_SetEventFilter(excludeKeys, NULL);
 
-	emscripten_set_main_loop(testLoop, 0, 0);
+	emscripten_set_main_loop(runLoop, 0, 0);
 	return 0;
 }

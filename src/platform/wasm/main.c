@@ -16,6 +16,8 @@
 #include <SDL2/SDL_keyboard.h>
 #include <emscripten.h>
 
+#include <mgba/core/thread.h>
+
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
 static struct mLogger logCtx = { .log = _log };
 
@@ -39,6 +41,10 @@ static struct mEmscriptenRenderer renderer = {
 static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
 	if (event->keysym.sym == SDLK_f) {
 		renderer.fastForwardSpeed = event->type == SDL_KEYDOWN ? 2 : 1;
+		return;
+	}
+	if (event->keysym.sym == SDLK_r) {
+		mCoreThreadSetRewinding(renderer.thread, event->type == SDL_KEYDOWN);
 		return;
 	}
 	int key = -1;
@@ -106,7 +112,7 @@ void runLoop() {
 		// dont run the main loop if there is no core,  we don't
 		// want to handle events unless the core is running for now
 		renderer.renderFirstFrame = true;
-		emscripten_pause_main_loop();
+		// emscripten_pause_main_loop();
 	}
 }
 
@@ -198,7 +204,7 @@ EMSCRIPTEN_KEEPALIVE void quitGame() {
 	if (renderer.core) {
 		renderer.renderFirstFrame = true;
 		mSDLPauseAudio(&renderer.audio);
-		emscripten_pause_main_loop();
+		// emscripten_pause_main_loop();
 
 		mCoreConfigDeinit(&renderer.core->config);
 		mInputMapDeinit(&renderer.core->inputMap);
@@ -218,11 +224,11 @@ EMSCRIPTEN_KEEPALIVE void quickReload() {
 
 EMSCRIPTEN_KEEPALIVE void pauseGame() {
 	renderer.renderFirstFrame = true;
-	emscripten_pause_main_loop();
+	// emscripten_pause_main_loop();
 }
 
 EMSCRIPTEN_KEEPALIVE void resumeGame() {
-	emscripten_resume_main_loop();
+	// emscripten_resume_main_loop();
 }
 
 EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
@@ -287,6 +293,10 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	mCoreConfigLoadDefaults(&renderer.core->config, &defaultConfigOpts);
 	mCoreLoadConfig(renderer.core);
 
+	struct mCoreThread t = { .core = renderer.core };
+
+	renderer.thread = &t;
+
 	mCoreLoadFile(renderer.core, name);
 	mCoreConfigSetDefaultValue(&renderer.core->config, "idleOptimization", "detect");
 	mInputMapInit(&renderer.core->inputMap, &GBAInputInfo);
@@ -311,16 +321,24 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 
 	renderer.core->currentVideoSize(renderer.core, &w, &h);
 	SDL_SetWindowSize(renderer.window, w, h);
-	EM_ASM(
-	    {
-		    Module.canvas.width = $0;
-		    Module.canvas.height = $1;
-	    },
-	    w, h);
+	// EM_ASM(
+	//     {
+	// 	    Module.canvas.width = $0;
+	// 	    Module.canvas.height = $1;
+	//     },
+	//     w, h);
 
 	renderer.audio.core = renderer.core;
 	mSDLResumeAudio(&renderer.audio);
-	emscripten_resume_main_loop();
+	// emscripten_resume_main_loop();
+
+	bool didFail = !mCoreThreadStart(renderer.thread);
+
+	EM_ASM({ console.log('vancise thread start', $0) }, didFail);
+
+	mSDLInitAudio(&renderer.audio, renderer.thread);
+	emscripten_exit_with_live_runtime();
+
 	return true;
 }
 
@@ -381,11 +399,12 @@ int main() {
 	mLogSetDefaultLogger(&logCtx);
 
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_EVENTS);
+	// SDL_VideoInit("offscreen");
 	renderer.window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
 	                                   GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
 	renderer.sdlRenderer =
-	    SDL_CreateRenderer(renderer.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-	mSDLInitAudio(&renderer.audio, NULL);
+	    SDL_CreateRenderer(renderer.window, SDL_VideoInit("offscreen"), SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	// mSDLInitAudio(&renderer.audio, NULL);
 
 	// exclude specific key events
 	SDL_SetEventFilter(excludeKeys, NULL);

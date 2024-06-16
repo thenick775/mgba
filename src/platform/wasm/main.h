@@ -5,11 +5,15 @@
 #include "platform/sdl/sdl-audio.h"
 #include "platform/sdl/sdl-events.h"
 
+#include <mgba/core/thread.h>
+
 struct mEmscriptenRenderer {
 	struct mCore* core;
 	color_t* outputBuffer;
 
 	struct mSDLAudio audio;
+
+	struct mCoreThread* thread;
 
 	bool (*init)(struct mEmscriptenRenderer* renderer);
 	void (*runloop)(struct mEmscriptenRenderer* renderer, void* thread);

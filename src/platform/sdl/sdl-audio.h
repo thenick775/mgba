@@ -28,6 +28,7 @@ struct mSDLAudio {
 	// Input
 	size_t samples;
 	unsigned sampleRate;
+	double fpsTarget;
 
 	// State
 	SDL_AudioSpec desiredSpec;

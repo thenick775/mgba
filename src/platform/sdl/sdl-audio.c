@@ -113,7 +113,11 @@ static void _mSDLAudioCallback(void* context, Uint8* data, int len) {
 		mCoreSyncLockAudio(audioContext->sync);
 	}
 #ifdef __EMSCRIPTEN__
-	fauxClock = GBAAudioCalculateRatio(1, 60, 1);
+	double fpsTarget = 60.0;
+	if (audioContext->fpsTarget > 0.0) {
+		fpsTarget = audioContext->fpsTarget;
+	}
+	fauxClock = GBAAudioCalculateRatio(1, fpsTarget, 1);
 #endif
 	blip_set_rates(left, clockRate, audioContext->obtainedSpec.freq * fauxClock);
 	blip_set_rates(right, clockRate, audioContext->obtainedSpec.freq * fauxClock);

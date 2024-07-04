@@ -21,7 +21,8 @@ static struct mCore* core = NULL;
 static color_t* buffer = NULL;
 static struct mSDLAudio audio = {
 	.sampleRate = 48000,
-	.samples = 512
+	.samples = 512,
+	.fpsTarget = 60.0,
 };
 
 static SDL_Window* window = NULL;
@@ -29,7 +30,7 @@ static SDL_Renderer* renderer = NULL;
 static SDL_Texture* tex = NULL;
 
 // fps related variables
-static Uint32 emscriptenLastTick;
+static double lastNow;
 static bool renderFirstFrame = true;
 static int fastForwardSpeed = 1;
 
@@ -67,25 +68,29 @@ void testLoop() {
 		};
 	}
 	if (core) {
-		Uint32 current = SDL_GetTicks();
-		// determine how many ticks have passed, if this is the first tick, frame count will get set to 1
-		int elapsedTicks = current - (emscriptenLastTick > 0 ? emscriptenLastTick : current);
-		// internally render at 60fps by default
-		int numFrames = round((float) elapsedTicks / 16);
-		// store last tick
-		emscriptenLastTick = current;
+		double now = emscripten_get_now();
+		double elapsedNow = now - (lastNow > 0.0 ? lastNow : now);
+		double nowFrames = elapsedNow / (1000.0 / 60.0);  // 60fps target
 
-		if (numFrames == 0)
-			numFrames = 1;
+		lastNow = now;
+
+		Uint32 nowFramesInt = (int) round(nowFrames - 0.25);
+
+		if (nowFramesInt < 1) {
+			nowFramesInt = 1;
+		}
 
 		if (fastForwardSpeed > 1)
-			numFrames *= fastForwardSpeed;
+			nowFramesInt *= fastForwardSpeed;
+
+		if (nowFramesInt > 20)
+			nowFramesInt = 20;
 
 		if (renderFirstFrame) {
 			renderFirstFrame = false;
 			core->runFrame(core);
 		} else {
-			for (int i = 0; i < numFrames; i++) {
+			for (Uint32 i = 0; i < nowFramesInt; i++) {
 				core->runFrame(core);
 			}
 		}
@@ -191,8 +196,13 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 }
 
 EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
-	if (multiplier > 0)
+	if (multiplier > 0){
 		fastForwardSpeed = multiplier;
+		audio.fpsTarget = (double) 60 * multiplier;
+
+		mCoreConfigSetDefaultIntValue(&core->config, "frameskip", multiplier);
+		core->reloadConfigOption(core, "frameskip", &core->config);
+	}
 }
 
 EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {

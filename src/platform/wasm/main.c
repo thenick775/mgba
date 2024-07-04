@@ -70,11 +70,11 @@ void testLoop() {
 	if (core) {
 		double now = emscripten_get_now();
 		double elapsedNow = now - (lastNow > 0.0 ? lastNow : now);
-		double nowFrames = elapsedNow / (1000.0 / 60.0);  // 60fps target
+		double nowFrames = elapsedNow / (1000.0 / 60.0); // 60fps target
 
 		lastNow = now;
 
-		Uint32 nowFramesInt = (int) round(nowFrames - 0.25);
+		Uint32 nowFramesInt = round(nowFrames - 0.3);
 
 		if (nowFramesInt < 1) {
 			nowFramesInt = 1;
@@ -85,6 +85,8 @@ void testLoop() {
 
 		if (nowFramesInt > 20)
 			nowFramesInt = 20;
+
+		emscripten_log(EM_LOG_CONSOLE, "vancise after ff calc: %d %f %f", nowFramesInt, nowFrames, elapsedNow);
 
 		if (renderFirstFrame) {
 			renderFirstFrame = false;
@@ -196,7 +198,7 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 }
 
 EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
-	if (multiplier > 0){
+	if (multiplier > 0) {
 		fastForwardSpeed = multiplier;
 		audio.fpsTarget = (double) 60 * multiplier;
 

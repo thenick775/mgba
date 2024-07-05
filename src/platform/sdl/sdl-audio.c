@@ -12,6 +12,13 @@
 
 #include <mgba/core/blip_buf.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+// used for audio sync
+static double lastNow;
+#endif
+
 #define BUFFER_SIZE (GBA_AUDIO_SAMPLES >> 2)
 
 mLOG_DEFINE_CATEGORY(SDL_AUDIO, "SDL Audio", "platform.sdl.audio");
@@ -113,10 +120,20 @@ static void _mSDLAudioCallback(void* context, Uint8* data, int len) {
 		mCoreSyncLockAudio(audioContext->sync);
 	}
 #ifdef __EMSCRIPTEN__
+	double now = emscripten_get_now();
+	double elapsedNow = now - (lastNow > 0.0 ? lastNow : now);
+	double nowFrames = elapsedNow / (1000.0 / 60.0); // 60fps target
+
+	lastNow = now;
+
+	Uint32 nowFramesInt = round(nowFrames - 0.3);
+
 	double fpsTarget = 60.0;
-	if (audioContext->fpsTarget > 0.0) {
+	if (audioContext->fpsTarget > 0.0)
 		fpsTarget = audioContext->fpsTarget;
-	}
+	if (nowFramesInt > 0 )
+		fpsTarget *= nowFrames;
+
 	fauxClock = GBAAudioCalculateRatio(1, fpsTarget, 1);
 #endif
 	blip_set_rates(left, clockRate, audioContext->obtainedSpec.freq * fauxClock);

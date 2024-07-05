@@ -131,8 +131,10 @@ static void _mSDLAudioCallback(void* context, Uint8* data, int len) {
 	double fpsTarget = 60.0;
 	if (audioContext->fpsTarget > 0.0)
 		fpsTarget = audioContext->fpsTarget;
-	if (nowFramesInt > 0 )
+	if (nowFramesInt > 1 )
 		fpsTarget *= nowFrames;
+
+	emscripten_log(EM_LOG_CONSOLE, "vancise audio loop fps target: %f %f %f", fpsTarget, nowFrames, elapsedNow);
 
 	fauxClock = GBAAudioCalculateRatio(1, fpsTarget, 1);
 #endif

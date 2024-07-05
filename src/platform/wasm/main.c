@@ -21,7 +21,7 @@ static struct mCore* core = NULL;
 static color_t* buffer = NULL;
 static struct mSDLAudio audio = {
 	.sampleRate = 48000,
-	.samples = 512,
+	.samples = 1024,
 	.fpsTarget = 60.0,
 };
 
@@ -232,10 +232,12 @@ EMSCRIPTEN_KEEPALIVE void quickReload() {
 
 EMSCRIPTEN_KEEPALIVE void pauseGame() {
 	renderFirstFrame = true;
+	mSDLPauseAudio(&audio);
 	emscripten_pause_main_loop();
 }
 
 EMSCRIPTEN_KEEPALIVE void resumeGame() {
+	mSDLResumeAudio(&audio);
 	emscripten_resume_main_loop();
 }
 

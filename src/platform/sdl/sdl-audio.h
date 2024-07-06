@@ -30,6 +30,7 @@ struct mSDLAudio {
 	// Input
 	size_t samples;
 	unsigned sampleRate;
+	double fpsTarget;
 
 	// State
 	struct mAudioBuffer buffer;

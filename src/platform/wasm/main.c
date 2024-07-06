@@ -20,8 +20,8 @@
 static struct mCore* core = NULL;
 static color_t* buffer = NULL;
 static struct mSDLAudio audio = {
-	.sampleRate = 48000,
-	.samples = 512,
+	.sampleRate = 44100,
+	.samples = 4096,
 	.fpsTarget = 60.0,
 };
 
@@ -323,7 +323,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	int stride;
 	SDL_LockTexture(tex, 0, (void**) &buffer, &stride);
 	core->setVideoBuffer(core, buffer, stride / BYTES_PER_PIXEL);
-	core->setAudioBufferSize(core, audio.samples * 8);
+	core->setAudioBufferSize(core, audio.samples * 2);
 
 	core->reset(core);
 

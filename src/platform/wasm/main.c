@@ -20,7 +20,7 @@
 static struct mCore* core = NULL;
 static color_t* buffer = NULL;
 static struct mSDLAudio audio = {
-	.sampleRate = 44100,
+	.sampleRate = 48000,
 	.samples = 4096,
 	.fpsTarget = 60.0,
 };

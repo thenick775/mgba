@@ -164,12 +164,12 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 	int volume = (int) (vol * 0x100);
 	if (core) {
 		if (volume == 0)
-			return mSDLPauseAudio(&audio);
+			mSDLPauseAudio(&audio);
 		else {
-			mCoreConfigSetDefaultIntValue(&core->config, "volume", volume);
-			core->reloadConfigOption(core, "volume", &core->config);
 			mSDLResumeAudio(&audio);
 		}
+		mCoreConfigSetDefaultIntValue(&core->config, "volume", volume);
+		core->reloadConfigOption(core, "volume", &core->config);
 	}
 }
 
@@ -235,7 +235,13 @@ EMSCRIPTEN_KEEPALIVE void pauseGame() {
 }
 
 EMSCRIPTEN_KEEPALIVE void resumeGame() {
-	mSDLResumeAudio(&audio);
+	int vol = -1;
+
+	mCoreConfigGetIntValue(&core->config, "volume", &vol);
+
+	if (vol > 0) {
+		mSDLResumeAudio(&audio);
+	}
 	emscripten_resume_main_loop();
 }
 

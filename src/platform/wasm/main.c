@@ -21,7 +21,7 @@ static struct mCore* core = NULL;
 static color_t* buffer = NULL;
 static struct mSDLAudio audio = {
 	.sampleRate = 48000,
-	.samples = 1024,
+	.samples = 512,
 	.fpsTarget = 60.0,
 };
 
@@ -85,8 +85,6 @@ void testLoop() {
 
 		if (nowFramesInt > 20)
 			nowFramesInt = 20;
-
-		emscripten_log(EM_LOG_CONSOLE, "vancise after ff calc: %d %f %f", nowFramesInt, nowFrames, elapsedNow);
 
 		if (renderFirstFrame) {
 			renderFirstFrame = false;

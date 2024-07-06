@@ -14,9 +14,6 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-
-// used for audio sync
-static double lastNow;
 #endif
 
 #define BUFFER_SIZE (GBA_AUDIO_SAMPLES >> 2)
@@ -120,21 +117,9 @@ static void _mSDLAudioCallback(void* context, Uint8* data, int len) {
 		mCoreSyncLockAudio(audioContext->sync);
 	}
 #ifdef __EMSCRIPTEN__
-	double now = emscripten_get_now();
-	double elapsedNow = now - (lastNow > 0.0 ? lastNow : now);
-	double nowFrames = elapsedNow / (1000.0 / 60.0); // 60fps target
-
-	lastNow = now;
-
-	Uint32 nowFramesInt = round(nowFrames - 0.3);
-
 	double fpsTarget = 60.0;
 	if (audioContext->fpsTarget > 0.0)
 		fpsTarget = audioContext->fpsTarget;
-	if (nowFramesInt > 1 )
-		fpsTarget *= nowFrames;
-
-	emscripten_log(EM_LOG_CONSOLE, "vancise audio loop fps target: %f %f %f", fpsTarget, nowFrames, elapsedNow);
 
 	fauxClock = GBAAudioCalculateRatio(1, fpsTarget, 1);
 #endif

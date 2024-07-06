@@ -71,9 +71,9 @@ void testLoop() {
 		double now = emscripten_get_now();
 		double elapsedNow = now - (lastNow > 0.0 ? lastNow : now);
 		double nowFrames = elapsedNow / (1000.0 / 60.0); // 60fps target
-
 		lastNow = now;
 
+		// custom rounding, we want to prefer rounding down slightly
 		Uint32 nowFramesInt = round(nowFrames - 0.3);
 
 		if (nowFramesInt < 1) {

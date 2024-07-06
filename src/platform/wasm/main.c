@@ -317,6 +317,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	int stride;
 	SDL_LockTexture(tex, 0, (void**) &buffer, &stride);
 	core->setVideoBuffer(core, buffer, stride / BYTES_PER_PIXEL);
+	core->setAudioBufferSize(core, audio.samples * 8);
 
 	core->reset(core);
 

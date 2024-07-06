@@ -12,10 +12,6 @@
 
 #include <mgba/core/blip_buf.h>
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
-
 #define BUFFER_SIZE (GBA_AUDIO_SAMPLES >> 2)
 
 mLOG_DEFINE_CATEGORY(SDL_AUDIO, "SDL Audio", "platform.sdl.audio");

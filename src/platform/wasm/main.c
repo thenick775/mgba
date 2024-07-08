@@ -200,7 +200,8 @@ EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
 		fastForwardSpeed = multiplier;
 		audio.fpsTarget = (double) 60 * multiplier;
 
-		mCoreConfigSetDefaultIntValue(&core->config, "frameskip", multiplier);
+		// fast forward starts at 1, frameskip starts at 0
+		mCoreConfigSetDefaultIntValue(&core->config, "frameskip", multiplier - 1);
 		core->reloadConfigOption(core, "frameskip", &core->config);
 	}
 }

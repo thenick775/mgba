@@ -13,9 +13,9 @@
 #include "platform/sdl/sdl-audio.h"
 #include "platform/sdl/sdl-events.h"
 
-#include <emscripten.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_keyboard.h>
+#include <emscripten.h>
 
 static struct mCore* core = NULL;
 static color_t* buffer = NULL;
@@ -98,12 +98,7 @@ void testLoop() {
 		unsigned w, h;
 		core->currentVideoSize(core, &w, &h);
 
-		SDL_Rect rect = {
-			.x = 0,
-			.y = 0,
-			.w = w,
-			.h = h
-		};
+		SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
 		SDL_UnlockTexture(tex);
 		SDL_RenderCopy(renderer, tex, &rect, &rect);
 		SDL_RenderPresent(renderer);
@@ -146,15 +141,15 @@ EMSCRIPTEN_KEEPALIVE bool screenshot(char* fileName) {
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonPress(int id) {
-  if (core) {
-    core->addKeys(core, 1 << id);
-  }
+	if (core) {
+		core->addKeys(core, 1 << id);
+	}
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonUnpress(int id) {
-  if (core) {
-    core->clearKeys(core, 1 << id);
-  }
+	if (core) {
+		core->clearKeys(core, 1 << id);
+	}
 }
 
 EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
@@ -174,25 +169,25 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 }
 
 EMSCRIPTEN_KEEPALIVE float getVolume() {
-  return (float) core->opts.volume / 0x100;
+	return (float) core->opts.volume / 0x100;
 }
 
 EMSCRIPTEN_KEEPALIVE int getMainLoopTimingMode() {
-  int mode = -1;
-  int value = -1;
-  emscripten_get_main_loop_timing(&mode, &value);
-  return mode;
+	int mode = -1;
+	int value = -1;
+	emscripten_get_main_loop_timing(&mode, &value);
+	return mode;
 }
 
 EMSCRIPTEN_KEEPALIVE int getMainLoopTimingValue() {
-  int mode = -1;
-  int value = -1;
-  emscripten_get_main_loop_timing(&mode, &value);
-  return value;
+	int mode = -1;
+	int value = -1;
+	emscripten_get_main_loop_timing(&mode, &value);
+	return value;
 }
 
 EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
-  emscripten_set_main_loop_timing(mode, value);
+	emscripten_set_main_loop_timing(mode, value);
 }
 
 EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
@@ -211,22 +206,22 @@ EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
 }
 
 EMSCRIPTEN_KEEPALIVE void quitGame() {
-  if (core) {
-	renderFirstFrame = true;
-	mSDLPauseAudio(&audio);
-	emscripten_pause_main_loop();
-    core->deinit(core);
-    core = NULL;
-  }
+	if (core) {
+		renderFirstFrame = true;
+		mSDLPauseAudio(&audio);
+		emscripten_pause_main_loop();
+		core->deinit(core);
+		core = NULL;
+	}
 }
 
 EMSCRIPTEN_KEEPALIVE void quitMgba() {
-  exit(0);
+	exit(0);
 }
 
 EMSCRIPTEN_KEEPALIVE void quickReload() {
-  renderFirstFrame = true;
-  core->reset(core);
+	renderFirstFrame = true;
+	core->reset(core);
 }
 
 EMSCRIPTEN_KEEPALIVE void pauseGame() {
@@ -247,13 +242,13 @@ EMSCRIPTEN_KEEPALIVE void resumeGame() {
 }
 
 EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
-    int state = toggle ? SDL_ENABLE : SDL_DISABLE;
-    SDL_EventState(SDL_TEXTINPUT, state);
-    SDL_EventState(SDL_KEYDOWN, state);
-    SDL_EventState(SDL_KEYUP, state);
-    SDL_EventState(SDL_MOUSEMOTION, state);
-    SDL_EventState(SDL_MOUSEBUTTONDOWN, state);
-    SDL_EventState(SDL_MOUSEBUTTONUP, state);
+	int state = toggle ? SDL_ENABLE : SDL_DISABLE;
+	SDL_EventState(SDL_TEXTINPUT, state);
+	SDL_EventState(SDL_KEYDOWN, state);
+	SDL_EventState(SDL_KEYUP, state);
+	SDL_EventState(SDL_MOUSEMOTION, state);
+	SDL_EventState(SDL_MOUSEBUTTONDOWN, state);
+	SDL_EventState(SDL_MOUSEBUTTONUP, state);
 }
 
 // bindingName is the key name of what you want to bind to an input
@@ -265,23 +260,23 @@ EMSCRIPTEN_KEEPALIVE void bindKey(char* bindingName, int inputCode) {
 }
 
 EMSCRIPTEN_KEEPALIVE bool saveState(int slot) {
-  if (core) {
-	  return mCoreSaveState(core, slot, SAVESTATE_ALL);
-  }
-  return false;
+	if (core) {
+		return mCoreSaveState(core, slot, SAVESTATE_ALL);
+	}
+	return false;
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
-  if (core) {
-    return mCoreLoadState(core, slot, SAVESTATE_ALL);
-  }
-  return false;
+	if (core) {
+		return mCoreLoadState(core, slot, SAVESTATE_ALL);
+	}
+	return false;
 }
 
 // loads all cheats files located in the cores cheatsPath,
 // cheat files must match the name of the rom they are
 // to be applied to, and must end with the extension .cheats
-// supported cheat formats: 
+// supported cheat formats:
 //  - mGBA custom format
 //  - libretro format
 //  - EZFCht format
@@ -330,10 +325,12 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 
 	core->currentVideoSize(core, &w, &h);
 	SDL_SetWindowSize(window, w, h);
-	EM_ASM({
-		Module.canvas.width = $0;
-		Module.canvas.height = $1;
-	}, w, h);
+	EM_ASM(
+	    {
+		    Module.canvas.width = $0;
+		    Module.canvas.height = $1;
+	    },
+	    w, h);
 
 	audio.core = core;
 	mSDLResumeAudio(&audio);
@@ -363,45 +360,46 @@ void _log(struct mLogger* logger, int category, enum mLogLevel level, const char
 	UNUSED(args);
 }
 
-
 EMSCRIPTEN_KEEPALIVE void setupConstants(void) {
 	EM_ASM(({
-		Module.version = {
-			gitCommit: UTF8ToString($0),
-			gitShort: UTF8ToString($1),
-			gitBranch: UTF8ToString($2),
-			gitRevision: $3,
-			binaryName: UTF8ToString($4),
-			projectName: UTF8ToString($5),
-			projectVersion: UTF8ToString($6)
-		};
-	}), gitCommit, gitCommitShort, gitBranch, gitRevision, binaryName, projectName, projectVersion);
+		       Module.version = {
+			       gitCommit : UTF8ToString($0),
+			       gitShort : UTF8ToString($1),
+			       gitBranch : UTF8ToString($2),
+			       gitRevision : $3,
+			       binaryName : UTF8ToString($4),
+			       projectName : UTF8ToString($5),
+			       projectVersion : UTF8ToString($6)
+		       };
+	       }),
+	       gitCommit, gitCommitShort, gitBranch, gitRevision, binaryName, projectName, projectVersion);
 }
 
 CONSTRUCTOR(premain) {
 	setupConstants();
 }
 
-int excludeKeys(void *userdata, SDL_Event *event) {
+int excludeKeys(void* userdata, SDL_Event* event) {
 	UNUSED(userdata);
 
 	switch (event->key.keysym.sym) {
-		case SDLK_TAB: // ignored for a11y during gameplay
-		case SDLK_SPACE:
-			return 0; // Value will be ignored
-		default:
-			return 1;
+	case SDLK_TAB: // ignored for a11y during gameplay
+	case SDLK_SPACE:
+		return 0; // Value will be ignored
+	default:
+		return 1;
 	};
 }
 
 int main() {
 	mLogSetDefaultLogger(&logCtx);
 
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO| SDL_INIT_TIMER | SDL_INIT_EVENTS);
-	window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
+	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_EVENTS);
+	window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, GBA_VIDEO_HORIZONTAL_PIXELS,
+	                          GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	mSDLInitAudio(&audio, NULL);
-	
+
 	// exclude specific key events
 	SDL_SetEventFilter(excludeKeys, NULL);
 

@@ -57,6 +57,7 @@ mGBA(this.module).then(function (Module) {
 Now you will have access to the following contract:
 
 ```
+Module.addCoreCallbacks(coreCallbacks)
 Module.autoLoadCheats()
 Module.bindKey(bindingName, inputName)
 Module.buttonPress(name)

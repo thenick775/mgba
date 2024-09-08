@@ -352,9 +352,9 @@ EMSCRIPTEN_KEEPALIVE bool loadStateSlot(int slot, int flags) {
 	return mCoreLoadState(renderer.core, slot, flags);
 }
 
-// registers callbacks with the core
+// addCoreCallbacks clears core callbacks, and registers new callbacks with the core
 // Note: function pointers from javascript are expected to be kept alive until no longer needed,
-//       this is the responsibility of the javascript code for now
+//       it is the responsibility of the javascript code to ensure the function references are kept alive
 EMSCRIPTEN_KEEPALIVE void
 addCoreCallbacks(void (*alarmCallbackPtr)(void* context), void (*coreCrashedCallbackPtr)(void* context),
                  void (*keysReadCallbackPtr)(void* context), void (*saveDataUpdatedCallbackPtr)(void* context),

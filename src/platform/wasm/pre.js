@@ -351,7 +351,7 @@ Module.addCoreCallbacks = (callbacks) => {
       coreCallbackStore[callbackKey] = addFunction(callback, 'vi');
   });
 
-  // add the callback to the core
+  // add the callbacks from the store to the core
   addCoreCallbacks(
     coreCallbackStore.alarmCallbackPtr,
     coreCallbackStore.coreCrashedCallbackPtr,

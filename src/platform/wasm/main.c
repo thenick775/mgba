@@ -313,7 +313,8 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	if (renderer.sdlTex) {
 		SDL_DestroyTexture(renderer.sdlTex);
 	}
-	renderer.sdlTex = SDL_CreateTexture(renderer.sdlRenderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+	renderer.sdlTex =
+	    SDL_CreateTexture(renderer.sdlRenderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h);
 
 	int stride;
 	SDL_LockTexture(renderer.sdlTex, 0, (void**) &renderer.outputBuffer, &stride);
@@ -349,6 +350,48 @@ EMSCRIPTEN_KEEPALIVE bool loadStateSlot(int slot, int flags) {
 		return false;
 	}
 	return mCoreLoadState(renderer.core, slot, flags);
+}
+
+// registers callbacks with the core
+// Note: function pointers from javascript are expected to be kept alive until no longer needed,
+//       this is the responsibility of the javascript code for now
+EMSCRIPTEN_KEEPALIVE void
+addCoreCallbacks(void (*alarmCallbackPtr)(void* context), void (*coreCrashedCallbackPtr)(void* context),
+                 void (*keysReadCallbackPtr)(void* context), void (*saveDataUpdatedCallbackPtr)(void* context),
+                 // void (*shutdownCallbackPtr)(void* context), void (*sleepCallbackPtr)(void* context),
+                 void (*videoFrameEndedCallbackPtr)(void* context),
+                 void (*videoFrameStartedCallbackPtr)(void* context)) {
+	if (renderer.core) {
+		struct mCoreCallbacks callbacks = {};
+		renderer.core->clearCoreCallbacks(renderer.core);
+
+		if (alarmCallbackPtr)
+			callbacks.alarm = alarmCallbackPtr;
+
+		if (coreCrashedCallbackPtr)
+			callbacks.coreCrashed = coreCrashedCallbackPtr;
+
+		if (keysReadCallbackPtr)
+			callbacks.keysRead = keysReadCallbackPtr;
+
+		if (saveDataUpdatedCallbackPtr)
+			callbacks.savedataUpdated = saveDataUpdatedCallbackPtr;
+
+		// NOTE: I do not believe these behaviors are currently accessible to be called from the wasm interface
+		// if (shutdownCallbackPtr)
+		// 	callbacks.shutdown = shutdownCallbackPtr;
+
+		// if (sleepCallbackPtr)
+		// 	callbacks.sleep = sleepCallbackPtr;
+
+		if (videoFrameEndedCallbackPtr)
+			callbacks.videoFrameEnded = videoFrameEndedCallbackPtr;
+
+		if (videoFrameStartedCallbackPtr)
+			callbacks.videoFrameStarted = videoFrameStartedCallbackPtr;
+
+		renderer.core->addCoreCallbacks(renderer.core, &callbacks);
+	}
 }
 
 void _log(struct mLogger* logger, int category, enum mLogLevel level, const char* format, va_list args) {
@@ -394,9 +437,10 @@ int main() {
 	mLogSetDefaultLogger(&logCtx);
 
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_EVENTS);
-	renderer.window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, GBA_VIDEO_HORIZONTAL_PIXELS,
-	                          GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
-	renderer.sdlRenderer = SDL_CreateRenderer(renderer.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+	renderer.window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+	                                   GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
+	renderer.sdlRenderer =
+	    SDL_CreateRenderer(renderer.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 	mSDLInitAudio(&renderer.audio, NULL);
 
 	// exclude specific key events

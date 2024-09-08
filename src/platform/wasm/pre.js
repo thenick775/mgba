@@ -320,3 +320,44 @@ Module.getFastForwardMultiplier = () => {
   );
   return getFastForwardMultiplier();
 };
+
+// core callback store, used to persist long lived js function pointers for use in core callbacks in c
+const coreCallbackStore = {
+  alarmCallbackPtr: null,
+  coreCrashedCallbackPtr: null,
+  keysReadCallbackPtr: null,
+  saveDataUpdatedCallbackPtr: null,
+  videoFrameEndedCallbackPtr: null,
+  videoFrameStartedCallbackPtr: null,
+};
+
+// adds user callbacks to the callback store, and makes function(s) available to the core in c
+// passing null clears the callback, allowing for partial additions/removals of callbacks
+Module.addCoreCallbacks = (callbacks) => {
+  const addCoreCallbacks = cwrap('addCoreCallbacks', null, ['number']);
+
+  Object.keys(coreCallbackStore).forEach((callbackKey) => {
+    const callbackName = callbackKey.replace('CallbackPtr', 'Callback');
+    const callback = callbacks[callbackName];
+
+    // if the pointer is stored remove the old function pointer if a new callback was passed, or the callback is null
+    if (callback !== undefined && !!coreCallbackStore[callbackKey]) {
+      removeFunction(coreCallbackStore[callbackKey]);
+      coreCallbackStore[callbackKey] = null;
+    }
+
+    // add the new function pointer to the store if present
+    if (!!callback)
+      coreCallbackStore[callbackKey] = addFunction(callback, 'vi');
+  });
+
+  // add the callback to the core
+  addCoreCallbacks(
+    coreCallbackStore.alarmCallbackPtr,
+    coreCallbackStore.coreCrashedCallbackPtr,
+    coreCallbackStore.keysReadCallbackPtr,
+    coreCallbackStore.saveDataUpdatedCallbackPtr,
+    coreCallbackStore.videoFrameEndedCallbackPtr,
+    coreCallbackStore.videoFrameStartedCallbackPtr
+  );
+};

@@ -1,6 +1,6 @@
 {
   "name": "@thenick775/mgba-wasm",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "mGBA emulator compiled to webassembly",
   "main": "./dist/mgba.js",
   "types": "./dist/mgba.d.ts",
@@ -30,5 +30,5 @@
   "bugs": {
     "url": "https://github.com/thenick775/mgba/issues"
   },
-  "homepage": "https://github.com/thenick775/mgba#readme"
+  "homepage": "https://github.com/thenick775/mgba/tree/feature/wasm#readme"
 }

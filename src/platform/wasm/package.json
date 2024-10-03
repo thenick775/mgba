@@ -1,6 +1,6 @@
 {
   "name": "@thenick775/mgba-wasm",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "mGBA emulator compiled to webassembly",
   "main": "./dist/mgba.js",
   "types": "./dist/mgba.d.ts",

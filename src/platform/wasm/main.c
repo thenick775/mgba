@@ -190,7 +190,7 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 }
 
 EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
-	if (multiplier > 0) {
+	if (renderer.core && multiplier > 0) {
 		renderer.fastForwardSpeed = multiplier;
 		renderer.audio.fpsTarget = (double) 60 * multiplier;
 

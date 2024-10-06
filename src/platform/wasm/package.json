@@ -1,6 +1,6 @@
 {
   "name": "@thenick775/mgba-wasm",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "description": "mGBA emulator compiled to webassembly",
   "main": "./dist/mgba.js",
   "types": "./dist/mgba.d.ts",
@@ -13,7 +13,8 @@
     "build": "cd ../../.. && docker run --rm -t -v $PWD:/home/mgba/src local-mgba/wasm:1.0 && echo 'mGBA-wasm built successfully!'",
     "build:image": "cd ./docker && docker build -t local-mgba/wasm:1.0 . && echo 'Image Built Successfully!'",
     "prepare": "mkdir -p ./dist && cp -r ../../../build-wasm/wasm/* ./dist/ || { echo 'Copy failed'; exit 1; }",
-    "prepack": "npm run prepare"
+    "prepack": "npm run prepare",
+    "clean": "rm -rf ./dist"
   },
   "repository": {
     "type": "git",

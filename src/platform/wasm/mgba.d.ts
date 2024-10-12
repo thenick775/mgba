@@ -36,8 +36,8 @@ declare namespace mGBA {
     getMainLoopTimingValue(): number;
     getSave(): Uint8Array;
     getVolume(): number;
-    listRoms(): void;
-    listSaves(): void;
+    listRoms(): string[];
+    listSaves(): string[];
     loadGame(romPath: string): boolean;
     loadState(slot: number): boolean;
     pauseGame(): void;

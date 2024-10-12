@@ -12,4 +12,4 @@ ENV BUILD_DIR=build-wasm
 
 RUN git config --global --add safe.directory /home/mgba/src
 
-CMD mkdir -p "$BUILD_DIR" && cd "$BUILD_DIR" && emcmake cmake .. $CMAKE_FLAGS && make install DESTDIR=install
+CMD ["sh", "-c", "mkdir -p \"$BUILD_DIR\" && cd \"$BUILD_DIR\" && emcmake cmake .. $CMAKE_FLAGS && make install DESTDIR=install"]

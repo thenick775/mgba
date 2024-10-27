@@ -5,9 +5,9 @@ This is my fork of endrift's mGBA. My goal here was to make a fully functional w
 To build this branch and obtain a WASM, js, and type definition files, run either of the following in the repo's root directory:
 
 ```
-# using local build from pinned emcc from emscripten/emsdk:3.1.53
+# using local build from pinned emcc from emscripten/emsdk:3.1.70
 cd ./src/platform/wasm/docker && \
-docker build -t local-mgba/wasm:1.0 . && \
+docker build -t local-mgba/wasm:1.1 . && \
 cd ./../../../.. && \
 docker run --rm -t -v $PWD:/home/mgba/src <generated image ID>;
 ```

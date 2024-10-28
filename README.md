@@ -1,5 +1,13 @@
 # mGBA
 
+<div>
+    <a href="https://www.npmjs.com/package/@thenick775/mgba-wasm"> 
+        <img alt="NPM Version" src="https://img.shields.io/npm/v/%40thenick775%2Fmgba-wasm" />
+    </a>	
+</div>
+
+<br/>
+
 This is my fork of endrift's mGBA. My goal here was to make a fully functional wasm setup condensing some of the work in the surrounding community, including javascript bindings for the most common emulator actions.
 
 To build this branch and obtain a WASM, js, and type definition files, run either of the following in the repo's root directory:

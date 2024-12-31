@@ -4,10 +4,11 @@ declare namespace mGBA {
   export interface filePaths {
     root: string;
     cheatsPath: string;
-    gamePath: string;
-    savePath: string;
-    saveStatePath: string;
+    gamesPath: string;
+    savesPath: string;
+    saveStatesPath: string;
     screenshotsPath: string;
+    patchesPath: string;
   }
 
   // see: https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/state
@@ -52,6 +53,7 @@ declare namespace mGBA {
     setVolume(percent: number): void;
     toggleInput(enabled: boolean): void;
     uploadCheats(file: File, callback?: () => void): void;
+    uploadPatch(file: File, callback?: () => void): void;
     uploadRom(file: File, callback?: () => void): void;
     uploadSaveOrSaveState(file: File, callback?: () => void): void;
     addCoreCallbacks(coreCallbacks: coreCallbacks): void;

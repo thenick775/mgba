@@ -62,6 +62,9 @@ Module.FSInit = () => {
       try {
         FS.mkdir('/data/screenshots');
       } catch (e) {}
+      try {
+        FS.mkdir('/data/patches');
+      } catch (e) {}
 
       resolve();
     });
@@ -85,10 +88,11 @@ Module.filePaths = () => {
   return {
     root: '/data',
     cheatsPath: '/data/cheats',
-    gamePath: '/data/games',
-    savePath: '/data/saves',
-    saveStatePath: '/data/states',
+    gamesPath: '/data/games',
+    savesPath: '/data/saves',
+    saveStatesPath: '/data/states',
     screenshotsPath: '/data/screenshots',
+    patchesPath: 'data/patches',
   };
 };
 
@@ -159,6 +163,33 @@ Module.uploadCheats = (file, callback) => {
   let dir = null;
   if (extension == 'cheats') {
     dir = '/data/cheats/';
+  } else {
+    console.warn('unrecognized file extension: ' + extension);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    FS.writeFile(dir + file.name, new Uint8Array(e.target.result));
+    if (callback) {
+      callback();
+    }
+  };
+
+  reader.readAsArrayBuffer(file);
+};
+
+Module.uploadPatch = (file, callback) => {
+  const split = file.name.split('.');
+  if (split.length < 2) {
+    console.warn('unrecognized file extension: ' + file.name);
+    return;
+  }
+  const extension = split[split.length - 1].toLowerCase();
+
+  let dir = null;
+  if (['ips', 'ups', 'bps'].includes(extension)) {
+    dir = '/data/patches/';
   } else {
     console.warn('unrecognized file extension: ' + extension);
     return;

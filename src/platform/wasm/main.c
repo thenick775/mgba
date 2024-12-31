@@ -297,6 +297,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	renderer.core->opts.savestatePath = strdup("/data/states");
 	renderer.core->opts.cheatsPath = strdup("/data/cheats");
 	renderer.core->opts.screenshotPath = strdup("/data/screenshots");
+	renderer.core->opts.patchPath = strdup("/data/patches");
 
 	mCoreLoadFile(renderer.core, name);
 	mCoreConfigInit(&renderer.core->config, "wasm");
@@ -306,6 +307,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	mDirectorySetMapOptions(&renderer.core->dirs, &renderer.core->opts);
 	mCoreAutoloadSave(renderer.core);
 	mCoreAutoloadCheats(renderer.core);
+	mCoreAutoloadPatch(renderer.core);
 	mSDLInitBindingsGBA(&renderer.core->inputMap);
 
 	unsigned w, h;

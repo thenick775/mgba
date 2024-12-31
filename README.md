@@ -96,6 +96,7 @@ Module.setMainLoopTiming(mode, value)
 Module.setVolume(percent)
 Module.toggleInput()
 Module.uploadCheats(file, callback)
+Module.uploadPatch(file, callback)
 Module.uploadRom(file, callback)
 Module.uploadSaveOrSaveState(file, callback)
 ```

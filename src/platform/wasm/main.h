@@ -8,7 +8,7 @@
 // represents global items used in rendering mGBA in the wasm platform
 struct mEmscriptenRenderer {
 	struct mCore* core;
-	color_t* outputBuffer;
+	mColor* outputBuffer;
 
 	SDL_Window* window;
 	SDL_Texture* sdlTex;

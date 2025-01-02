@@ -144,7 +144,7 @@ static void _mSDLAudioCallback(void* context, Uint8* data, int len) {
 	if (audioContext->fpsTarget > 0.0)
 		fpsTarget = audioContext->fpsTarget;
 
-	fauxClock = GBAAudioCalculateRatio(1, fpsTarget, 1);
+	fauxClock = mCoreCalculateFramerateRatio(audioContext->core, fpsTarget);
 #endif
 	mAudioResamplerSetSource(&audioContext->resampler, buffer, sampleRate / fauxClock, true);
 	mAudioResamplerProcess(&audioContext->resampler);

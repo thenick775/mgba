@@ -21,7 +21,7 @@
 
 // global renderer
 static struct mEmscriptenRenderer renderer = {
-	.audio = { .sampleRate = 48000, .samples = 4096, .fpsTarget = 60.0 },
+	.audio = { .sampleRate = 48000, .samples = 1024, .fpsTarget = 60.0 },
 	.renderFirstFrame = true,
 	.fastForwardSpeed = 1,
 };
@@ -297,6 +297,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	renderer.core->opts.savestatePath = strdup("/data/states");
 	renderer.core->opts.cheatsPath = strdup("/data/cheats");
 	renderer.core->opts.screenshotPath = strdup("/data/screenshots");
+	renderer.core->opts.audioBuffers = renderer.audio.samples;
 
 	mCoreLoadFile(renderer.core, name);
 	mCoreConfigInit(&renderer.core->config, "wasm");
@@ -319,7 +320,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	int stride;
 	SDL_LockTexture(renderer.sdlTex, 0, (void**) &renderer.outputBuffer, &stride);
 	renderer.core->setVideoBuffer(renderer.core, renderer.outputBuffer, stride / BYTES_PER_PIXEL);
-	renderer.core->setAudioBufferSize(renderer.core, renderer.audio.samples * 2);
+	renderer.core->setAudioBufferSize(renderer.core, renderer.audio.samples);
 
 	renderer.core->reset(renderer.core);
 

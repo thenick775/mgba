@@ -209,6 +209,9 @@ EMSCRIPTEN_KEEPALIVE void quitGame() {
 		renderer.renderFirstFrame = true;
 		mSDLPauseAudio(&renderer.audio);
 		emscripten_pause_main_loop();
+		renderer.core->unloadROM(renderer.core);
+		mCoreConfigDeinit(&renderer.core->config);
+		mInputMapDeinit(&renderer.core->inputMap);
 		renderer.core->deinit(renderer.core);
 		renderer.core = NULL;
 	}
@@ -285,6 +288,9 @@ EMSCRIPTEN_KEEPALIVE bool autoLoadCheats() {
 
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	if (renderer.core) {
+		renderer.core->unloadROM(renderer.core);
+		mCoreConfigDeinit(&renderer.core->config);
+		mInputMapDeinit(&renderer.core->inputMap);
 		renderer.core->deinit(renderer.core);
 		renderer.core = NULL;
 	}
@@ -297,6 +303,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	renderer.core->opts.savestatePath = strdup("/data/states");
 	renderer.core->opts.cheatsPath = strdup("/data/cheats");
 	renderer.core->opts.screenshotPath = strdup("/data/screenshots");
+	renderer.core->opts.patchPath = strdup("/data/patches");
 	renderer.core->opts.audioBuffers = renderer.audio.samples;
 
 	mCoreLoadFile(renderer.core, name);
@@ -307,6 +314,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	mDirectorySetMapOptions(&renderer.core->dirs, &renderer.core->opts);
 	mCoreAutoloadSave(renderer.core);
 	mCoreAutoloadCheats(renderer.core);
+	mCoreAutoloadPatch(renderer.core);
 	mSDLInitBindingsGBA(&renderer.core->inputMap);
 
 	unsigned w, h;

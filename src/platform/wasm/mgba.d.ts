@@ -8,6 +8,7 @@ declare namespace mGBA {
     savePath: string;
     saveStatePath: string;
     screenshotsPath: string;
+    patchPath: string;
   }
 
   // see: https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/state
@@ -52,6 +53,7 @@ declare namespace mGBA {
     setVolume(percent: number): void;
     toggleInput(enabled: boolean): void;
     uploadCheats(file: File, callback?: () => void): void;
+    uploadPatch(file: File, callback?: () => void): void;
     uploadRom(file: File, callback?: () => void): void;
     uploadSaveOrSaveState(file: File, callback?: () => void): void;
     addCoreCallbacks(coreCallbacks: coreCallbacks): void;

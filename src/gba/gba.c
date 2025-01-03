@@ -553,6 +553,8 @@ void GBAApplyPatch(struct GBA* gba, struct Patch* patch) {
 		return;
 	}
 	void* newRom = anonymousMemoryMap(GBA_SIZE_ROM0);
+	memset(newRom, 0, patchedSize); // re-initialize newRom, successive loads of patch files after the core has been
+	                                // de-initialized cause the crc check to fail
 	if (!patch->applyPatch(patch, gba->memory.rom, gba->pristineRomSize, newRom, patchedSize)) {
 		mappedMemoryFree(newRom, GBA_SIZE_ROM0);
 		return;

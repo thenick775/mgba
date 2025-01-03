@@ -92,7 +92,7 @@ Module.filePaths = () => {
     savePath: '/data/saves',
     saveStatePath: '/data/states',
     screenshotsPath: '/data/screenshots',
-    patchPath: 'data/patches',
+    patchPath: '/data/patches',
   };
 };
 

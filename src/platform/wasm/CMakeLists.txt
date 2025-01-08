@@ -10,6 +10,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
 	-s MODULARIZE=1 \
 	-s EXPORT_NAME=${CMAKE_PROJECT_NAME} \
 	-s ELIMINATE_DUPLICATE_FUNCTIONS=1 \
+	-gsource-map \
 	--flto \
 	--pre-js ${CMAKE_CURRENT_SOURCE_DIR}/pre.js")
 add_executable(${BINARY_NAME}.js main.c memory.c ../sdl/sdl-audio.c ../sdl/sdl-events.c)

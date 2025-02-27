@@ -57,6 +57,7 @@ declare namespace mGBA {
     uploadRom(file: File, callback?: () => void): void;
     uploadSaveOrSaveState(file: File, callback?: () => void): void;
     addCoreCallbacks(coreCallbacks: coreCallbacks): void;
+    toggleRewind(enabled: boolean): void;
     // custom variables
     version: {
       projectName: string;

@@ -70,9 +70,12 @@ void runLoop() {
 			renderer->thread = malloc(sizeof(struct mCoreThread));
 			renderer->thread->core = renderer->core;
 			bool didFail = !mCoreThreadStart(renderer->thread);
-			EM_ASM({ console.log('vancise thread start', $0) }, didFail);
 
 			mSDLInitAudio(&renderer->audio, renderer->thread);
+
+			renderer->thread->impl->sync.fpsTarget = (double) 60 * renderer->fastForwardMultiplier;
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", renderer->fastForwardMultiplier - 1);
+			renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
 		}
 
 		if (mCoreThreadIsActive(renderer->thread)) {
@@ -182,10 +185,8 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 }
 
 EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
-	EM_ASM({ console.log("setFastForwardMultiplier core/thread", $0, $1) }, renderer->core, renderer->thread);
+	renderer->fastForwardMultiplier = multiplier; // can probably refactor this, can set it to 0...
 	if (renderer->core && renderer->thread && multiplier > 0) {
-		EM_ASM({ console.log("setting fps target to", $0) }, (float) 60 * multiplier);
-
 		renderer->thread->impl->sync.fpsTarget = (double) 60 * multiplier;
 
 		// fast forward starts at 1, frameskip starts at 0
@@ -367,15 +368,6 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	    w, h);
 
 	renderer->audio.core = renderer->core;
-
-	// latest
-	// renderer->thread = malloc(sizeof(struct mCoreThread));
-	// renderer->thread->core = renderer->core;
-	// bool didFail = !mCoreThreadStart(renderer->thread);
-	// EM_ASM({ console.log('vancise thread start loadgame', $0) }, didFail);
-
-	// mSDLInitAudio(&renderer->audio, renderer->thread);
-
 	mSDLResumeAudio(&renderer->audio);
 	emscripten_resume_main_loop();
 	return true;
@@ -481,6 +473,7 @@ int main() {
 	renderer->audio.sampleRate = 48000;
 	renderer->audio.samples = 1024;
 	renderer->audio.fpsTarget = 60.0;
+	renderer->fastForwardMultiplier = 1;
 
 	mLogSetDefaultLogger(&logCtx);
 

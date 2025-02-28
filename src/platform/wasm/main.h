@@ -17,5 +17,7 @@ struct mEmscriptenRenderer {
 	SDL_Renderer* sdlRenderer;
 
 	struct mSDLAudio audio;
-	struct mCoreThread* thread __attribute__((aligned(8))); // Ensure alignment
+	struct mCoreThread* thread;
+
+	int fastForwardMultiplier;
 };

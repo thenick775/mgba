@@ -200,10 +200,15 @@ EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
 
 EMSCRIPTEN_KEEPALIVE void quitGame() {
 	if (renderer->core) {
-		mCoreThreadJoin(renderer->thread);
-
-		mSDLPauseAudio(&renderer->audio);
 		emscripten_pause_main_loop();
+		mSDLPauseAudio(&renderer->audio);
+		mSDLDeinitAudio(&renderer->audio);
+
+		mCoreThreadEnd(renderer->thread);
+		mCoreThreadJoin(renderer->thread);
+		free(renderer->thread);
+		renderer->thread = NULL;
+
 		renderer->core->unloadROM(renderer->core);
 		mCoreConfigDeinit(&renderer->core->config);
 		mInputMapDeinit(&renderer->core->inputMap);
@@ -484,11 +489,15 @@ int main() {
 	                                    GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
 	renderer->sdlRenderer =
 	    SDL_CreateRenderer(renderer->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-	// mSDLInitAudio(&renderer->audio, NULL);
 
 	// exclude specific key events
 	SDL_SetEventFilter(excludeKeys, NULL);
 
 	emscripten_set_main_loop(runLoop, 0, 1);
+
+	mCoreThreadJoin(renderer->thread);
+
+	free(renderer);
+
 	return 0;
 }

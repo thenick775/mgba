@@ -30,7 +30,7 @@ static struct mLogger logCtx = { .log = _log };
 // keypress utilities
 static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
 	if (event->keysym.sym == SDLK_f) {
-		renderer->fastForwardSpeed = event->type == SDL_KEYDOWN ? 2 : 1;
+		renderer->thread->impl->sync.fpsTarget = event->type == SDL_KEYDOWN ? 120 : 60;
 		return;
 	}
 	if (event->keysym.sym == SDLK_r) {
@@ -89,7 +89,6 @@ void runLoop() {
 	} else {
 		// dont run the main loop if there is no core,  we don't
 		// want to handle events unless the core is running for now
-		renderer->renderFirstFrame = true;
 		emscripten_pause_main_loop();
 	}
 }
@@ -183,9 +182,11 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 }
 
 EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
-	if (renderer->core && multiplier > 0) {
-		renderer->fastForwardSpeed = multiplier;
-		renderer->audio.fpsTarget = (double) 60 * multiplier;
+	EM_ASM({ console.log("setFastForwardMultiplier core/thread", $0, $1) }, renderer->core, renderer->thread);
+	if (renderer->core && renderer->thread && multiplier > 0) {
+		EM_ASM({ console.log("setting fps target to", $0) }, (float) 60 * multiplier);
+
+		renderer->thread->impl->sync.fpsTarget = (double) 60 * multiplier;
 
 		// fast forward starts at 1, frameskip starts at 0
 		mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", multiplier - 1);
@@ -194,14 +195,13 @@ EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
 }
 
 EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
-	return renderer->fastForwardSpeed;
+	return renderer->thread->impl->sync.fpsTarget;
 }
 
 EMSCRIPTEN_KEEPALIVE void quitGame() {
 	if (renderer->core) {
 		mCoreThreadJoin(renderer->thread);
 
-		renderer->renderFirstFrame = true;
 		mSDLPauseAudio(&renderer->audio);
 		emscripten_pause_main_loop();
 		renderer->core->unloadROM(renderer->core);
@@ -217,12 +217,12 @@ EMSCRIPTEN_KEEPALIVE void quitMgba() {
 }
 
 EMSCRIPTEN_KEEPALIVE void quickReload() {
-	renderer->renderFirstFrame = true;
+	mCoreThreadInterrupt(renderer->thread);
 	renderer->core->reset(renderer->core);
+	mCoreThreadContinue(renderer->thread);
 }
 
 EMSCRIPTEN_KEEPALIVE void pauseGame() {
-	renderer->renderFirstFrame = true;
 	mSDLPauseAudio(&renderer->audio);
 	emscripten_pause_main_loop();
 }
@@ -363,15 +363,13 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 
 	renderer->audio.core = renderer->core;
 
-	// struct mCoreThread t = { .core = renderer->core };
+	// latest
+	// renderer->thread = malloc(sizeof(struct mCoreThread));
+	// renderer->thread->core = renderer->core;
+	// bool didFail = !mCoreThreadStart(renderer->thread);
+	// EM_ASM({ console.log('vancise thread start loadgame', $0) }, didFail);
 
-	// renderer->thread = &t;
-
-	// bool didStart = mCoreThreadStart(renderer->thread);
 	// mSDLInitAudio(&renderer->audio, renderer->thread);
-	// EM_ASM({ console.log('vancise thread start loadGame', $0) }, didStart);
-
-	// EM_ASM({ console.log('vancise thread start is active loadGame', $0) }, mCoreThreadIsActive(renderer->thread));
 
 	mSDLResumeAudio(&renderer->audio);
 	emscripten_resume_main_loop();
@@ -478,8 +476,6 @@ int main() {
 	renderer->audio.sampleRate = 48000;
 	renderer->audio.samples = 1024;
 	renderer->audio.fpsTarget = 60.0;
-	renderer->renderFirstFrame = true;
-	renderer->fastForwardSpeed = 1;
 
 	mLogSetDefaultLogger(&logCtx);
 

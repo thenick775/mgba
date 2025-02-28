@@ -18,9 +18,4 @@ struct mEmscriptenRenderer {
 
 	struct mSDLAudio audio;
 	struct mCoreThread* thread __attribute__((aligned(8))); // Ensure alignment
-
-	// fps related variables
-	double lastNow;
-	int fastForwardSpeed;
-	bool renderFirstFrame;
 };

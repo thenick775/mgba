@@ -19,6 +19,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_keyboard.h>
 #include <emscripten.h>
+#include <emscripten/threading.h>
 
 // global renderer
 static struct mEmscriptenRenderer* renderer = NULL;
@@ -59,7 +60,7 @@ void runLoop() {
 		switch (event.type) {
 		case SDL_KEYDOWN:
 		case SDL_KEYUP:
-			if (renderer->core) {
+			if (renderer->core && renderer->thread) {
 				handleKeypressCore(&event.key);
 			}
 			break;
@@ -126,7 +127,7 @@ EMSCRIPTEN_KEEPALIVE bool screenshot(char* fileName) {
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonPress(int id) {
-	if (renderer->core) {
+	if (renderer->core && renderer->thread) {
 		mCoreThreadInterrupt(renderer->thread);
 		renderer->core->addKeys(renderer->core, 1 << id);
 		mCoreThreadContinue(renderer->thread);
@@ -134,7 +135,7 @@ EMSCRIPTEN_KEEPALIVE void buttonPress(int id) {
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonUnpress(int id) {
-	if (renderer->core) {
+	if (renderer->core && renderer->thread) {
 		mCoreThreadInterrupt(renderer->thread);
 		renderer->core->clearKeys(renderer->core, 1 << id);
 		mCoreThreadContinue(renderer->thread);
@@ -142,7 +143,7 @@ EMSCRIPTEN_KEEPALIVE void buttonUnpress(int id) {
 }
 
 EMSCRIPTEN_KEEPALIVE void toggleRewind(bool toggle) {
-	if (renderer->core && renderer->thread)
+	if (renderer->thread)
 		mCoreThreadSetRewinding(renderer->thread, toggle);
 }
 
@@ -163,7 +164,10 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 }
 
 EMSCRIPTEN_KEEPALIVE float getVolume() {
-	return (float) renderer->core->opts.volume / 0x100;
+	if (renderer->core)
+		return (float) renderer->core->opts.volume / 0x100;
+	else
+		return 0.0;
 }
 
 EMSCRIPTEN_KEEPALIVE int getMainLoopTimingMode() {
@@ -196,11 +200,11 @@ EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
 }
 
 EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
-	return renderer->thread->impl->sync.fpsTarget;
+	return renderer->fastForwardMultiplier; // hmmmm which is right to return here
 }
 
 EMSCRIPTEN_KEEPALIVE void quitGame() {
-	if (renderer->core) {
+	if (renderer->core && renderer->thread) {
 		emscripten_pause_main_loop();
 		mSDLPauseAudio(&renderer->audio);
 		mSDLDeinitAudio(&renderer->audio);
@@ -223,9 +227,11 @@ EMSCRIPTEN_KEEPALIVE void quitMgba() {
 }
 
 EMSCRIPTEN_KEEPALIVE void quickReload() {
-	mCoreThreadInterrupt(renderer->thread);
-	renderer->core->reset(renderer->core);
-	mCoreThreadContinue(renderer->thread);
+	if (renderer->core && renderer->thread) {
+		mCoreThreadInterrupt(renderer->thread);
+		renderer->core->reset(renderer->core);
+		mCoreThreadContinue(renderer->thread);
+	}
 }
 
 EMSCRIPTEN_KEEPALIVE void pauseGame() {
@@ -259,12 +265,14 @@ EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
 // this should work for a good variety of keys, but not all are supported yet
 EMSCRIPTEN_KEEPALIVE void bindKey(char* bindingName, int inputCode) {
 	int bindingSDLKeyCode = SDL_GetKeyFromName(bindingName);
-	mInputBindKey(&renderer->core->inputMap, SDL_BINDING_KEY, bindingSDLKeyCode, inputCode);
+
+	if (renderer->core)
+		mInputBindKey(&renderer->core->inputMap, SDL_BINDING_KEY, bindingSDLKeyCode, inputCode);
 }
 
 EMSCRIPTEN_KEEPALIVE bool saveState(int slot) {
 	bool result = false;
-	if (renderer->core) {
+	if (renderer->core && renderer->thread) {
 		mCoreThreadInterrupt(renderer->thread);
 		result = mCoreSaveState(renderer->core, slot, SAVESTATE_ALL);
 		mCoreThreadContinue(renderer->thread);
@@ -275,7 +283,7 @@ EMSCRIPTEN_KEEPALIVE bool saveState(int slot) {
 
 EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
 	bool result = false;
-	if (renderer->core) {
+	if (renderer->core && renderer->thread) {
 		mCoreThreadInterrupt(renderer->thread);
 		result = mCoreLoadState(renderer->core, slot, SAVESTATE_ALL);
 		mCoreThreadContinue(renderer->thread);
@@ -292,11 +300,14 @@ EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
 //  - libretro format
 //  - EZFCht format
 EMSCRIPTEN_KEEPALIVE bool autoLoadCheats() {
-	bool result = false;
-	mCoreThreadInterrupt(renderer->thread);
-	result = mCoreAutoloadCheats(renderer->core);
-	mCoreThreadContinue(renderer->thread);
-	return result;
+	if (renderer->core && renderer->thread) {
+		bool result = false;
+		mCoreThreadInterrupt(renderer->thread);
+		result = mCoreAutoloadCheats(renderer->core);
+		mCoreThreadContinue(renderer->thread);
+		return result;
+	}
+	return false;
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {

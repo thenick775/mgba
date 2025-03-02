@@ -71,6 +71,8 @@ void runLoop() {
 			renderer->thread = malloc(sizeof(struct mCoreThread));
 			renderer->thread->core = renderer->core;
 			bool didFail = !mCoreThreadStart(renderer->thread);
+			if (didFail)
+				EM_ASM({ console.error("thread instantiation failed") });
 
 			mSDLInitAudio(&renderer->audio, renderer->thread);
 

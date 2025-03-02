@@ -398,43 +398,76 @@ EMSCRIPTEN_KEEPALIVE bool loadStateSlot(int slot, int flags) {
 	return mCoreLoadState(renderer->core, slot, flags);
 }
 
-// addCoreCallbacks clears core callbacks, and registers new callbacks with the core
-// Note: function pointers from javascript are expected to be kept alive until no longer needed,
-//       it is the responsibility of the javascript code to ensure the function references are kept alive
-EMSCRIPTEN_KEEPALIVE void
-addCoreCallbacks(void (*alarmCallbackPtr)(void* context), void (*coreCrashedCallbackPtr)(void* context),
-                 void (*keysReadCallbackPtr)(void* context), void (*saveDataUpdatedCallbackPtr)(void* context),
-                 // void (*shutdownCallbackPtr)(void* context), void (*sleepCallbackPtr)(void* context),
-                 void (*videoFrameEndedCallbackPtr)(void* context),
-                 void (*videoFrameStartedCallbackPtr)(void* context)) {
+typedef struct {
+	void (*alarm)(void*);
+	void (*coreCrashed)(void*);
+	void (*keysRead)(void*);
+	void (*savedataUpdated)(void*);
+	void (*videoFrameEnded)(void*);
+	void (*videoFrameStarted)(void*);
+} CallbackStorage;
+
+static CallbackStorage callbackStorage;
+
+// Macro to create wrapper functions
+#define DEFINE_WRAPPER(field)                            \
+	static void wrapped_##field(void* context) {         \
+		MAIN_THREAD_EM_ASM(                              \
+		    {                                            \
+			    const funcPtr = $0;                      \
+			    const ctx = $1;                          \
+			    const func = wasmTable.get(funcPtr);     \
+			    if (func)                                \
+				    func(ctx);                           \
+		    },                                           \
+		    (int) callbackStorage.field, (int) context); \
+	}
+
+// Generate wrapper functions
+DEFINE_WRAPPER(alarm)
+DEFINE_WRAPPER(coreCrashed)
+DEFINE_WRAPPER(keysRead)
+DEFINE_WRAPPER(savedataUpdated)
+DEFINE_WRAPPER(videoFrameEnded)
+DEFINE_WRAPPER(videoFrameStarted)
+
+// Function to ensure all callbacks execute on the main thread
+EMSCRIPTEN_KEEPALIVE void addCoreCallbacks(void (*alarmCallbackPtr)(void*), void (*coreCrashedCallbackPtr)(void*),
+                                           void (*keysReadCallbackPtr)(void*),
+                                           void (*saveDataUpdatedCallbackPtr)(void*),
+                                           void (*videoFrameEndedCallbackPtr)(void*),
+                                           void (*videoFrameStartedCallbackPtr)(void*)) {
 	if (renderer->core) {
 		struct mCoreCallbacks callbacks = {};
 		renderer->core->clearCoreCallbacks(renderer->core);
 
+		// store original function pointers
 		if (alarmCallbackPtr)
-			callbacks.alarm = alarmCallbackPtr;
-
+			callbackStorage.alarm = alarmCallbackPtr;
 		if (coreCrashedCallbackPtr)
-			callbacks.coreCrashed = coreCrashedCallbackPtr;
-
+			callbackStorage.coreCrashed = coreCrashedCallbackPtr;
 		if (keysReadCallbackPtr)
-			callbacks.keysRead = keysReadCallbackPtr;
-
+			callbackStorage.keysRead = keysReadCallbackPtr;
 		if (saveDataUpdatedCallbackPtr)
-			callbacks.savedataUpdated = saveDataUpdatedCallbackPtr;
-
-		// NOTE: I do not believe these behaviors are currently accessible to be called from the wasm interface
-		// if (shutdownCallbackPtr)
-		// 	callbacks.shutdown = shutdownCallbackPtr;
-
-		// if (sleepCallbackPtr)
-		// 	callbacks.sleep = sleepCallbackPtr;
-
+			callbackStorage.savedataUpdated = saveDataUpdatedCallbackPtr;
 		if (videoFrameEndedCallbackPtr)
-			callbacks.videoFrameEnded = videoFrameEndedCallbackPtr;
-
+			callbackStorage.videoFrameEnded = videoFrameEndedCallbackPtr;
 		if (videoFrameStartedCallbackPtr)
-			callbacks.videoFrameStarted = videoFrameStartedCallbackPtr;
+			callbackStorage.videoFrameStarted = videoFrameStartedCallbackPtr;
+
+		// assign wrapped functions
+		if (alarmCallbackPtr)
+			callbacks.alarm = wrapped_alarm;
+		if (coreCrashedCallbackPtr)
+			callbacks.coreCrashed = wrapped_coreCrashed;
+		if (keysReadCallbackPtr)
+			callbacks.keysRead = wrapped_keysRead;
+		if (saveDataUpdatedCallbackPtr)
+			callbacks.savedataUpdated = wrapped_savedataUpdated;
+		if (videoFrameEndedCallbackPtr)
+			callbacks.videoFrameEnded = wrapped_videoFrameEnded;
+		if (videoFrameStartedCallbackPtr)
+			callbacks.videoFrameStarted = wrapped_videoFrameStarted;
 
 		renderer->core->addCoreCallbacks(renderer->core, &callbacks);
 	}

@@ -75,6 +75,7 @@ void runLoop() {
 				EM_ASM({ console.error("thread instantiation failed") });
 
 			mSDLInitAudio(&renderer->audio, renderer->thread);
+			mSDLResumeAudio(&renderer->audio);
 
 			renderer->thread->impl->sync.fpsTarget = (double) 60 * renderer->fastForwardMultiplier;
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", renderer->fastForwardMultiplier - 1);
@@ -155,11 +156,6 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 
 	int volume = (int) (vol * 0x100);
 	if (renderer->core) {
-		if (volume == 0)
-			mSDLPauseAudio(&renderer->audio);
-		else {
-			mSDLResumeAudio(&renderer->audio);
-		}
 		mCoreConfigSetDefaultIntValue(&renderer->core->config, "volume", volume);
 		renderer->core->reloadConfigOption(renderer->core, "volume", &renderer->core->config);
 	}
@@ -242,13 +238,7 @@ EMSCRIPTEN_KEEPALIVE void pauseGame() {
 }
 
 EMSCRIPTEN_KEEPALIVE void resumeGame() {
-	int vol = -1;
-
-	mCoreConfigGetIntValue(&renderer->core->config, "volume", &vol);
-
-	if (vol > 0) {
-		mSDLResumeAudio(&renderer->audio);
-	}
+	mSDLResumeAudio(&renderer->audio);
 	emscripten_resume_main_loop();
 }
 
@@ -381,7 +371,6 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	    w, h);
 
 	renderer->audio.core = renderer->core;
-	mSDLResumeAudio(&renderer->audio);
 	emscripten_resume_main_loop();
 	return true;
 }

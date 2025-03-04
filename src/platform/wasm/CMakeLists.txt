@@ -1,7 +1,7 @@
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
 	-O3 \
 	-s USE_SDL=2 \
-	-s TOTAL_MEMORY=128mb \
+	-s TOTAL_MEMORY=256mb \
 	-s EXPORTED_RUNTIME_METHODS=[\"FS\",\"cwrap\",\"addFunction\",\"removeFunction\"] \
 	-s RESERVED_FUNCTION_POINTERS=16 \
 	-s ENVIRONMENT='web,worker' \
@@ -10,6 +10,8 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
 	-s MODULARIZE=1 \
 	-s EXPORT_NAME=${CMAKE_PROJECT_NAME} \
 	-s ELIMINATE_DUPLICATE_FUNCTIONS=1 \
+	-s MIN_WEBGL_VERSION=2 \
+	-s MAX_WEBGL_VERSION=2 \
 	-gsource-map \
 	--flto \
 	-pthread \

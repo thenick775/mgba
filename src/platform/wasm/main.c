@@ -84,8 +84,13 @@ void runLoop() {
 
 		if (mCoreThreadIsActive(renderer->thread)) {
 			if (mCoreSyncWaitFrameStart(&renderer->thread->impl->sync)) {
+				unsigned w, h;
+				renderer->core->currentVideoSize(renderer->core, &w, &h);
+
+				SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
+
 				SDL_UnlockTexture(renderer->sdlTex);
-				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, 0, 0);
+				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
 				SDL_RenderPresent(renderer->sdlRenderer);
 				int stride;
 				SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);

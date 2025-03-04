@@ -69,6 +69,8 @@ void runLoop() {
 	if (renderer->core) {
 		if (!renderer->thread) {
 			renderer->thread = malloc(sizeof(struct mCoreThread));
+			memset(renderer->thread, 0, sizeof(struct mCoreThread));
+
 			renderer->thread->core = renderer->core;
 			bool didFail = !mCoreThreadStart(renderer->thread);
 			if (didFail)
@@ -222,6 +224,7 @@ EMSCRIPTEN_KEEPALIVE void quitGame() {
 		mInputMapDeinit(&renderer->core->inputMap);
 		renderer->core->deinit(renderer->core);
 		renderer->core = NULL;
+		renderer->audio.core = NULL;
 	}
 }
 
@@ -375,7 +378,6 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	    },
 	    w, h);
 
-	renderer->audio.core = renderer->core;
 	emscripten_resume_main_loop();
 	return true;
 }
@@ -510,6 +512,8 @@ int excludeKeys(void* userdata, SDL_Event* event) {
 
 int main() {
 	renderer = malloc(sizeof(struct mEmscriptenRenderer));
+	memset(renderer, 0, sizeof(struct mEmscriptenRenderer));
+
 	renderer->audio.sampleRate = 48000;
 	renderer->audio.samples = 1024;
 	renderer->audio.fpsTarget = 60.0;
@@ -528,9 +532,6 @@ int main() {
 
 	emscripten_set_main_loop(runLoop, 0, 1);
 
-	mCoreThreadJoin(renderer->thread);
-
 	free(renderer);
-
 	return 0;
 }

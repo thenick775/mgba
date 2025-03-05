@@ -121,7 +121,6 @@ Cross-Origin-Embedder-Policy require-corp
 
 ## TODO
 
-- Rewind support (WASM)
 - Debugger
 
 ## Original Readme Below

@@ -5,6 +5,8 @@
 #include "platform/sdl/sdl-audio.h"
 #include "platform/sdl/sdl-events.h"
 
+#include <mgba/core/thread.h>
+
 // represents global items used in rendering mGBA in the wasm platform
 struct mEmscriptenRenderer {
 	struct mCore* core;
@@ -15,9 +17,7 @@ struct mEmscriptenRenderer {
 	SDL_Renderer* sdlRenderer;
 
 	struct mSDLAudio audio;
+	struct mCoreThread* thread;
 
-	// fps related variables
-	double lastNow;
-	int fastForwardSpeed;
-	bool renderFirstFrame;
+	int fastForwardMultiplier;
 };

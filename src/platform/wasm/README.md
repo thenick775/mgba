@@ -36,6 +36,12 @@ export const useEmulator = (canvas: HTMLCanvasElement | null) => {
 
 ```
 
+This core uses threads, you must serve these files in a way that supports cross origin isolation:
+```
+Cross-Origin-Opener-Policy same-origin
+Cross-Origin-Embedder-Policy require-corp
+```
+
 See the feature/wasm [README](https://github.com/thenick775/mgba/tree/feature/wasm#readme) for further details such as:
 
 - available emulator interface methods

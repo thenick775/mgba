@@ -16,6 +16,10 @@
 
 #include <signal.h>
 
+#ifdef __EMSCRIPTEN__
+#include <sched.h> 
+#endif
+
 #ifndef DISABLE_THREADING
 
 static const float _defaultFPSTarget = 60.f;
@@ -127,6 +131,13 @@ static void _waitUntilNotState(struct mCoreThreadInternal* threadContext, enum m
 	_waitPrologue(threadContext, &videoFrameWait, &audioWait);
 	while (threadContext->state == state) {
 		_wait(threadContext);
+#ifdef __EMSCRIPTEN__
+		// Yield execution such that audio can be generated
+		// I believe this was causing deadlock on gbc games
+		// where audio was produced slower than gba.
+		// this caused issues for keyboard buttons and interrupts
+		sched_yield();
+#endif
 	}
 	_waitEpilogue(threadContext, videoFrameWait, audioWait);
 }

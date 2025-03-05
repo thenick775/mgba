@@ -194,7 +194,9 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 }
 
 EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
-	renderer->fastForwardMultiplier = multiplier; // can probably refactor this, can set it to 0...
+	if (multiplier > 0)
+		renderer->fastForwardMultiplier = multiplier;
+
 	if (renderer->core && renderer->thread && multiplier > 0) {
 		renderer->thread->impl->sync.fpsTarget = (double) 60 * multiplier;
 
@@ -205,7 +207,7 @@ EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
 }
 
 EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
-	return renderer->fastForwardMultiplier; // hmmmm which is right to return here
+	return renderer->fastForwardMultiplier;
 }
 
 EMSCRIPTEN_KEEPALIVE void quitGame() {

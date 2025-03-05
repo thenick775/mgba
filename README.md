@@ -94,11 +94,12 @@ Module.screenshot(fileName)
 Module.setFastForwardMultiplier(multiplier)
 Module.setMainLoopTiming(mode, value)
 Module.setVolume(percent)
-Module.toggleInput()
+Module.toggleInput(enabled)
 Module.uploadCheats(file, callback)
 Module.uploadPatch(file, callback)
 Module.uploadRom(file, callback)
 Module.uploadSaveOrSaveState(file, callback)
+Module.toggleRewind(toggle)
 ```
 
 As well as all the other emscripten Module convienence functions such as `Module.FS.writeFile(file, buf)` and many others.
@@ -109,6 +110,13 @@ The contract is defined in these 3 files:
 ./src/platform/wasm/main.c
 ./src/platform/wasm/pre.js
 ./src/platform/wasm/mgba.d.ts
+```
+
+This core uses threads, you must serve these files in a way that supports cross origin isolation:
+
+```
+Cross-Origin-Opener-Policy same-origin
+Cross-Origin-Embedder-Policy require-corp
 ```
 
 ## TODO

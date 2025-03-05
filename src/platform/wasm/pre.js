@@ -392,3 +392,9 @@ Module.addCoreCallbacks = (callbacks) => {
     coreCallbackStore.videoFrameStartedCallbackPtr
   );
 };
+
+Module.toggleRewind = (toggle) => {
+  const toggleRewind = cwrap('toggleRewind', null, ['boolean']);
+
+  toggleRewind(toggle);
+};

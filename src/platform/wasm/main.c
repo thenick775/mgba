@@ -8,6 +8,7 @@
 #include <mgba-util/vfs.h>
 #include <mgba/core/core.h>
 #include <mgba/core/serialize.h>
+#include <mgba/core/thread.h>
 #include <mgba/core/version.h>
 #include <mgba/gba/interface.h>
 #include <mgba/internal/gba/input.h>
@@ -18,13 +19,10 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_keyboard.h>
 #include <emscripten.h>
+#include <emscripten/threading.h>
 
 // global renderer
-static struct mEmscriptenRenderer renderer = {
-	.audio = { .sampleRate = 48000, .samples = 1024, .fpsTarget = 60.0 },
-	.renderFirstFrame = true,
-	.fastForwardSpeed = 1,
-};
+static struct mEmscriptenRenderer* renderer = NULL;
 
 // log utilities
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
@@ -33,19 +31,25 @@ static struct mLogger logCtx = { .log = _log };
 // keypress utilities
 static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
 	if (event->keysym.sym == SDLK_f) {
-		renderer.fastForwardSpeed = event->type == SDL_KEYDOWN ? 2 : 1;
+		renderer->thread->impl->sync.fpsTarget = event->type == SDL_KEYDOWN ? 120 : 60;
+		return;
+	}
+	if (event->keysym.sym == SDLK_r) {
+		mCoreThreadSetRewinding(renderer->thread, event->type == SDL_KEYDOWN);
 		return;
 	}
 	int key = -1;
 	if (!(event->keysym.mod & ~(KMOD_NUM | KMOD_CAPS))) {
-		key = mInputMapKey(&renderer.core->inputMap, SDL_BINDING_KEY, event->keysym.sym);
+		key = mInputMapKey(&renderer->core->inputMap, SDL_BINDING_KEY, event->keysym.sym);
 	}
 	if (key != -1) {
+		mCoreThreadInterrupt(renderer->thread);
 		if (event->type == SDL_KEYDOWN) {
-			renderer.core->addKeys(renderer.core, 1 << key);
+			renderer->core->addKeys(renderer->core, 1 << key);
 		} else {
-			renderer.core->clearKeys(renderer.core, 1 << key);
+			renderer->core->clearKeys(renderer->core, 1 << key);
 		}
+		mCoreThreadContinue(renderer->thread);
 	}
 }
 
@@ -56,56 +60,49 @@ void runLoop() {
 		switch (event.type) {
 		case SDL_KEYDOWN:
 		case SDL_KEYUP:
-			if (renderer.core) {
+			if (renderer->core && renderer->thread) {
 				handleKeypressCore(&event.key);
 			}
 			break;
 		};
 	}
-	if (renderer.core) {
-		double now = emscripten_get_now();
-		double elapsedNow = now - (renderer.lastNow > 0.0 ? renderer.lastNow : now);
-		double nowFrames = elapsedNow / (1000.0 / 60.0); // 60fps target
-		renderer.lastNow = now;
+	if (renderer->core) {
+		if (!renderer->thread) {
+			renderer->thread = malloc(sizeof(struct mCoreThread));
+			memset(renderer->thread, 0, sizeof(struct mCoreThread));
 
-		// custom rounding, we want to prefer rounding down slightly
-		Uint32 nowFramesInt = round(nowFrames - 0.3);
+			renderer->thread->core = renderer->core;
+			bool didFail = !mCoreThreadStart(renderer->thread);
+			if (didFail)
+				EM_ASM({ console.error("thread instantiation failed") });
 
-		if (nowFramesInt < 1) {
-			nowFramesInt = 1;
+			mSDLInitAudio(&renderer->audio, renderer->thread);
+			mSDLResumeAudio(&renderer->audio);
+
+			renderer->thread->impl->sync.fpsTarget = (double) 60 * renderer->fastForwardMultiplier;
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", renderer->fastForwardMultiplier - 1);
+			renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
 		}
 
-		if (renderer.fastForwardSpeed > 1)
-			nowFramesInt *= renderer.fastForwardSpeed;
+		if (mCoreThreadIsActive(renderer->thread)) {
+			if (mCoreSyncWaitFrameStart(&renderer->thread->impl->sync)) {
+				unsigned w, h;
+				renderer->core->currentVideoSize(renderer->core, &w, &h);
 
-		if (nowFramesInt > 20)
-			nowFramesInt = 20;
+				SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
 
-		if (renderer.renderFirstFrame) {
-			renderer.renderFirstFrame = false;
-			renderer.core->runFrame(renderer.core);
-		} else {
-			for (Uint32 i = 0; i < nowFramesInt; i++) {
-				renderer.core->runFrame(renderer.core);
+				SDL_UnlockTexture(renderer->sdlTex);
+				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
+				SDL_RenderPresent(renderer->sdlRenderer);
+				int stride;
+				SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
+				renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
 			}
+			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);
 		}
-
-		unsigned w, h;
-		renderer.core->currentVideoSize(renderer.core, &w, &h);
-
-		SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
-		SDL_UnlockTexture(renderer.sdlTex);
-		SDL_RenderCopy(renderer.sdlRenderer, renderer.sdlTex, &rect, &rect);
-		SDL_RenderPresent(renderer.sdlRenderer);
-
-		int stride;
-		SDL_LockTexture(renderer.sdlTex, 0, (void**) &renderer.outputBuffer, &stride);
-		renderer.core->setVideoBuffer(renderer.core, renderer.outputBuffer, stride / BYTES_PER_PIXEL);
-		return;
 	} else {
 		// dont run the main loop if there is no core,  we don't
 		// want to handle events unless the core is running for now
-		renderer.renderFirstFrame = true;
 		emscripten_pause_main_loop();
 	}
 }
@@ -119,36 +116,45 @@ EMSCRIPTEN_KEEPALIVE bool screenshot(char* fileName) {
 	int mode = O_CREAT | O_TRUNC | O_WRONLY;
 	struct VFile* vf;
 
-	if (!renderer.core)
+	if (!renderer->core)
 		return false;
 
-	struct VDir* dir = renderer.core->dirs.screenshot;
+	struct VDir* dir = renderer->core->dirs.screenshot;
 
 	if (strlen(fileName)) {
 		vf = dir->openFile(dir, fileName, mode);
 	} else {
-		vf = VDirFindNextAvailable(dir, renderer.core->dirs.baseName, "-", ".png", mode);
+		vf = VDirFindNextAvailable(dir, renderer->core->dirs.baseName, "-", ".png", mode);
 	}
 
 	if (!vf)
 		return false;
 
-	success = mCoreTakeScreenshotVF(renderer.core, vf);
+	success = mCoreTakeScreenshotVF(renderer->core, vf);
 	vf->close(vf);
 
 	return success;
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonPress(int id) {
-	if (renderer.core) {
-		renderer.core->addKeys(renderer.core, 1 << id);
+	if (renderer->core && renderer->thread) {
+		mCoreThreadInterrupt(renderer->thread);
+		renderer->core->addKeys(renderer->core, 1 << id);
+		mCoreThreadContinue(renderer->thread);
 	}
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonUnpress(int id) {
-	if (renderer.core) {
-		renderer.core->clearKeys(renderer.core, 1 << id);
+	if (renderer->core && renderer->thread) {
+		mCoreThreadInterrupt(renderer->thread);
+		renderer->core->clearKeys(renderer->core, 1 << id);
+		mCoreThreadContinue(renderer->thread);
 	}
+}
+
+EMSCRIPTEN_KEEPALIVE void toggleRewind(bool toggle) {
+	if (renderer->thread)
+		mCoreThreadSetRewinding(renderer->thread, toggle);
 }
 
 EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
@@ -156,19 +162,17 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 		return; // this is a percentage so more than 200% is insane.
 
 	int volume = (int) (vol * 0x100);
-	if (renderer.core) {
-		if (volume == 0)
-			mSDLPauseAudio(&renderer.audio);
-		else {
-			mSDLResumeAudio(&renderer.audio);
-		}
-		mCoreConfigSetDefaultIntValue(&renderer.core->config, "volume", volume);
-		renderer.core->reloadConfigOption(renderer.core, "volume", &renderer.core->config);
+	if (renderer->core) {
+		mCoreConfigSetDefaultIntValue(&renderer->core->config, "volume", volume);
+		renderer->core->reloadConfigOption(renderer->core, "volume", &renderer->core->config);
 	}
 }
 
 EMSCRIPTEN_KEEPALIVE float getVolume() {
-	return (float) renderer.core->opts.volume / 0x100;
+	if (renderer->core)
+		return (float) renderer->core->opts.volume / 0x100;
+	else
+		return 0.0;
 }
 
 EMSCRIPTEN_KEEPALIVE int getMainLoopTimingMode() {
@@ -190,30 +194,39 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 }
 
 EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
-	if (renderer.core && multiplier > 0) {
-		renderer.fastForwardSpeed = multiplier;
-		renderer.audio.fpsTarget = (double) 60 * multiplier;
+	if (multiplier > 0)
+		renderer->fastForwardMultiplier = multiplier;
+
+	if (renderer->core && renderer->thread && multiplier > 0) {
+		renderer->thread->impl->sync.fpsTarget = (double) 60 * multiplier;
 
 		// fast forward starts at 1, frameskip starts at 0
-		mCoreConfigSetDefaultIntValue(&renderer.core->config, "frameskip", multiplier - 1);
-		renderer.core->reloadConfigOption(renderer.core, "frameskip", &renderer.core->config);
+		mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", multiplier - 1);
+		renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
 	}
 }
 
 EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
-	return renderer.fastForwardSpeed;
+	return renderer->fastForwardMultiplier;
 }
 
 EMSCRIPTEN_KEEPALIVE void quitGame() {
-	if (renderer.core) {
-		renderer.renderFirstFrame = true;
-		mSDLPauseAudio(&renderer.audio);
+	if (renderer->core && renderer->thread) {
 		emscripten_pause_main_loop();
-		renderer.core->unloadROM(renderer.core);
-		mCoreConfigDeinit(&renderer.core->config);
-		mInputMapDeinit(&renderer.core->inputMap);
-		renderer.core->deinit(renderer.core);
-		renderer.core = NULL;
+		mSDLPauseAudio(&renderer->audio);
+		mSDLDeinitAudio(&renderer->audio);
+
+		mCoreThreadEnd(renderer->thread);
+		mCoreThreadJoin(renderer->thread);
+		free(renderer->thread);
+		renderer->thread = NULL;
+
+		renderer->core->unloadROM(renderer->core);
+		mCoreConfigDeinit(&renderer->core->config);
+		mInputMapDeinit(&renderer->core->inputMap);
+		renderer->core->deinit(renderer->core);
+		renderer->core = NULL;
+		renderer->audio.core = NULL;
 	}
 }
 
@@ -222,24 +235,20 @@ EMSCRIPTEN_KEEPALIVE void quitMgba() {
 }
 
 EMSCRIPTEN_KEEPALIVE void quickReload() {
-	renderer.renderFirstFrame = true;
-	renderer.core->reset(renderer.core);
+	if (renderer->core && renderer->thread) {
+		mCoreThreadInterrupt(renderer->thread);
+		renderer->core->reset(renderer->core);
+		mCoreThreadContinue(renderer->thread);
+	}
 }
 
 EMSCRIPTEN_KEEPALIVE void pauseGame() {
-	renderer.renderFirstFrame = true;
-	mSDLPauseAudio(&renderer.audio);
+	mSDLPauseAudio(&renderer->audio);
 	emscripten_pause_main_loop();
 }
 
 EMSCRIPTEN_KEEPALIVE void resumeGame() {
-	int vol = -1;
-
-	mCoreConfigGetIntValue(&renderer.core->config, "volume", &vol);
-
-	if (vol > 0) {
-		mSDLResumeAudio(&renderer.audio);
-	}
+	mSDLResumeAudio(&renderer->audio);
 	emscripten_resume_main_loop();
 }
 
@@ -258,19 +267,29 @@ EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
 // this should work for a good variety of keys, but not all are supported yet
 EMSCRIPTEN_KEEPALIVE void bindKey(char* bindingName, int inputCode) {
 	int bindingSDLKeyCode = SDL_GetKeyFromName(bindingName);
-	mInputBindKey(&renderer.core->inputMap, SDL_BINDING_KEY, bindingSDLKeyCode, inputCode);
+
+	if (renderer->core)
+		mInputBindKey(&renderer->core->inputMap, SDL_BINDING_KEY, bindingSDLKeyCode, inputCode);
 }
 
 EMSCRIPTEN_KEEPALIVE bool saveState(int slot) {
-	if (renderer.core) {
-		return mCoreSaveState(renderer.core, slot, SAVESTATE_ALL);
+	bool result = false;
+	if (renderer->core && renderer->thread) {
+		mCoreThreadInterrupt(renderer->thread);
+		result = mCoreSaveState(renderer->core, slot, SAVESTATE_ALL);
+		mCoreThreadContinue(renderer->thread);
+		return result;
 	}
 	return false;
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
-	if (renderer.core) {
-		return mCoreLoadState(renderer.core, slot, SAVESTATE_ALL);
+	bool result = false;
+	if (renderer->core && renderer->thread) {
+		mCoreThreadInterrupt(renderer->thread);
+		result = mCoreLoadState(renderer->core, slot, SAVESTATE_ALL);
+		mCoreThreadContinue(renderer->thread);
+		return result;
 	}
 	return false;
 }
@@ -283,57 +302,77 @@ EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
 //  - libretro format
 //  - EZFCht format
 EMSCRIPTEN_KEEPALIVE bool autoLoadCheats() {
-	return mCoreAutoloadCheats(renderer.core);
+	if (renderer->core && renderer->thread) {
+		bool result = false;
+		mCoreThreadInterrupt(renderer->thread);
+		result = mCoreAutoloadCheats(renderer->core);
+		mCoreThreadContinue(renderer->thread);
+		return result;
+	}
+	return false;
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
-	if (renderer.core) {
-		renderer.core->unloadROM(renderer.core);
-		mCoreConfigDeinit(&renderer.core->config);
-		mInputMapDeinit(&renderer.core->inputMap);
-		renderer.core->deinit(renderer.core);
-		renderer.core = NULL;
+	if (renderer->core) {
+		renderer->core->unloadROM(renderer->core);
+		mCoreConfigDeinit(&renderer->core->config);
+		mInputMapDeinit(&renderer->core->inputMap);
+		renderer->core->deinit(renderer->core);
+		renderer->core = NULL;
 	}
-	renderer.core = mCoreFind(name);
-	if (!renderer.core) {
+	renderer->core = mCoreFind(name);
+	if (!renderer->core) {
 		return false;
 	}
-	renderer.core->init(renderer.core);
-	renderer.core->opts.savegamePath = strdup("/data/saves");
-	renderer.core->opts.savestatePath = strdup("/data/states");
-	renderer.core->opts.cheatsPath = strdup("/data/cheats");
-	renderer.core->opts.screenshotPath = strdup("/data/screenshots");
-	renderer.core->opts.patchPath = strdup("/data/patches");
-	renderer.core->opts.audioBuffers = renderer.audio.samples;
+	renderer->core->init(renderer->core);
+	renderer->core->opts.savegamePath = strdup("/data/saves");
+	renderer->core->opts.savestatePath = strdup("/data/states");
+	renderer->core->opts.cheatsPath = strdup("/data/cheats");
+	renderer->core->opts.screenshotPath = strdup("/data/screenshots");
+	renderer->core->opts.patchPath = strdup("/data/patches");
+	renderer->core->opts.audioBuffers = renderer->audio.samples;
 
-	mCoreLoadFile(renderer.core, name);
-	mCoreConfigInit(&renderer.core->config, "wasm");
-	mCoreConfigSetDefaultValue(&renderer.core->config, "idleOptimization", "detect");
-	mCoreConfigSetDefaultIntValue(&renderer.core->config, "volume", 0x100);
-	mInputMapInit(&renderer.core->inputMap, &GBAInputInfo);
-	mDirectorySetMapOptions(&renderer.core->dirs, &renderer.core->opts);
-	mCoreAutoloadSave(renderer.core);
-	mCoreAutoloadCheats(renderer.core);
-	mCoreAutoloadPatch(renderer.core);
-	mSDLInitBindingsGBA(&renderer.core->inputMap);
+	mCoreConfigInit(&renderer->core->config, "wasm");
+	struct mCoreOptions defaultConfigOpts = {
+		.useBios = true,
+		.rewindEnable = true,
+		.rewindBufferCapacity = 600,
+		.rewindBufferInterval = 1,
+		.videoSync = false,
+		.audioSync = true,
+		.volume = 0x100,
+		.logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL,
+	};
+
+	mCoreConfigLoadDefaults(&renderer->core->config, &defaultConfigOpts);
+	mCoreLoadConfig(renderer->core);
+
+	mCoreLoadFile(renderer->core, name);
+	mCoreConfigSetDefaultValue(&renderer->core->config, "idleOptimization", "detect");
+	mInputMapInit(&renderer->core->inputMap, &GBAInputInfo);
+	mDirectorySetMapOptions(&renderer->core->dirs, &renderer->core->opts);
+	mCoreAutoloadSave(renderer->core);
+	mCoreAutoloadCheats(renderer->core);
+	mCoreAutoloadPatch(renderer->core);
+	mSDLInitBindingsGBA(&renderer->core->inputMap);
 
 	unsigned w, h;
-	renderer.core->baseVideoSize(renderer.core, &w, &h);
-	if (renderer.sdlTex) {
-		SDL_DestroyTexture(renderer.sdlTex);
+	renderer->core->baseVideoSize(renderer->core, &w, &h);
+	if (renderer->sdlTex) {
+		SDL_DestroyTexture(renderer->sdlTex);
 	}
-	renderer.sdlTex =
-	    SDL_CreateTexture(renderer.sdlRenderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+	renderer->sdlTex =
+	    SDL_CreateTexture(renderer->sdlRenderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h);
 
 	int stride;
-	SDL_LockTexture(renderer.sdlTex, 0, (void**) &renderer.outputBuffer, &stride);
-	renderer.core->setVideoBuffer(renderer.core, renderer.outputBuffer, stride / BYTES_PER_PIXEL);
-	renderer.core->setAudioBufferSize(renderer.core, renderer.audio.samples);
+	SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
+	renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
+	renderer->core->setAudioBufferSize(renderer->core, renderer->audio.samples);
 
-	renderer.core->reset(renderer.core);
+	renderer->core->reset(renderer->core);
 
-	renderer.core->currentVideoSize(renderer.core, &w, &h);
-	SDL_SetWindowSize(renderer.window, w, h);
+	renderer->core->currentVideoSize(renderer->core, &w, &h);
+	SDL_SetWindowSize(renderer->window, w, h);
 	EM_ASM(
 	    {
 		    Module.canvas.width = $0;
@@ -341,65 +380,96 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 	    },
 	    w, h);
 
-	renderer.audio.core = renderer.core;
-	mSDLResumeAudio(&renderer.audio);
 	emscripten_resume_main_loop();
 	return true;
 }
 
 EMSCRIPTEN_KEEPALIVE bool saveStateSlot(int slot, int flags) {
-	if (!renderer.core) {
+	if (!renderer->core) {
 		return false;
 	}
-	return mCoreSaveState(renderer.core, slot, flags);
+	return mCoreSaveState(renderer->core, slot, flags);
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadStateSlot(int slot, int flags) {
-	if (!renderer.core) {
+	if (!renderer->core) {
 		return false;
 	}
-	return mCoreLoadState(renderer.core, slot, flags);
+	return mCoreLoadState(renderer->core, slot, flags);
 }
 
-// addCoreCallbacks clears core callbacks, and registers new callbacks with the core
-// Note: function pointers from javascript are expected to be kept alive until no longer needed,
-//       it is the responsibility of the javascript code to ensure the function references are kept alive
-EMSCRIPTEN_KEEPALIVE void
-addCoreCallbacks(void (*alarmCallbackPtr)(void* context), void (*coreCrashedCallbackPtr)(void* context),
-                 void (*keysReadCallbackPtr)(void* context), void (*saveDataUpdatedCallbackPtr)(void* context),
-                 // void (*shutdownCallbackPtr)(void* context), void (*sleepCallbackPtr)(void* context),
-                 void (*videoFrameEndedCallbackPtr)(void* context),
-                 void (*videoFrameStartedCallbackPtr)(void* context)) {
-	if (renderer.core) {
+typedef struct {
+	void (*alarm)(void*);
+	void (*coreCrashed)(void*);
+	void (*keysRead)(void*);
+	void (*savedataUpdated)(void*);
+	void (*videoFrameEnded)(void*);
+	void (*videoFrameStarted)(void*);
+} CallbackStorage;
+
+static CallbackStorage callbackStorage;
+
+// Macro to create wrapper functions
+#define DEFINE_WRAPPER(field)                            \
+	static void wrapped_##field(void* context) {         \
+		MAIN_THREAD_EM_ASM(                              \
+		    {                                            \
+			    const funcPtr = $0;                      \
+			    const ctx = $1;                          \
+			    const func = wasmTable.get(funcPtr);     \
+			    if (func)                                \
+				    func(ctx);                           \
+		    },                                           \
+		    (int) callbackStorage.field, (int) context); \
+	}
+
+// Generate wrapper functions
+DEFINE_WRAPPER(alarm)
+DEFINE_WRAPPER(coreCrashed)
+DEFINE_WRAPPER(keysRead)
+DEFINE_WRAPPER(savedataUpdated)
+DEFINE_WRAPPER(videoFrameEnded)
+DEFINE_WRAPPER(videoFrameStarted)
+
+// Function to ensure all callbacks execute on the main thread
+EMSCRIPTEN_KEEPALIVE void addCoreCallbacks(void (*alarmCallbackPtr)(void*), void (*coreCrashedCallbackPtr)(void*),
+                                           void (*keysReadCallbackPtr)(void*),
+                                           void (*saveDataUpdatedCallbackPtr)(void*),
+                                           void (*videoFrameEndedCallbackPtr)(void*),
+                                           void (*videoFrameStartedCallbackPtr)(void*)) {
+	if (renderer->core) {
 		struct mCoreCallbacks callbacks = {};
-		renderer.core->clearCoreCallbacks(renderer.core);
+		renderer->core->clearCoreCallbacks(renderer->core);
 
+		// store original function pointers
 		if (alarmCallbackPtr)
-			callbacks.alarm = alarmCallbackPtr;
-
+			callbackStorage.alarm = alarmCallbackPtr;
 		if (coreCrashedCallbackPtr)
-			callbacks.coreCrashed = coreCrashedCallbackPtr;
-
+			callbackStorage.coreCrashed = coreCrashedCallbackPtr;
 		if (keysReadCallbackPtr)
-			callbacks.keysRead = keysReadCallbackPtr;
-
+			callbackStorage.keysRead = keysReadCallbackPtr;
 		if (saveDataUpdatedCallbackPtr)
-			callbacks.savedataUpdated = saveDataUpdatedCallbackPtr;
-
-		// NOTE: I do not believe these behaviors are currently accessible to be called from the wasm interface
-		// if (shutdownCallbackPtr)
-		// 	callbacks.shutdown = shutdownCallbackPtr;
-
-		// if (sleepCallbackPtr)
-		// 	callbacks.sleep = sleepCallbackPtr;
-
+			callbackStorage.savedataUpdated = saveDataUpdatedCallbackPtr;
 		if (videoFrameEndedCallbackPtr)
-			callbacks.videoFrameEnded = videoFrameEndedCallbackPtr;
-
+			callbackStorage.videoFrameEnded = videoFrameEndedCallbackPtr;
 		if (videoFrameStartedCallbackPtr)
-			callbacks.videoFrameStarted = videoFrameStartedCallbackPtr;
+			callbackStorage.videoFrameStarted = videoFrameStartedCallbackPtr;
 
-		renderer.core->addCoreCallbacks(renderer.core, &callbacks);
+		// assign wrapped functions
+		if (alarmCallbackPtr)
+			callbacks.alarm = wrapped_alarm;
+		if (coreCrashedCallbackPtr)
+			callbacks.coreCrashed = wrapped_coreCrashed;
+		if (keysReadCallbackPtr)
+			callbacks.keysRead = wrapped_keysRead;
+		if (saveDataUpdatedCallbackPtr)
+			callbacks.savedataUpdated = wrapped_savedataUpdated;
+		if (videoFrameEndedCallbackPtr)
+			callbacks.videoFrameEnded = wrapped_videoFrameEnded;
+		if (videoFrameStartedCallbackPtr)
+			callbacks.videoFrameStarted = wrapped_videoFrameStarted;
+
+		renderer->core->addCoreCallbacks(renderer->core, &callbacks);
 	}
 }
 
@@ -443,18 +513,27 @@ int excludeKeys(void* userdata, SDL_Event* event) {
 }
 
 int main() {
+	renderer = malloc(sizeof(struct mEmscriptenRenderer));
+	memset(renderer, 0, sizeof(struct mEmscriptenRenderer));
+
+	renderer->audio.sampleRate = 48000;
+	renderer->audio.samples = 1024;
+	renderer->audio.fpsTarget = 60.0;
+	renderer->fastForwardMultiplier = 1;
+
 	mLogSetDefaultLogger(&logCtx);
 
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_EVENTS);
-	renderer.window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-	                                   GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
-	renderer.sdlRenderer =
-	    SDL_CreateRenderer(renderer.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-	mSDLInitAudio(&renderer.audio, NULL);
+	renderer->window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+	                                    GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
+	renderer->sdlRenderer =
+	    SDL_CreateRenderer(renderer->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
 	// exclude specific key events
 	SDL_SetEventFilter(excludeKeys, NULL);
 
-	emscripten_set_main_loop(runLoop, 0, 0);
+	emscripten_set_main_loop(runLoop, 0, 1);
+
+	free(renderer);
 	return 0;
 }

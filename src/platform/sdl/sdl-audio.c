@@ -42,7 +42,8 @@ bool mSDLInitAudio(struct mSDLAudio* context, struct mCoreThread* threadContext)
 	context->desiredSpec.samples = context->samples;
 	context->desiredSpec.format = AUDIO_S16SYS;
 #if SDL_VERSION_ATLEAST(2, 0, 0)
-	context->deviceId = SDL_OpenAudioDevice(0, 0, &context->desiredSpec, &context->obtainedSpec, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
+	context->deviceId =
+	    SDL_OpenAudioDevice(0, 0, &context->desiredSpec, &context->obtainedSpec, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
 	if (context->deviceId == 0) {
 #else
 	if (SDL_OpenAudio(&context->desiredSpec, &context->obtainedSpec) < 0) {
@@ -136,16 +137,11 @@ static void _mSDLAudioCallback(void* context, Uint8* data, int len) {
 			fauxClock = mCoreCalculateFramerateRatio(audioContext->core, audioContext->sync->fpsTarget);
 		}
 		mCoreSyncLockAudio(audioContext->sync);
-		audioContext->sync->audioHighWater = audioContext->samples + audioContext->resampler.highWaterMark + audioContext->resampler.lowWaterMark + (audioContext->samples >> 6);
+		audioContext->sync->audioHighWater =
+		    audioContext->samples + audioContext->resampler.highWaterMark + audioContext->resampler.lowWaterMark + (audioContext->samples >> 6);
 		audioContext->sync->audioHighWater *= sampleRate / (fauxClock * audioContext->obtainedSpec.freq);
 	}
-#ifdef __EMSCRIPTEN__
-	double fpsTarget = 60.0;
-	if (audioContext->fpsTarget > 0.0)
-		fpsTarget = audioContext->fpsTarget;
 
-	fauxClock = mCoreCalculateFramerateRatio(audioContext->core, fpsTarget);
-#endif
 	mAudioResamplerSetSource(&audioContext->resampler, buffer, sampleRate / fauxClock, true);
 	mAudioResamplerProcess(&audioContext->resampler);
 	if (audioContext->sync) {
@@ -170,7 +166,8 @@ static void _mSDLAudioCallback(void* context, Uint8* data, int len) {
 	int available = mAudioBufferRead(&audioContext->buffer, (int16_t*) data, len);
 
 	if (available < len) {
-		memset(((short*) data) + audioContext->obtainedSpec.channels * available, 0, (len - available) * audioContext->obtainedSpec.channels * sizeof(short));
+		memset(((short*) data) + audioContext->obtainedSpec.channels * available, 0,
+		       (len - available) * audioContext->obtainedSpec.channels * sizeof(short));
 	}
 #endif
 }

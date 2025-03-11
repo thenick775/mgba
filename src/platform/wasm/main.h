@@ -20,4 +20,5 @@ struct mEmscriptenRenderer {
 	struct mCoreThread* thread;
 
 	int fastForwardMultiplier;
+	int frameSkip;
 };

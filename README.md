@@ -80,7 +80,7 @@ Module.getSave()
 Module.getVolume()
 Module.listRoms()
 Module.listSaves()
-Module.loadGame(name)
+Module.loadGame(romPath, savePathOverride)
 Module.loadState(slot)
 Module.loadStateSlot(slot, flags)
 Module.pauseGame()
@@ -91,18 +91,19 @@ Module.resumeGame()
 Module.saveState(slot)
 Module.saveStateSlot(slot, flags)
 Module.screenshot(fileName)
+Module.setCoreSettings(coreSettings)
 Module.setFastForwardMultiplier(multiplier)
 Module.setMainLoopTiming(mode, value)
 Module.setVolume(percent)
 Module.toggleInput(enabled)
+Module.toggleRewind(toggle)
 Module.uploadCheats(file, callback)
 Module.uploadPatch(file, callback)
 Module.uploadRom(file, callback)
 Module.uploadSaveOrSaveState(file, callback)
-Module.toggleRewind(toggle)
 ```
 
-As well as all the other emscripten Module convienence functions such as `Module.FS.writeFile(file, buf)` and many others.
+As well as all the other emscripten Module convenience functions such as `Module.FS.writeFile(file, buf)` and many others.
 
 The contract is defined in these 3 files:
 

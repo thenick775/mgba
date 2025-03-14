@@ -80,8 +80,12 @@ void runLoop() {
 			mSDLResumeAudio(&renderer->audio);
 
 			renderer->thread->impl->sync.fpsTarget = (double) 60 * renderer->fastForwardMultiplier;
-			mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", renderer->fastForwardMultiplier - 1);
-			renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
+
+			if (renderer->frameSkip == 0) {
+				mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip",
+				                              renderer->fastForwardMultiplier - 1);
+				renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
+			}
 		}
 
 		if (mCoreThreadIsActive(renderer->thread)) {
@@ -200,9 +204,11 @@ EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
 	if (renderer->core && renderer->thread && multiplier > 0) {
 		renderer->thread->impl->sync.fpsTarget = (double) 60 * multiplier;
 
-		// fast forward starts at 1, frameskip starts at 0
-		mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", multiplier - 1);
-		renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
+		if (renderer->frameSkip == 0) {
+			// fast forward starts at 1, frameskip starts at 0
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", multiplier - 1);
+			renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
+		}
 	}
 }
 
@@ -312,7 +318,7 @@ EMSCRIPTEN_KEEPALIVE bool autoLoadCheats() {
 	return false;
 }
 
-EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
+EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverride) {
 	if (renderer->core) {
 		renderer->core->unloadROM(renderer->core);
 		mCoreConfigDeinit(&renderer->core->config);
@@ -349,9 +355,17 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name) {
 
 	mCoreLoadFile(renderer->core, name);
 	mCoreConfigSetDefaultValue(&renderer->core->config, "idleOptimization", "detect");
+	renderer->core->reloadConfigOption(renderer->core, "idleOptimization", &renderer->core->config);
+	mCoreConfigSetDefaultIntValue(&renderer->core->config, "allowOpposingDirections", true);
+	renderer->core->reloadConfigOption(renderer->core, "allowOpposingDirections", &renderer->core->config);
 	mInputMapInit(&renderer->core->inputMap, &GBAInputInfo);
 	mDirectorySetMapOptions(&renderer->core->dirs, &renderer->core->opts);
-	mCoreAutoloadSave(renderer->core);
+
+	if (savePathOverride)
+		mCoreLoadSaveFile(renderer->core, savePathOverride, false);
+	else
+		mCoreAutoloadSave(renderer->core);
+
 	mCoreAutoloadCheats(renderer->core);
 	mCoreAutoloadPatch(renderer->core);
 	mSDLInitBindingsGBA(&renderer->core->inputMap);
@@ -470,6 +484,30 @@ EMSCRIPTEN_KEEPALIVE void addCoreCallbacks(void (*alarmCallbackPtr)(void*), void
 			callbacks.videoFrameStarted = wrapped_videoFrameStarted;
 
 		renderer->core->addCoreCallbacks(renderer->core, &callbacks);
+	}
+}
+
+EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
+	if (!renderer->core)
+		return;
+
+	if (strcmp(settingName, "allowOpposingDirections") == 0 && (value == true || value == false)) {
+		mCoreConfigSetDefaultIntValue(&renderer->core->config, "allowOpposingDirections", value);
+		renderer->core->reloadConfigOption(renderer->core, "allowOpposingDirections", &renderer->core->config);
+	} else if (strcmp(settingName, "rewindBufferCapacity") == 0 && value > 0) {
+		mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindBufferCapacity", value);
+		renderer->core->reloadConfigOption(renderer->core, "rewindBufferCapacity", &renderer->core->config);
+
+		renderer->core->opts.rewindBufferCapacity = value;
+	} else if (strcmp(settingName, "rewindBufferInterval") == 0 && value > 0) {
+		mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindBufferInterval", value);
+		renderer->core->reloadConfigOption(renderer->core, "rewindBufferInterval", &renderer->core->config);
+
+		renderer->core->opts.rewindBufferInterval = value;
+	} else if (strcmp(settingName, "frameSkip") == 0 && value >= 0) {
+		renderer->frameSkip = value;
+		mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", renderer->frameSkip);
+		renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
 	}
 }
 

@@ -4,17 +4,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-Module.loadGame = (name) => {
-  const loadGame = cwrap('loadGame', 'number', ['string']);
+Module.loadGame = (romPath, savePathOverride) => {
+  const loadGame = cwrap('loadGame', 'number', ['string', 'string']);
 
-  if (loadGame(name)) {
-    const arr = name.split('.');
+  if (loadGame(romPath, savePathOverride)) {
+    const arr = romPath.split('.');
     arr.pop();
 
     const saveName = arr.join('.') + '.sav';
 
-    Module.gameName = name;
-    Module.saveName = saveName.replace('/data/games/', '/data/saves/');
+    Module.gameName = romPath;
+    Module.saveName =
+      savePathOverride ?? saveName.replace('/data/games/', '/data/saves/');
     return true;
   }
 
@@ -397,4 +398,32 @@ Module.toggleRewind = (toggle) => {
   const toggleRewind = cwrap('toggleRewind', null, ['boolean']);
 
   toggleRewind(toggle);
+};
+
+Module.setCoreSettings = (coreSettings) => {
+  const setIntegerCoreSetting = cwrap('setIntegerCoreSetting', null, [
+    'string',
+    'number',
+  ]);
+
+  if (coreSettings.allowOpposingDirections !== undefined)
+    setIntegerCoreSetting(
+      'allowOpposingDirections',
+      coreSettings.allowOpposingDirections
+    );
+
+  if (coreSettings.rewindBufferCapacity !== undefined)
+    setIntegerCoreSetting(
+      'rewindBufferCapacity',
+      coreSettings.rewindBufferCapacity
+    );
+
+  if (coreSettings.rewindBufferInterval !== undefined)
+    setIntegerCoreSetting(
+      'rewindBufferInterval',
+      coreSettings.rewindBufferInterval
+    );
+
+  if (coreSettings?.frameSkip !== undefined)
+    setIntegerCoreSetting('frameSkip', coreSettings.frameSkip);
 };

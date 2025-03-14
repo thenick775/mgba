@@ -13,11 +13,9 @@ This is my fork of endrift's mGBA. My goal here was to make a fully functional w
 To build this branch and obtain a WASM, js, and type definition files, run either of the following in the repo's root directory:
 
 ```
-# using local build from pinned emcc from emscripten/emsdk:3.1.70
-cd ./src/platform/wasm/docker && \
-docker build -t local-mgba/wasm:1.1 . && \
-cd ./../../../.. && \
-docker run --rm -t -v $PWD:/home/mgba/src <generated image ID>;
+# using local build from pinned emcc from emscripten/emsdk:4.0.4
+cd ./src/platform/docker;
+npm run build:image && npm run build;
 ```
 
 ```
@@ -33,7 +31,7 @@ Once this has completed, your compiled files can be found at:
 ./build-wasm/wasm/mgba.wasm
 ```
 
-Include these files in your client's resources, and then instanciate your emulator as follows in your html/javascript:
+Include these files in your client's resources, and then instantiate your emulator as follows in your html/javascript:
 
 ```
 <canvas
@@ -80,7 +78,7 @@ Module.getSave()
 Module.getVolume()
 Module.listRoms()
 Module.listSaves()
-Module.loadGame(name)
+Module.loadGame(romPath, savePathOverride)
 Module.loadState(slot)
 Module.loadStateSlot(slot, flags)
 Module.pauseGame()
@@ -91,18 +89,19 @@ Module.resumeGame()
 Module.saveState(slot)
 Module.saveStateSlot(slot, flags)
 Module.screenshot(fileName)
+Module.setCoreSettings(coreSettings)
 Module.setFastForwardMultiplier(multiplier)
 Module.setMainLoopTiming(mode, value)
 Module.setVolume(percent)
 Module.toggleInput(enabled)
+Module.toggleRewind(toggle)
 Module.uploadCheats(file, callback)
 Module.uploadPatch(file, callback)
 Module.uploadRom(file, callback)
 Module.uploadSaveOrSaveState(file, callback)
-Module.toggleRewind(toggle)
 ```
 
-As well as all the other emscripten Module convienence functions such as `Module.FS.writeFile(file, buf)` and many others.
+As well as all the other emscripten Module convenience functions such as `Module.FS.writeFile(file, buf)` and many others.
 
 The contract is defined in these 3 files:
 

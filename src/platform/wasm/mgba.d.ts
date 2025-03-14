@@ -24,6 +24,13 @@ declare namespace mGBA {
     videoFrameStartedCallback?: (() => void) | null;
   };
 
+  export type coreSettings = {
+    frameSkip?: number;
+    rewindBufferCapacity?: number;
+    rewindBufferInterval?: number;
+    allowOpposingDirections?: boolean;
+  };
+
   export interface mGBAEmulator extends EmscriptenModule {
     // custom methods from preamble
     autoLoadCheats(): boolean;
@@ -39,7 +46,7 @@ declare namespace mGBA {
     getVolume(): number;
     listRoms(): string[];
     listSaves(): string[];
-    loadGame(romPath: string): boolean;
+    loadGame(romPath: string, savePathOverride?: string): boolean;
     loadState(slot: number): boolean;
     pauseGame(): void;
     quickReload(): void;
@@ -58,6 +65,7 @@ declare namespace mGBA {
     uploadSaveOrSaveState(file: File, callback?: () => void): void;
     addCoreCallbacks(coreCallbacks: coreCallbacks): void;
     toggleRewind(enabled: boolean): void;
+    setCoreSettings(coreSettings: CoreSettings): void;
     // custom variables
     version: {
       projectName: string;

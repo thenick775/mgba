@@ -315,7 +315,11 @@ static THREAD_ENTRY _mCoreThreadRun(void* context) {
 		{
 			while (impl->state == mTHREAD_RUNNING) {
 				MutexUnlock(&impl->stateMutex);
+#ifdef __EMSCRIPTEN__
+				core->runFrame(core);
+#else
 				core->runLoop(core);
+#endif
 				MutexLock(&impl->stateMutex);
 			}
 		}

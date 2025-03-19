@@ -19,6 +19,13 @@ struct mEmscriptenRenderer {
 	struct mSDLAudio audio;
 	struct mCoreThread* thread;
 
+	// persistent options for the core at runtime, limited subset of mCoreOptions
 	int fastForwardMultiplier;
 	int frameSkip;
+	bool videoSync;
+	bool audioSync;
+	bool threadedVideo;
+	bool rewindEnable;
+	int rewindBufferCapacity;
+	int rewindBufferInterval;
 };

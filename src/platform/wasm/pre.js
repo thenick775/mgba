@@ -426,4 +426,22 @@ Module.setCoreSettings = (coreSettings) => {
 
   if (coreSettings?.frameSkip !== undefined)
     setIntegerCoreSetting('frameSkip', coreSettings.frameSkip);
+
+  if (coreSettings.audioSampleRate !== undefined)
+    setIntegerCoreSetting('audioSampleRate', coreSettings.audioSampleRate);
+
+  if (coreSettings.audioBufferSize !== undefined)
+    setIntegerCoreSetting('audioBufferSize', coreSettings.audioBufferSize);
+
+  if (coreSettings.videoSync !== undefined)
+    setIntegerCoreSetting('videoSync', coreSettings.videoSync);
+
+  if (coreSettings.audioSync !== undefined)
+    setIntegerCoreSetting('audioSync', coreSettings.audioSync);
+
+  if (coreSettings.threadedVideo !== undefined)
+    setIntegerCoreSetting('threadedVideo', coreSettings.threadedVideo);
+
+  if (coreSettings.rewindEnable !== undefined)
+    setIntegerCoreSetting('rewindEnable', coreSettings.rewindEnable);
 };

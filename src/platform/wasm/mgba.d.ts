@@ -28,7 +28,13 @@ declare namespace mGBA {
     frameSkip?: number;
     rewindBufferCapacity?: number;
     rewindBufferInterval?: number;
+    audioSampleRate?: number;
+    audioBufferSize?: number;
     allowOpposingDirections?: boolean;
+    videoSync?: boolean;
+    audioSync?: boolean;
+    threadedVideo?: boolean;
+    rewindEnable?: boolean;
   };
 
   export interface mGBAEmulator extends EmscriptenModule {

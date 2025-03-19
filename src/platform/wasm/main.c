@@ -28,10 +28,32 @@ static struct mEmscriptenRenderer* renderer = NULL;
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
 static struct mLogger logCtx = { .log = _log };
 
+// full handling of fast forward, interrupts and thread logic included
+void updateFastForward(int multiplier) {
+	if (renderer->thread && renderer->videoSync) {
+		mCoreThreadInterrupt(renderer->thread);
+		renderer->thread->impl->sync.videoFrameWait = (multiplier > 1) ? false : renderer->videoSync;
+		renderer->thread->impl->sync.audioWait = (multiplier > 1) ? true : renderer->audioSync;
+		mCoreThreadContinue(renderer->thread);
+	}
+
+	if (renderer->core && renderer->thread && multiplier > 0) {
+		renderer->thread->impl->sync.fpsTarget = (double) 60 * multiplier;
+		mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget", (double) 60 * multiplier);
+		renderer->core->reloadConfigOption(renderer->core, "fpsTarget", &renderer->core->config);
+
+		if (renderer->frameSkip == 0) {
+			// fast forward starts at 1, frameskip starts at 0
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", multiplier - 1);
+			renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
+		}
+	}
+}
+
 // keypress utilities
 static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
-	if (event->keysym.sym == SDLK_f) {
-		renderer->thread->impl->sync.fpsTarget = event->type == SDL_KEYDOWN ? 120 : 60;
+	if (event->keysym.sym == SDLK_f && renderer->fastForwardMultiplier == 1) {
+		updateFastForward(event->type == SDL_KEYDOWN ? 2 : 1);
 		return;
 	}
 	if (event->keysym.sym == SDLK_r) {
@@ -43,29 +65,18 @@ static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
 		key = mInputMapKey(&renderer->core->inputMap, SDL_BINDING_KEY, event->keysym.sym);
 	}
 	if (key != -1) {
-		mCoreThreadInterrupt(renderer->thread);
 		if (event->type == SDL_KEYDOWN) {
 			renderer->core->addKeys(renderer->core, 1 << key);
 		} else {
 			renderer->core->clearKeys(renderer->core, 1 << key);
 		}
-		mCoreThreadContinue(renderer->thread);
 	}
 }
 
 // emscripten main run loop
 void runLoop() {
 	union SDL_Event event;
-	while (SDL_PollEvent(&event)) {
-		switch (event.type) {
-		case SDL_KEYDOWN:
-		case SDL_KEYUP:
-			if (renderer->core && renderer->thread) {
-				handleKeypressCore(&event.key);
-			}
-			break;
-		};
-	}
+
 	if (renderer->core) {
 		if (!renderer->thread) {
 			renderer->thread = malloc(sizeof(struct mCoreThread));
@@ -78,17 +89,20 @@ void runLoop() {
 
 			mSDLInitAudio(&renderer->audio, renderer->thread);
 			mSDLResumeAudio(&renderer->audio);
-
-			renderer->thread->impl->sync.fpsTarget = (double) 60 * renderer->fastForwardMultiplier;
-
-			if (renderer->frameSkip == 0) {
-				mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip",
-				                              renderer->fastForwardMultiplier - 1);
-				renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
-			}
+			updateFastForward(renderer->fastForwardMultiplier);
 		}
 
 		if (mCoreThreadIsActive(renderer->thread)) {
+			while (SDL_PollEvent(&event)) {
+				switch (event.type) {
+				case SDL_KEYDOWN:
+				case SDL_KEYUP:
+					if (renderer->core && renderer->thread) {
+						handleKeypressCore(&event.key);
+					}
+					break;
+				};
+			}
 			if (mCoreSyncWaitFrameStart(&renderer->thread->impl->sync)) {
 				unsigned w, h;
 				renderer->core->currentVideoSize(renderer->core, &w, &h);
@@ -142,17 +156,13 @@ EMSCRIPTEN_KEEPALIVE bool screenshot(char* fileName) {
 
 EMSCRIPTEN_KEEPALIVE void buttonPress(int id) {
 	if (renderer->core && renderer->thread) {
-		mCoreThreadInterrupt(renderer->thread);
 		renderer->core->addKeys(renderer->core, 1 << id);
-		mCoreThreadContinue(renderer->thread);
 	}
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonUnpress(int id) {
 	if (renderer->core && renderer->thread) {
-		mCoreThreadInterrupt(renderer->thread);
 		renderer->core->clearKeys(renderer->core, 1 << id);
-		mCoreThreadContinue(renderer->thread);
 	}
 }
 
@@ -201,15 +211,7 @@ EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
 	if (multiplier > 0)
 		renderer->fastForwardMultiplier = multiplier;
 
-	if (renderer->core && renderer->thread && multiplier > 0) {
-		renderer->thread->impl->sync.fpsTarget = (double) 60 * multiplier;
-
-		if (renderer->frameSkip == 0) {
-			// fast forward starts at 1, frameskip starts at 0
-			mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", multiplier - 1);
-			renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
-		}
-	}
+	updateFastForward(multiplier);
 }
 
 EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
@@ -339,16 +341,15 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	renderer->core->opts.audioBuffers = renderer->audio.samples;
 
 	mCoreConfigInit(&renderer->core->config, "wasm");
-	struct mCoreOptions defaultConfigOpts = {
-		.useBios = true,
-		.rewindEnable = true,
-		.rewindBufferCapacity = 600,
-		.rewindBufferInterval = 1,
-		.videoSync = false,
-		.audioSync = true,
-		.volume = 0x100,
-		.logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL,
-	};
+	struct mCoreOptions defaultConfigOpts = { .useBios = true,
+		                                      .rewindEnable = renderer->rewindEnable,
+		                                      .rewindBufferCapacity = renderer->rewindBufferCapacity,
+		                                      .rewindBufferInterval = renderer->rewindBufferInterval,
+		                                      .videoSync = renderer->videoSync,
+		                                      .audioSync = renderer->audioSync,
+		                                      .volume = 0x100,
+		                                      .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL,
+		                                      .fpsTarget = 60.f };
 
 	mCoreConfigLoadDefaults(&renderer->core->config, &defaultConfigOpts);
 	mCoreLoadConfig(renderer->core);
@@ -358,6 +359,8 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	renderer->core->reloadConfigOption(renderer->core, "idleOptimization", &renderer->core->config);
 	mCoreConfigSetDefaultIntValue(&renderer->core->config, "allowOpposingDirections", true);
 	renderer->core->reloadConfigOption(renderer->core, "allowOpposingDirections", &renderer->core->config);
+	mCoreConfigSetDefaultIntValue(&renderer->core->config, "threadedVideo", renderer->threadedVideo);
+	renderer->core->reloadConfigOption(renderer->core, "threadedVideo", &renderer->core->config);
 	mInputMapInit(&renderer->core->inputMap, &GBAInputInfo);
 	mDirectorySetMapOptions(&renderer->core->dirs, &renderer->core->opts);
 
@@ -488,26 +491,56 @@ EMSCRIPTEN_KEEPALIVE void addCoreCallbacks(void (*alarmCallbackPtr)(void*), void
 }
 
 EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
-	if (!renderer->core)
-		return;
-
-	if (strcmp(settingName, "allowOpposingDirections") == 0 && (value == true || value == false)) {
-		mCoreConfigSetDefaultIntValue(&renderer->core->config, "allowOpposingDirections", value);
-		renderer->core->reloadConfigOption(renderer->core, "allowOpposingDirections", &renderer->core->config);
+	// set renderer settings
+	if (strcmp(settingName, "audioSampleRate") == 0 && value >= 0) {
+		renderer->audio.sampleRate = value;
+	} else if (strcmp(settingName, "audioBufferSize") == 0 && value >= 0) {
+		renderer->audio.samples = value;
+	} else if (strcmp(settingName, "videoSync") == 0 && (value == true || value == false)) {
+		renderer->videoSync = value;
+	} else if (strcmp(settingName, "audioSync") == 0 && (value == true || value == false)) {
+		renderer->audioSync = value;
+	} else if (strcmp(settingName, "threadedVideo") == 0 && (value == true || value == false)) {
+		renderer->threadedVideo = value;
+	} else if (strcmp(settingName, "rewindEnable") == 0 && (value == true || value == false)) {
+		renderer->rewindEnable = value;
 	} else if (strcmp(settingName, "rewindBufferCapacity") == 0 && value > 0) {
-		mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindBufferCapacity", value);
-		renderer->core->reloadConfigOption(renderer->core, "rewindBufferCapacity", &renderer->core->config);
-
-		renderer->core->opts.rewindBufferCapacity = value;
+		renderer->rewindBufferCapacity = value;
 	} else if (strcmp(settingName, "rewindBufferInterval") == 0 && value > 0) {
-		mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindBufferInterval", value);
-		renderer->core->reloadConfigOption(renderer->core, "rewindBufferInterval", &renderer->core->config);
-
-		renderer->core->opts.rewindBufferInterval = value;
+		renderer->rewindBufferInterval = value;
 	} else if (strcmp(settingName, "frameSkip") == 0 && value >= 0) {
 		renderer->frameSkip = value;
-		mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", renderer->frameSkip);
-		renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
+	}
+
+	// core settings when running
+	if (renderer->core) {
+		if (strcmp(settingName, "allowOpposingDirections") == 0 && (value == true || value == false)) {
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "allowOpposingDirections", value);
+			renderer->core->reloadConfigOption(renderer->core, "allowOpposingDirections", &renderer->core->config);
+		} else if (strcmp(settingName, "rewindBufferCapacity") == 0 && value > 0) {
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindBufferCapacity", value);
+			renderer->core->reloadConfigOption(renderer->core, "rewindBufferCapacity", &renderer->core->config);
+		} else if (strcmp(settingName, "rewindBufferInterval") == 0 && value > 0) {
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindBufferInterval", value);
+			renderer->core->reloadConfigOption(renderer->core, "rewindBufferInterval", &renderer->core->config);
+		} else if (strcmp(settingName, "frameSkip") == 0 && value >= 0) {
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", renderer->frameSkip);
+			renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
+		} else if (strcmp(settingName, "threadedVideo") == 0 && (value == true || value == false)) {
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "threadedVideo", value);
+			renderer->core->reloadConfigOption(renderer->core, "threadedVideo", &renderer->core->config);
+		}
+
+		// thread settings when running
+		if (renderer->thread && (value == true || value == false)) {
+			mCoreThreadInterrupt(renderer->thread);
+			if (strcmp(settingName, "videoSync") == 0) {
+				renderer->thread->impl->sync.videoFrameWait = value;
+			} else if (strcmp(settingName, "audioSync") == 0) {
+				renderer->thread->impl->sync.audioWait = value;
+			}
+			mCoreThreadContinue(renderer->thread);
+		}
 	}
 }
 
@@ -557,11 +590,17 @@ int main() {
 	renderer->audio.sampleRate = 48000;
 	renderer->audio.samples = 1024;
 	renderer->audio.fpsTarget = 60.0;
+	renderer->rewindBufferCapacity = 600;
+	renderer->rewindBufferInterval = 1;
 	renderer->fastForwardMultiplier = 1;
+	renderer->videoSync = false;
+	renderer->audioSync = true;
+	renderer->threadedVideo = false;
+	renderer->rewindEnable = true;
 
 	mLogSetDefaultLogger(&logCtx);
 
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_EVENTS);
+	SDL_Init(SDL_INIT_VIDEO);
 	renderer->window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
 	                                    GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
 	renderer->sdlRenderer =

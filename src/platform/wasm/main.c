@@ -593,8 +593,8 @@ int main() {
 	renderer->rewindBufferCapacity = 600;
 	renderer->rewindBufferInterval = 1;
 	renderer->fastForwardMultiplier = 1;
-	renderer->videoSync = false;
-	renderer->audioSync = true;
+	renderer->videoSync = true;
+	renderer->audioSync = false;
 	renderer->threadedVideo = false;
 	renderer->rewindEnable = true;
 

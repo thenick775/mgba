@@ -14,7 +14,7 @@ To build this branch and obtain a WASM, js, and type definition files, run eithe
 
 ```
 # using local build from pinned emcc from emscripten/emsdk:4.0.4
-cd ./src/platform/docker;
+cd ./src/platform/wasm;
 npm run build:image && npm run build;
 ```
 

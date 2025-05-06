@@ -245,6 +245,19 @@ static void _mCoreThreadAddCallbacks(struct mCoreThread* threadContext) {
 }
 #endif
 
+void mCoreThreadAddCoreCallbacks(struct mCoreThread* threadContext) {
+	struct mCore* core = threadContext->core;
+	struct mCoreCallbacks callbacks = {
+		.videoFrameStarted = _frameStarted,
+		.videoFrameEnded = _frameEnded,
+		.coreCrashed = _crashed,
+		.sleep = _coreSleep,
+		.shutdown = _coreShutdown,
+		.context = threadContext
+	};
+	core->addCoreCallbacks(core, &callbacks);
+}
+
 static THREAD_ENTRY _mCoreThreadRun(void* context) {
 	struct mCoreThread* threadContext = context;
 #ifdef USE_PTHREADS

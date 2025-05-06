@@ -130,6 +130,8 @@ void mCoreThreadRewindParamsChanged(struct mCoreThread* threadContext);
 
 struct mCoreThread* mCoreThreadGet(void);
 
+void mCoreThreadAddCoreCallbacks(struct mCoreThread* threadContext);
+
 CXX_GUARD_END
 
 #endif

@@ -260,6 +260,14 @@ EMSCRIPTEN_KEEPALIVE void resumeGame() {
 	emscripten_resume_main_loop();
 }
 
+EMSCRIPTEN_KEEPALIVE void pauseAudio() {
+	mSDLPauseAudio(&renderer->audio);
+}
+
+EMSCRIPTEN_KEEPALIVE void resumeAudio() {
+	mSDLResumeAudio(&renderer->audio);
+}
+
 EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
 	int state = toggle ? SDL_ENABLE : SDL_DISABLE;
 	SDL_EventState(SDL_TEXTINPUT, state);
@@ -355,6 +363,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	mCoreLoadConfig(renderer->core);
 
 	mCoreLoadFile(renderer->core, name);
+	mCoreConfigSetDefaultIntValue(&renderer->core->config, "timestepSync", renderer->timestepSync);
 	mCoreConfigSetDefaultValue(&renderer->core->config, "idleOptimization", "detect");
 	renderer->core->reloadConfigOption(renderer->core, "idleOptimization", &renderer->core->config);
 	mCoreConfigSetDefaultIntValue(&renderer->core->config, "allowOpposingDirections", true);
@@ -515,6 +524,10 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->rewindBufferInterval = value;
 	} else if (strcmp(settingName, "frameSkip") == 0 && value >= 0) {
 		renderer->frameSkip = value;
+	} else if (strcmp(settingName, "fpsTarget") == 0 && value >= 0) {
+		renderer->fpsTarget = value;
+	} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
+		renderer->timestepSync = value;
 	}
 
 	// core settings when running
@@ -534,6 +547,13 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		} else if (strcmp(settingName, "threadedVideo") == 0 && (value == true || value == false)) {
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "threadedVideo", value);
 			renderer->core->reloadConfigOption(renderer->core, "threadedVideo", &renderer->core->config);
+		} else if (strcmp(settingName, "fpsTarget") == 0 && value >= 0.0) {
+			renderer->thread->impl->sync.fpsTarget = (double) value;
+			mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget", (double) value);
+			renderer->core->reloadConfigOption(renderer->core, "fpsTarget", &renderer->core->config);
+		} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "timestepSync", value);
+			renderer->core->reloadConfigOption(renderer->core, "timestepSync", &renderer->core->config);
 		}
 
 		// thread settings when running
@@ -598,8 +618,9 @@ int main() {
 	renderer->rewindBufferCapacity = 600;
 	renderer->rewindBufferInterval = 1;
 	renderer->fastForwardMultiplier = 1;
-	renderer->videoSync = true;
+	renderer->videoSync = false;
 	renderer->audioSync = false;
+	renderer->timestepSync = true;
 	renderer->threadedVideo = false;
 	renderer->rewindEnable = true;
 

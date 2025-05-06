@@ -26,6 +26,7 @@ declare namespace mGBA {
 
   export type coreSettings = {
     frameSkip?: number;
+    fpsTarget?: number;
     rewindBufferCapacity?: number;
     rewindBufferInterval?: number;
     audioSampleRate?: number;
@@ -35,6 +36,7 @@ declare namespace mGBA {
     audioSync?: boolean;
     threadedVideo?: boolean;
     rewindEnable?: boolean;
+    timestepSync?: boolean;
   };
 
   export interface mGBAEmulator extends EmscriptenModule {

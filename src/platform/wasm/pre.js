@@ -444,4 +444,15 @@ Module.setCoreSettings = (coreSettings) => {
 
   if (coreSettings.rewindEnable !== undefined)
     setIntegerCoreSetting('rewindEnable', coreSettings.rewindEnable);
+
+  if (coreSettings.fpsTarget !== undefined)
+    setIntegerCoreSetting('fpsTarget', coreSettings.fpsTarget);
+
+  if (coreSettings.timestepSync !== undefined)
+    setIntegerCoreSetting('timestepSync', coreSettings.timestepSync);
+};
+
+Module.pauseAudio = () => {
+  const pauseAudio = cwrap('pauseAudio', null, []);
+  pauseAudio();
 };

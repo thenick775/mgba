@@ -18,6 +18,13 @@
 
 #ifdef __EMSCRIPTEN__
 #include <sched.h> 
+#include <emscripten.h>
+
+typedef struct {
+	double previousTime;
+	double accumulator;
+	struct mCore* core;
+} mFixedTimestepLoop;
 #endif
 
 #ifndef DISABLE_THREADING
@@ -289,6 +296,14 @@ static THREAD_ENTRY _mCoreThreadRun(void* context) {
 	core->addCoreCallbacks(core, &callbacks);
 	core->setSync(core, &threadContext->impl->sync);
 
+#ifdef __EMSCRIPTEN__
+	mFixedTimestepLoop loop = {
+		.previousTime = emscripten_get_now(),
+		.accumulator = 0.0,
+		.core = core
+	};
+#endif
+
 	struct mLogFilter filter;
 	struct mLogger* logger = &threadContext->logger.d;
 	if (threadContext->logger.logger) {
@@ -368,7 +383,23 @@ static THREAD_ENTRY _mCoreThreadRun(void* context) {
 			while (impl->state == mTHREAD_RUNNING) {
 				MutexUnlock(&impl->stateMutex);
 #ifdef __EMSCRIPTEN__
-				core->runFrame(core);
+				bool timestepSync = false;
+				mCoreConfigGetBoolValue(&core->config, "timestepSync", &timestepSync);
+				if (timestepSync) {
+					double currentTime = emscripten_get_now();
+					double frameTime = currentTime - loop.previousTime;
+					if (frameTime > 250.0) frameTime = 250.0;
+					loop.accumulator += frameTime;
+	
+					double fixedDeltaTime = 1000.0 / impl->sync.fpsTarget; // Hz in ms
+					while (loop.accumulator >= fixedDeltaTime) {
+						core->runFrame(core);
+						loop.accumulator -= fixedDeltaTime;
+					}
+					loop.previousTime = currentTime;
+				} else {
+					core->runFrame(core);
+				}
 #else
 				core->runLoop(core);
 #endif

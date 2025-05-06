@@ -215,6 +215,55 @@ void _coreShutdown(void* context) {
 	MutexUnlock(&thread->impl->stateMutex);
 }
 
+#ifdef ENABLE_SCRIPTING
+#define ADD_CALLBACK(NAME) \
+void _script_ ## NAME(void* context) { \
+	struct mCoreThread* threadContext = context; \
+	if (!threadContext->scriptContext) { \
+		return; \
+	} \
+	mScriptContextTriggerCallback(threadContext->scriptContext, #NAME, NULL); \
+}
+
+ADD_CALLBACK(frame)
+ADD_CALLBACK(crashed)
+ADD_CALLBACK(sleep)
+ADD_CALLBACK(stop)
+ADD_CALLBACK(keysRead)
+ADD_CALLBACK(savedataUpdated)
+ADD_CALLBACK(alarm)
+
+#undef ADD_CALLBACK
+#define SCRIPT(NAME) _script_ ## NAME
+
+static void _mCoreThreadAddCallbacks(struct mCoreThread* threadContext) {
+	struct mCoreCallbacks callbacks = {
+		.videoFrameEnded = SCRIPT(frame),
+		.coreCrashed = SCRIPT(crashed),
+		.sleep = SCRIPT(sleep),
+		.shutdown = SCRIPT(stop),
+		.keysRead = SCRIPT(keysRead),
+		.savedataUpdated = SCRIPT(savedataUpdated),
+		.alarm = SCRIPT(alarm),
+		.context = threadContext
+	};
+	threadContext->core->addCoreCallbacks(threadContext->core, &callbacks);
+}
+#endif
+
+void mCoreThreadAddCoreCallbacks(struct mCoreThread* threadContext) {
+	struct mCore* core = threadContext->core;
+	struct mCoreCallbacks callbacks = {
+		.videoFrameStarted = _frameStarted,
+		.videoFrameEnded = _frameEnded,
+		.coreCrashed = _crashed,
+		.sleep = _coreSleep,
+		.shutdown = _coreShutdown,
+		.context = threadContext
+	};
+	core->addCoreCallbacks(core, &callbacks);
+}
+
 static THREAD_ENTRY _mCoreThreadRun(void* context) {
 	struct mCoreThread* threadContext = context;
 #ifdef USE_PTHREADS

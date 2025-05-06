@@ -457,6 +457,11 @@ EMSCRIPTEN_KEEPALIVE void addCoreCallbacks(void (*alarmCallbackPtr)(void*), void
 	if (renderer->core) {
 		struct mCoreCallbacks callbacks = {};
 		renderer->core->clearCoreCallbacks(renderer->core);
+		// the thread has its own suite of callbacks where ours should overlay on top,
+		// after clearing the current core callbacks since there is not a mechanism to
+		// filter the callbacks, we need to re-add the thread callbacks
+		if (renderer->thread)
+			mCoreThreadAddCoreCallbacks(renderer->thread);
 
 		// store original function pointers
 		if (alarmCallbackPtr)

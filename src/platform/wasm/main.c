@@ -252,11 +252,19 @@ EMSCRIPTEN_KEEPALIVE void quickReload() {
 
 EMSCRIPTEN_KEEPALIVE void pauseGame() {
 	mSDLPauseAudio(&renderer->audio);
+
+	if (renderer->thread)
+		mCoreThreadPause(renderer->thread);
+
 	emscripten_pause_main_loop();
 }
 
 EMSCRIPTEN_KEEPALIVE void resumeGame() {
 	mSDLResumeAudio(&renderer->audio);
+
+	if (renderer->thread)
+		mCoreThreadUnpause(renderer->thread);
+
 	emscripten_resume_main_loop();
 }
 

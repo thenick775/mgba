@@ -23,7 +23,6 @@
 typedef struct {
 	double previousTime;
 	double accumulator;
-	struct mCore* core;
 } mFixedTimestepLoop;
 #endif
 
@@ -299,8 +298,7 @@ static THREAD_ENTRY _mCoreThreadRun(void* context) {
 #ifdef __EMSCRIPTEN__
 	mFixedTimestepLoop loop = {
 		.previousTime = emscripten_get_now(),
-		.accumulator = 0.0,
-		.core = core
+		.accumulator = 0.0
 	};
 #endif
 

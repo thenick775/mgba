@@ -363,9 +363,9 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 		                                      .rewindBufferInterval = renderer->rewindBufferInterval,
 		                                      .videoSync = renderer->videoSync,
 		                                      .audioSync = renderer->audioSync,
+		                                      .fpsTarget = renderer.fpsTarget,
 		                                      .volume = 0x100,
-		                                      .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL,
-		                                      .fpsTarget = 60.f };
+		                                      .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
 
 	mCoreConfigLoadDefaults(&renderer->core->config, &defaultConfigOpts);
 	mCoreLoadConfig(renderer->core);

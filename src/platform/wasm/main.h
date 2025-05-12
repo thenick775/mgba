@@ -22,7 +22,7 @@ struct mEmscriptenRenderer {
 	// persistent options for the core at runtime, limited subset of mCoreOptions
 	int fastForwardMultiplier;
 	int frameSkip;
-	int fpsTarget;
+	int baseFpsTarget;
 	bool videoSync;
 	bool audioSync;
 	bool timestepSync;

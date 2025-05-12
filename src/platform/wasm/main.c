@@ -38,8 +38,9 @@ void updateFastForward(int multiplier) {
 	}
 
 	if (renderer->core && renderer->thread && multiplier > 0) {
-		renderer->thread->impl->sync.fpsTarget = (double) 60 * multiplier;
-		mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget", (double) 60 * multiplier);
+		renderer->thread->impl->sync.fpsTarget = (double) renderer->baseFpsTarget * multiplier;
+		mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget",
+		                                (double) renderer->baseFpsTarget * multiplier);
 		renderer->core->reloadConfigOption(renderer->core, "fpsTarget", &renderer->core->config);
 
 		if (renderer->frameSkip == 0) {
@@ -363,7 +364,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 		                                      .rewindBufferInterval = renderer->rewindBufferInterval,
 		                                      .videoSync = renderer->videoSync,
 		                                      .audioSync = renderer->audioSync,
-		                                      .fpsTarget = renderer.fpsTarget,
+		                                      .fpsTarget = renderer->baseFpsTarget,
 		                                      .volume = 0x100,
 		                                      .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
 
@@ -532,8 +533,8 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->rewindBufferInterval = value;
 	} else if (strcmp(settingName, "frameSkip") == 0 && value >= 0) {
 		renderer->frameSkip = value;
-	} else if (strcmp(settingName, "fpsTarget") == 0 && value >= 0) {
-		renderer->fpsTarget = value;
+	} else if (strcmp(settingName, "baseFpsTarget") == 0 && value >= 0) {
+		renderer->baseFpsTarget = value;
 	} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
 		renderer->timestepSync = value;
 	}
@@ -555,7 +556,7 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		} else if (strcmp(settingName, "threadedVideo") == 0 && (value == true || value == false)) {
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "threadedVideo", value);
 			renderer->core->reloadConfigOption(renderer->core, "threadedVideo", &renderer->core->config);
-		} else if (strcmp(settingName, "fpsTarget") == 0 && value >= 0.0) {
+		} else if (strcmp(settingName, "baseFpsTarget") == 0 && value >= 0.0) {
 			renderer->thread->impl->sync.fpsTarget = (double) value;
 			mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget", (double) value);
 			renderer->core->reloadConfigOption(renderer->core, "fpsTarget", &renderer->core->config);
@@ -622,7 +623,7 @@ int main() {
 
 	renderer->audio.sampleRate = 48000;
 	renderer->audio.samples = 1024;
-	renderer->audio.fpsTarget = 60.0;
+	renderer->baseFpsTarget = 60.0;
 	renderer->rewindBufferCapacity = 600;
 	renderer->rewindBufferInterval = 1;
 	renderer->fastForwardMultiplier = 1;

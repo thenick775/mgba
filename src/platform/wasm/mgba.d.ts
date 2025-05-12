@@ -26,7 +26,7 @@ declare namespace mGBA {
 
   export type coreSettings = {
     frameSkip?: number;
-    fpsTarget?: number;
+    baseFpsTarget?: number;
     rewindBufferCapacity?: number;
     rewindBufferInterval?: number;
     audioSampleRate?: number;

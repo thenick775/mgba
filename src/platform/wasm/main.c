@@ -610,8 +610,9 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "threadedVideo", value);
 			renderer->core->reloadConfigOption(renderer->core, "threadedVideo", &renderer->core->config);
 		} else if (strcmp(settingName, "baseFpsTarget") == 0 && value >= 0.0) {
-			renderer->thread->impl->sync.fpsTarget = (double) value;
-			mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget", (double) value);
+			renderer->thread->impl->sync.fpsTarget = (double) value * renderer->fastForwardMultiplier;
+			mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget",
+			                                (double) value * renderer->fastForwardMultiplier);
 			renderer->core->reloadConfigOption(renderer->core, "fpsTarget", &renderer->core->config);
 		} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "timestepSync", value);

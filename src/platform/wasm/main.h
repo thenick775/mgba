@@ -7,6 +7,12 @@
 
 #include <mgba/core/thread.h>
 
+typedef struct {
+	double lastTime;
+	double fps;
+	int frames;
+} FPSCounter;
+
 // represents global items used in rendering mGBA in the wasm platform
 struct mEmscriptenRenderer {
 	struct mCore* core;
@@ -15,6 +21,7 @@ struct mEmscriptenRenderer {
 	SDL_Window* window;
 	SDL_Texture* sdlTex;
 	SDL_Renderer* sdlRenderer;
+	FPSCounter fpsCounter;
 
 	struct mSDLAudio audio;
 	struct mCoreThread* thread;
@@ -28,6 +35,7 @@ struct mEmscriptenRenderer {
 	bool timestepSync;
 	bool threadedVideo;
 	bool rewindEnable;
+	bool showFPSCounter;
 	int rewindBufferCapacity;
 	int rewindBufferInterval;
 };

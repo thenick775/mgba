@@ -15,6 +15,7 @@
 
 #include "platform/sdl/sdl-audio.h"
 #include "platform/sdl/sdl-events.h"
+#include "platform/sdl/sdl-text.h"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_keyboard.h>
@@ -74,6 +75,52 @@ static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
 	}
 }
 
+// fps utilities
+void updateFPS() {
+	double now = emscripten_get_now();
+
+	if (renderer->fpsCounter.lastTime == 0) {
+		renderer->fpsCounter.lastTime = now;
+		return;
+	}
+
+	renderer->fpsCounter.frames++;
+
+	double elapsed = now - renderer->fpsCounter.lastTime;
+	if (elapsed >= 1000.0) { // every ~1 second
+		renderer->fpsCounter.fps = (double) renderer->fpsCounter.frames * 1000.0 / elapsed;
+		renderer->fpsCounter.frames = 0;
+		renderer->fpsCounter.lastTime = now;
+	}
+}
+
+void drawFPS(unsigned x, unsigned y) {
+	char fpsBuf[32];
+	snprintf(fpsBuf, sizeof(fpsBuf), "%.1f", renderer->fpsCounter.fps);
+
+	int scale = 1;
+	int charWidth = 8 * scale;
+	int charHeight = 10 * scale;
+	int width = strlen(fpsBuf) * charWidth;
+	int height = charHeight;
+
+	// Save current draw color
+	Uint8 prevR, prevG, prevB, prevA;
+	SDL_GetRenderDrawColor(renderer->sdlRenderer, &prevR, &prevG, &prevB, &prevA);
+
+	// Draw gray background
+	SDL_SetRenderDrawColor(renderer->sdlRenderer, 64, 64, 64, 255);
+	SDL_FRect bgRect = { x - 2, y - 2, width + 4, height + 4 };
+	SDL_RenderFillRectF(renderer->sdlRenderer, &bgRect);
+
+	// Draw white text
+	SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 255, 255, 255);
+	SDL_RenderText(renderer->sdlRenderer, fpsBuf, 1, x, y);
+
+	// Restore original draw color
+	SDL_SetRenderDrawColor(renderer->sdlRenderer, prevR, prevG, prevB, prevA);
+}
+
 // emscripten main run loop
 void runLoop() {
 	union SDL_Event event;
@@ -112,6 +159,8 @@ void runLoop() {
 
 				SDL_UnlockTexture(renderer->sdlTex);
 				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
+				if (renderer->showFPSCounter)
+					drawFPS(w - 35, h - LINE_HEIGHT);
 				SDL_RenderPresent(renderer->sdlRenderer);
 				int stride;
 				SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
@@ -119,6 +168,8 @@ void runLoop() {
 			}
 			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);
 		}
+		if (renderer->showFPSCounter)
+			updateFPS();
 	} else {
 		// dont run the main loop if there is no core,  we don't
 		// want to handle events unless the core is running for now
@@ -537,6 +588,8 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->baseFpsTarget = value;
 	} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
 		renderer->timestepSync = value;
+	} else if (strcmp(settingName, "showFPSCounter") == 0 && (value == true || value == false)) {
+		renderer->showFPSCounter = value;
 	}
 
 	// core settings when running
@@ -632,6 +685,10 @@ int main() {
 	renderer->timestepSync = true;
 	renderer->threadedVideo = false;
 	renderer->rewindEnable = true;
+	renderer->showFPSCounter = false;
+	renderer->fpsCounter.lastTime = 0;
+	renderer->fpsCounter.fps = 0;
+	renderer->fpsCounter.frames = 0;
 
 	mLogSetDefaultLogger(&logCtx);
 

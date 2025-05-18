@@ -37,6 +37,7 @@ declare namespace mGBA {
     threadedVideo?: boolean;
     rewindEnable?: boolean;
     timestepSync?: boolean;
+    showFPSCounter?: boolean;
   };
 
   export interface mGBAEmulator extends EmscriptenModule {

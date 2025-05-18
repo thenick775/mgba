@@ -6,8 +6,10 @@
 
 #define LINE_HEIGHT 12
 
-void SDL_RenderChar( SDL_Renderer *R, char C, float scale, float x, float y );
-void SDL_RenderText( SDL_Renderer *R, char *string, float scale, float x, float y );
-void SDL_RenderTextWrapped( SDL_Renderer *R, char *string, float scale, float x, float y, float width );
+// Lazy text rendering for SDL without fonts or any other dependencies using only RenderFillRect
+// sourced from https://gist.github.com/Introscopia/e74413c0950b699fa3371aaba40ca003 and modified
+
+void SDL_RenderChar(SDL_Renderer* R, char C, float scale, float x, float y);
+void SDL_RenderText(SDL_Renderer* R, char* string, float scale, float x, float y);
 
 #endif

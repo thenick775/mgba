@@ -115,7 +115,7 @@ void drawFPS(unsigned x, unsigned y) {
 
 	// Draw white text
 	SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 255, 255, 255);
-	SDL_RenderText(renderer->sdlRenderer, fpsBuf, 1, x, y);
+	SDL_RenderText(renderer->sdlRenderer, fpsBuf, scale, x, y);
 
 	// Restore original draw color
 	SDL_SetRenderDrawColor(renderer->sdlRenderer, prevR, prevG, prevB, prevA);

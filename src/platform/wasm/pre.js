@@ -247,6 +247,16 @@ Module.resumeGame = () => {
   resumeGame();
 };
 
+Module.pauseAudio = () => {
+  const pauseAudio = cwrap('pauseAudio', null, []);
+  pauseAudio();
+};
+
+Module.resumeAudio = () => {
+  const resumeAudio = cwrap('resumeAudio', null, []);
+  resumeAudio();
+};
+
 Module.getVolume = () => {
   const getVolume = cwrap('getVolume', 'number', []);
   return getVolume();
@@ -453,9 +463,4 @@ Module.setCoreSettings = (coreSettings) => {
 
   if (coreSettings.showFPSCounter !== undefined)
     setIntegerCoreSetting('showFPSCounter', coreSettings.showFPSCounter);
-};
-
-Module.pauseAudio = () => {
-  const pauseAudio = cwrap('pauseAudio', null, []);
-  pauseAudio();
 };

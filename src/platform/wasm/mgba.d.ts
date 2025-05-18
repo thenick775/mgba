@@ -57,10 +57,12 @@ declare namespace mGBA {
     listSaves(): string[];
     loadGame(romPath: string, savePathOverride?: string): boolean;
     loadState(slot: number): boolean;
+    pauseAudio(): void;
     pauseGame(): void;
     quickReload(): void;
     quitGame(): void;
     quitMgba(): void;
+    resumeAudio(): void;
     resumeGame(): void;
     saveState(slot: number): boolean;
     screenshot(fileName?: string): boolean;

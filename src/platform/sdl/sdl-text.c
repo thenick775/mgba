@@ -753,85 +753,10 @@ void SDL_RenderChar(SDL_Renderer* R, char C, float scale, float x, float y) {
 		SDL_RenderFillRectF(R, &(SDL_FRect) { (5 * scale) + x, (1 * scale) + y, 2 * scale, 1 * scale });
 		break;
 	}
-	// case '⌂':
-	// 	SDL_RenderFillRectF(R, &(SDL_FRect) { (0 * scale) + x, (6 * scale) + y, 2 * scale, 3 * scale });
-	// 	SDL_RenderFillRectF(R, &(SDL_FRect) { (1 * scale) + x, (5 * scale) + y, 2 * scale, 1 * scale });
-	// 	SDL_RenderFillRectF(R, &(SDL_FRect) { (2 * scale) + x, (4 * scale) + y, 3 * scale, 1 * scale });
-	// 	SDL_RenderFillRectF(R, &(SDL_FRect) { (2 * scale) + x, (8 * scale) + y, 5 * scale, 1 * scale });
-	// 	SDL_RenderFillRectF(R, &(SDL_FRect) { (3 * scale) + x, (3 * scale) + y, 1 * scale, 1 * scale });
-	// 	SDL_RenderFillRectF(R, &(SDL_FRect) { (4 * scale) + x, (5 * scale) + y, 2 * scale, 1 * scale });
-	// 	SDL_RenderFillRectF(R, &(SDL_FRect) { (5 * scale) + x, (6 * scale) + y, 2 * scale, 2 * scale });
-	// 	break;
-	// }
 }
 
 void SDL_RenderText(SDL_Renderer* R, char* string, float scale, float x, float y) {
 	for (int i = 0; string[i] != '\0'; ++i) {
 		SDL_RenderChar(R, string[i], scale, x + (8 * scale * i), y);
-	}
-}
-
-void SDL_RenderTextWrapped(SDL_Renderer* R, char* string, float scale, float x, float y, float width) {
-	int len = strlen(string);
-	float cx = x;
-	float line_end = x + width;
-	float cy = y;
-	for (int i = 0; i < len;) {
-		int ww = 0; // word width
-		int we = len; // word end
-		for (int j = i; j < len; ++j) {
-			if ((uint8_t) (string[j]) < '!') {
-				we = j;
-				break;
-			}
-			ww += (8 * scale);
-			if (ww > width) {
-				ww -= 1;
-				we = j - 1;
-				break;
-			}
-		}
-		if (cx + ww >= line_end) {
-			cx = x;
-			cy += (scale * LINE_HEIGHT);
-		}
-
-		while (i < we) {
-			SDL_RenderChar(R, string[i], scale, cx, cy);
-			cx += (8 * scale);
-			++i;
-		}
-		if (i >= len)
-			break;
-
-		while (!(isalnum(string[i]) || (uint8_t) (string[i]) > 0x7F)) {
-			if (string[i] == ' ') {
-				if (cx + (8 * scale) > line_end) {
-					cx = x;
-					cy += (scale * LINE_HEIGHT);
-				} else
-					cx += (8 * scale);
-			} else if (string[i] == '\t') {
-				if (cx + (24 * scale) > line_end) {
-					cx = x;
-					cy += (scale * LINE_HEIGHT);
-				} else
-					cx += (24 * scale);
-			} else if (string[i] == '\n') {
-				cx = x;
-				cy += (scale * LINE_HEIGHT);
-			} else if ((uint8_t) (string[i]) < '!') { //|| string[j] > '~'
-				if (cx + (8 * scale) > line_end) {
-					cx = x + (8 * scale);
-					cy += (scale * LINE_HEIGHT);
-				} else
-					cx += (8 * scale);
-			} else {
-				break;
-			}
-			++i;
-			if (i >= len)
-				break;
-		}
 	}
 }

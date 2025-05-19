@@ -104,20 +104,20 @@ void drawFPS(unsigned x, unsigned y) {
 	int width = strlen(fpsBuf) * charWidth;
 	int height = charHeight;
 
-	// Save current draw color
+	// save current draw color
 	Uint8 prevR, prevG, prevB, prevA;
 	SDL_GetRenderDrawColor(renderer->sdlRenderer, &prevR, &prevG, &prevB, &prevA);
 
-	// Draw gray background
+	// draw gray background
 	SDL_SetRenderDrawColor(renderer->sdlRenderer, 64, 64, 64, 255);
 	SDL_FRect bgRect = { x - 2, y - 2, width + 4, height + 4 };
 	SDL_RenderFillRectF(renderer->sdlRenderer, &bgRect);
 
-	// Draw white text
+	// draw white text
 	SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 255, 255, 255);
 	SDL_RenderText(renderer->sdlRenderer, fpsBuf, scale, x, y);
 
-	// Restore original draw color
+	// restore original draw color
 	SDL_SetRenderDrawColor(renderer->sdlRenderer, prevR, prevG, prevB, prevA);
 }
 
@@ -159,7 +159,7 @@ void runLoop() {
 
 				SDL_UnlockTexture(renderer->sdlTex);
 				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
-				if (renderer->showFPSCounter)
+				if (renderer->showFpsCounter)
 					drawFPS(w - 35, h - LINE_HEIGHT);
 				SDL_RenderPresent(renderer->sdlRenderer);
 				int stride;
@@ -168,7 +168,7 @@ void runLoop() {
 			}
 			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);
 		}
-		if (renderer->showFPSCounter)
+		if (renderer->showFpsCounter)
 			updateFPS();
 	} else {
 		// dont run the main loop if there is no core,  we don't
@@ -588,8 +588,8 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->baseFpsTarget = value;
 	} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
 		renderer->timestepSync = value;
-	} else if (strcmp(settingName, "showFPSCounter") == 0 && (value == true || value == false)) {
-		renderer->showFPSCounter = value;
+	} else if (strcmp(settingName, "showFpsCounter") == 0 && (value == true || value == false)) {
+		renderer->showFpsCounter = value;
 	}
 
 	// core settings when running
@@ -686,7 +686,7 @@ int main() {
 	renderer->timestepSync = true;
 	renderer->threadedVideo = false;
 	renderer->rewindEnable = true;
-	renderer->showFPSCounter = false;
+	renderer->showFpsCounter = false;
 	renderer->fpsCounter.lastTime = 0;
 	renderer->fpsCounter.fps = 0;
 	renderer->fpsCounter.frames = 0;

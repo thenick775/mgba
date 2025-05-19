@@ -35,7 +35,7 @@ struct mEmscriptenRenderer {
 	bool timestepSync;
 	bool threadedVideo;
 	bool rewindEnable;
-	bool showFPSCounter;
+	bool showFpsCounter;
 	int rewindBufferCapacity;
 	int rewindBufferInterval;
 };

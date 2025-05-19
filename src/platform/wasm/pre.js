@@ -461,6 +461,6 @@ Module.setCoreSettings = (coreSettings) => {
   if (coreSettings.timestepSync !== undefined)
     setIntegerCoreSetting('timestepSync', coreSettings.timestepSync);
 
-  if (coreSettings.showFPSCounter !== undefined)
-    setIntegerCoreSetting('showFPSCounter', coreSettings.showFPSCounter);
+  if (coreSettings.showFpsCounter !== undefined)
+    setIntegerCoreSetting('showFpsCounter', coreSettings.showFpsCounter);
 };

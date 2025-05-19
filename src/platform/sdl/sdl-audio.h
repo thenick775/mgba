@@ -10,9 +10,9 @@
 
 CXX_GUARD_START
 
-#include <mgba/core/log.h>
 #include <mgba-util/audio-buffer.h>
 #include <mgba-util/audio-resampler.h>
+#include <mgba/core/log.h>
 
 mLOG_DECLARE_CATEGORY(SDL_AUDIO);
 
@@ -20,7 +20,6 @@ struct mSDLAudio {
 	// Input
 	size_t samples;
 	unsigned sampleRate;
-	double fpsTarget;
 
 	// State
 	struct mAudioBuffer buffer;

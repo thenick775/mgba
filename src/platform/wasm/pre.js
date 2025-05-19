@@ -247,6 +247,16 @@ Module.resumeGame = () => {
   resumeGame();
 };
 
+Module.pauseAudio = () => {
+  const pauseAudio = cwrap('pauseAudio', null, []);
+  pauseAudio();
+};
+
+Module.resumeAudio = () => {
+  const resumeAudio = cwrap('resumeAudio', null, []);
+  resumeAudio();
+};
+
 Module.getVolume = () => {
   const getVolume = cwrap('getVolume', 'number', []);
   return getVolume();
@@ -444,4 +454,13 @@ Module.setCoreSettings = (coreSettings) => {
 
   if (coreSettings.rewindEnable !== undefined)
     setIntegerCoreSetting('rewindEnable', coreSettings.rewindEnable);
+
+  if (coreSettings.baseFpsTarget !== undefined)
+    setIntegerCoreSetting('baseFpsTarget', coreSettings.baseFpsTarget);
+
+  if (coreSettings.timestepSync !== undefined)
+    setIntegerCoreSetting('timestepSync', coreSettings.timestepSync);
+
+  if (coreSettings.showFpsCounter !== undefined)
+    setIntegerCoreSetting('showFpsCounter', coreSettings.showFpsCounter);
 };

@@ -26,6 +26,7 @@ declare namespace mGBA {
 
   export type coreSettings = {
     frameSkip?: number;
+    baseFpsTarget?: number;
     rewindBufferCapacity?: number;
     rewindBufferInterval?: number;
     audioSampleRate?: number;
@@ -35,6 +36,8 @@ declare namespace mGBA {
     audioSync?: boolean;
     threadedVideo?: boolean;
     rewindEnable?: boolean;
+    timestepSync?: boolean;
+    showFpsCounter?: boolean;
   };
 
   export interface mGBAEmulator extends EmscriptenModule {
@@ -54,10 +57,12 @@ declare namespace mGBA {
     listSaves(): string[];
     loadGame(romPath: string, savePathOverride?: string): boolean;
     loadState(slot: number): boolean;
+    pauseAudio(): void;
     pauseGame(): void;
     quickReload(): void;
     quitGame(): void;
     quitMgba(): void;
+    resumeAudio(): void;
     resumeGame(): void;
     saveState(slot: number): boolean;
     screenshot(fileName?: string): boolean;

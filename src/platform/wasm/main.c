@@ -15,6 +15,7 @@
 
 #include "platform/sdl/sdl-audio.h"
 #include "platform/sdl/sdl-events.h"
+#include "platform/sdl/sdl-text.h"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_keyboard.h>
@@ -38,8 +39,9 @@ void updateFastForward(int multiplier) {
 	}
 
 	if (renderer->core && renderer->thread && multiplier > 0) {
-		renderer->thread->impl->sync.fpsTarget = (double) 60 * multiplier;
-		mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget", (double) 60 * multiplier);
+		renderer->thread->impl->sync.fpsTarget = (double) renderer->baseFpsTarget * multiplier;
+		mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget",
+		                                (double) renderer->baseFpsTarget * multiplier);
 		renderer->core->reloadConfigOption(renderer->core, "fpsTarget", &renderer->core->config);
 
 		if (renderer->frameSkip == 0) {
@@ -71,6 +73,52 @@ static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
 			renderer->core->clearKeys(renderer->core, 1 << key);
 		}
 	}
+}
+
+// fps utilities
+void updateFPS() {
+	double now = emscripten_get_now();
+
+	if (renderer->fpsCounter.lastTime == 0) {
+		renderer->fpsCounter.lastTime = now;
+		return;
+	}
+
+	renderer->fpsCounter.frames++;
+
+	double elapsed = now - renderer->fpsCounter.lastTime;
+	if (elapsed >= 1000.0) { // every ~1 second
+		renderer->fpsCounter.fps = (double) renderer->fpsCounter.frames * 1000.0 / elapsed;
+		renderer->fpsCounter.frames = 0;
+		renderer->fpsCounter.lastTime = now;
+	}
+}
+
+void drawFPS(unsigned x, unsigned y) {
+	char fpsBuf[32];
+	snprintf(fpsBuf, sizeof(fpsBuf), "%.1f", renderer->fpsCounter.fps);
+
+	int scale = 1;
+	int charWidth = 8 * scale;
+	int charHeight = 10 * scale;
+	int width = strlen(fpsBuf) * charWidth;
+	int height = charHeight;
+
+	// save current draw color
+	Uint8 prevR, prevG, prevB, prevA;
+	SDL_GetRenderDrawColor(renderer->sdlRenderer, &prevR, &prevG, &prevB, &prevA);
+
+	// draw gray background
+	SDL_SetRenderDrawColor(renderer->sdlRenderer, 64, 64, 64, 255);
+	SDL_FRect bgRect = { x - 2, y - 2, width + 4, height + 4 };
+	SDL_RenderFillRectF(renderer->sdlRenderer, &bgRect);
+
+	// draw white text
+	SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 255, 255, 255);
+	SDL_RenderText(renderer->sdlRenderer, fpsBuf, scale, x, y);
+
+	// restore original draw color
+	SDL_SetRenderDrawColor(renderer->sdlRenderer, prevR, prevG, prevB, prevA);
 }
 
 // emscripten main run loop
@@ -111,6 +159,8 @@ void runLoop() {
 
 				SDL_UnlockTexture(renderer->sdlTex);
 				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
+				if (renderer->showFpsCounter)
+					drawFPS(w - 35, h - LINE_HEIGHT);
 				SDL_RenderPresent(renderer->sdlRenderer);
 				int stride;
 				SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
@@ -118,6 +168,8 @@ void runLoop() {
 			}
 			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);
 		}
+		if (renderer->showFpsCounter)
+			updateFPS();
 	} else {
 		// dont run the main loop if there is no core,  we don't
 		// want to handle events unless the core is running for now
@@ -252,12 +304,28 @@ EMSCRIPTEN_KEEPALIVE void quickReload() {
 
 EMSCRIPTEN_KEEPALIVE void pauseGame() {
 	mSDLPauseAudio(&renderer->audio);
+
+	if (renderer->thread)
+		mCoreThreadPause(renderer->thread);
+
 	emscripten_pause_main_loop();
 }
 
 EMSCRIPTEN_KEEPALIVE void resumeGame() {
 	mSDLResumeAudio(&renderer->audio);
+
+	if (renderer->thread)
+		mCoreThreadUnpause(renderer->thread);
+
 	emscripten_resume_main_loop();
+}
+
+EMSCRIPTEN_KEEPALIVE void pauseAudio() {
+	mSDLPauseAudio(&renderer->audio);
+}
+
+EMSCRIPTEN_KEEPALIVE void resumeAudio() {
+	mSDLResumeAudio(&renderer->audio);
 }
 
 EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
@@ -347,14 +415,15 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 		                                      .rewindBufferInterval = renderer->rewindBufferInterval,
 		                                      .videoSync = renderer->videoSync,
 		                                      .audioSync = renderer->audioSync,
+		                                      .fpsTarget = renderer->baseFpsTarget,
 		                                      .volume = 0x100,
-		                                      .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL,
-		                                      .fpsTarget = 60.f };
+		                                      .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
 
 	mCoreConfigLoadDefaults(&renderer->core->config, &defaultConfigOpts);
 	mCoreLoadConfig(renderer->core);
 
 	mCoreLoadFile(renderer->core, name);
+	mCoreConfigSetDefaultIntValue(&renderer->core->config, "timestepSync", renderer->timestepSync);
 	mCoreConfigSetDefaultValue(&renderer->core->config, "idleOptimization", "detect");
 	renderer->core->reloadConfigOption(renderer->core, "idleOptimization", &renderer->core->config);
 	mCoreConfigSetDefaultIntValue(&renderer->core->config, "allowOpposingDirections", true);
@@ -515,6 +584,12 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->rewindBufferInterval = value;
 	} else if (strcmp(settingName, "frameSkip") == 0 && value >= 0) {
 		renderer->frameSkip = value;
+	} else if (strcmp(settingName, "baseFpsTarget") == 0 && value >= 0) {
+		renderer->baseFpsTarget = value;
+	} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
+		renderer->timestepSync = value;
+	} else if (strcmp(settingName, "showFpsCounter") == 0 && (value == true || value == false)) {
+		renderer->showFpsCounter = value;
 	}
 
 	// core settings when running
@@ -534,6 +609,14 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		} else if (strcmp(settingName, "threadedVideo") == 0 && (value == true || value == false)) {
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "threadedVideo", value);
 			renderer->core->reloadConfigOption(renderer->core, "threadedVideo", &renderer->core->config);
+		} else if (strcmp(settingName, "baseFpsTarget") == 0 && value >= 0.0) {
+			renderer->thread->impl->sync.fpsTarget = (double) value * renderer->fastForwardMultiplier;
+			mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget",
+			                                (double) value * renderer->fastForwardMultiplier);
+			renderer->core->reloadConfigOption(renderer->core, "fpsTarget", &renderer->core->config);
+		} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "timestepSync", value);
+			renderer->core->reloadConfigOption(renderer->core, "timestepSync", &renderer->core->config);
 		}
 
 		// thread settings when running
@@ -594,14 +677,19 @@ int main() {
 
 	renderer->audio.sampleRate = 48000;
 	renderer->audio.samples = 1024;
-	renderer->audio.fpsTarget = 60.0;
+	renderer->baseFpsTarget = 60.0;
 	renderer->rewindBufferCapacity = 600;
 	renderer->rewindBufferInterval = 1;
 	renderer->fastForwardMultiplier = 1;
-	renderer->videoSync = true;
+	renderer->videoSync = false;
 	renderer->audioSync = false;
+	renderer->timestepSync = true;
 	renderer->threadedVideo = false;
 	renderer->rewindEnable = true;
+	renderer->showFpsCounter = false;
+	renderer->fpsCounter.lastTime = 0;
+	renderer->fpsCounter.fps = 0;
+	renderer->fpsCounter.frames = 0;
 
 	mLogSetDefaultLogger(&logCtx);
 

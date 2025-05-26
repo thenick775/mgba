@@ -598,9 +598,12 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "allowOpposingDirections", value);
 			renderer->core->reloadConfigOption(renderer->core, "allowOpposingDirections", &renderer->core->config);
 		} else if (strcmp(settingName, "rewindBufferCapacity") == 0 && value > 0) {
+			renderer->core->opts.rewindBufferCapacity = value;
+			mCoreThreadRewindParamsChanged(renderer->thread);
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindBufferCapacity", value);
 			renderer->core->reloadConfigOption(renderer->core, "rewindBufferCapacity", &renderer->core->config);
 		} else if (strcmp(settingName, "rewindBufferInterval") == 0 && value > 0) {
+			renderer->core->opts.rewindBufferInterval = value;
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindBufferInterval", value);
 			renderer->core->reloadConfigOption(renderer->core, "rewindBufferInterval", &renderer->core->config);
 		} else if (strcmp(settingName, "frameSkip") == 0 && value >= 0) {

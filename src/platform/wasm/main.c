@@ -389,12 +389,8 @@ EMSCRIPTEN_KEEPALIVE bool autoLoadCheats() {
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverride) {
-	if (renderer->core) {
-		renderer->core->unloadROM(renderer->core);
-		mCoreConfigDeinit(&renderer->core->config);
-		mInputMapDeinit(&renderer->core->inputMap);
-		renderer->core->deinit(renderer->core);
-		renderer->core = NULL;
+	if (renderer->thread && renderer->core) {
+		quitGame();
 	}
 	renderer->core = mCoreFind(name);
 	if (!renderer->core) {

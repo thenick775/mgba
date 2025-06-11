@@ -16,6 +16,7 @@ declare namespace mGBA {
     readonly screenshotsPath: string;
     readonly patchPath: string;
     readonly autosave: string;
+    readonly shaderPath: string;
   }
 
   export type coreCallbacks = {
@@ -641,6 +642,11 @@ declare namespace mGBA {
      * @param coreSettings - Settings object to apply.
      */
     setCoreSettings(coreSettings: coreSettings): void;
+
+    // TODO: document shader actions
+    listShaders(): string[];
+    loadShader(shaderPath: string): void;
+    unloadShader(): void;
 
     /**
      * Returns common filesystem path strings used by this build.

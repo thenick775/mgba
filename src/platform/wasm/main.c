@@ -206,6 +206,10 @@ EMSCRIPTEN_KEEPALIVE void quitGame() {
 		renderer->audio.core = NULL;
 
 		renderer->autoSaveStateTimer.lastTime = 0;
+		
+		renderer->gl2.d.deinit(&renderer->gl2.d);
+		SDL_GL_DeleteContext(renderer->glCtx);
+		free(renderer->outputBuffer);
 	}
 }
 
@@ -410,17 +414,17 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	mCoreAutoloadPatch(renderer->core);
 	mSDLInitBindingsGBA(&renderer->core->inputMap);
 
-	unsigned w, h;
-	renderer->core->baseVideoSize(renderer->core, &w, &h);
-	if (renderer->sdlTex) {
-		SDL_DestroyTexture(renderer->sdlTex);
-	}
-	renderer->sdlTex =
-	    SDL_CreateTexture(renderer->sdlRenderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+	// unsigned w, h;
+	// renderer->core->baseVideoSize(renderer->core, &w, &h);
+	// if (renderer->sdlTex) {
+	// 	SDL_DestroyTexture(renderer->sdlTex);
+	// }
+	// renderer->sdlTex =
+	//     SDL_CreateTexture(renderer->sdlRenderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h);
 
-	int stride;
-	SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
-	renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
+	// int stride;
+	// SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
+	// renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
 	renderer->core->setAudioBufferSize(renderer->core, renderer->audio.samples);
 
 	renderer->core->reset(renderer->core);
@@ -722,22 +726,27 @@ void runLoop() {
 				};
 			}
 			if (mCoreSyncWaitFrameStart(&renderer->thread->impl->sync)) {
-				unsigned w, h;
-				renderer->core->currentVideoSize(renderer->core, &w, &h);
+				// unsigned w, h;
+				// renderer->core->currentVideoSize(renderer->core, &w, &h);
 
-				SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
+				// SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
 
-				SDL_UnlockTexture(renderer->sdlTex);
-				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
-				if (renderer->showFpsCounter)
-					drawFPS(w - 35, h - LINE_HEIGHT);
-				SDL_RenderPresent(renderer->sdlRenderer);
-				int stride;
-				SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
-				renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
+				// SDL_UnlockTexture(renderer->sdlTex);
+				// SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
+				// if (renderer->showFpsCounter)
+				// 	drawFPS(w - 35, h - LINE_HEIGHT);
+				// SDL_RenderPresent(renderer->sdlRenderer);
+				// int stride;
+				// SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
+				// renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
+				renderer->gl2.d.setImage(&renderer->gl2.d, VIDEO_LAYER_IMAGE, renderer->outputBuffer);
 			}
 			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);
 		}
+
+		renderer->gl2.d.drawFrame(&renderer->gl2.d);
+		renderer->gl2.d.swap(&renderer->gl2.d);
+
 		if (renderer->showFpsCounter)
 			updateFPS();
 		if (renderer->autoSaveStateEnable)

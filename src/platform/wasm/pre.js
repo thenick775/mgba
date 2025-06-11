@@ -105,6 +105,7 @@ Module.filePaths = () => {
     screenshotsPath: '/data/screenshots',
     patchPath: '/data/patches',
     autosave: '/autosave',
+    shaderPath: '/shaders',
   };
 };
 
@@ -567,4 +568,18 @@ Module.setCoreSettings = (coreSettings) => {
       'restoreAutoSaveStateOnLoad',
       coreSettings.restoreAutoSaveStateOnLoad
     );
+};
+
+Module.listShaders = () => {
+  return FS.readdir('/shaders/');
+};
+
+Module.loadShader = (shaderPath) => {
+  const loadShader = cwrap('loadShader', null, ['string']);
+  loadShader(shaderPath);
+};
+
+Module.unloadShader = () => {
+  const unloadShader = cwrap('unloadShader', null, []);
+  unloadShader();
 };

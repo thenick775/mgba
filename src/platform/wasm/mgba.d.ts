@@ -16,6 +16,7 @@ declare namespace mGBA {
     screenshotsPath: string;
     patchPath: string;
     autosave: string;
+    shaderPath: string;
   }
 
   export type coreCallbacks = {
@@ -494,6 +495,11 @@ declare namespace mGBA {
      * @param coreSettings - Settings object to apply.
      */
     setCoreSettings(coreSettings: coreSettings): void;
+
+    // TODO: document shader actions
+    listShaders(): string[];
+    loadShader(shaderPath: string): void;
+    unloadShader(): void;
 
     // custom variables
     version: {

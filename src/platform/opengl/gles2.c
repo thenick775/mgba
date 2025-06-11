@@ -12,6 +12,8 @@
 #include <mgba-util/vector.h>
 #include <mgba-util/vfs.h>
 
+#include <emscripten.h>
+
 mLOG_DECLARE_CATEGORY(OPENGL);
 mLOG_DEFINE_CATEGORY(OPENGL, "OpenGL", "video.ogl");
 
@@ -626,6 +628,7 @@ void mGLES2ShaderInit(struct mGLES2Shader* shader, const char* vs, const char* f
 	shader->fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	const GLchar* shaderBuffer[2];
 	const GLubyte* version = glGetString(GL_VERSION);
+	EM_ASM({console.log('opengl version', UTF8ToString($0))}, (const char*)version);
 	if (strncmp((const char*) version, "OpenGL ES ", strlen("OpenGL ES ")) == 0) {
 		shaderBuffer[0] = _gles2Header;
 	} else if (version[0] == '2') {

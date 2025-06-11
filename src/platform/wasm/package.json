@@ -8,7 +8,8 @@
     "./dist/mgba.js",
     "./dist/mgba.d.ts",
     "./dist/mgba.wasm",
-    "./dist/mgba.wasm.map"
+    "./dist/mgba.wasm.map",
+    "./dist/mgba.data"
   ],
   "scripts": {
     "build": "cd ../../.. && docker run --rm -t -v $PWD:/home/mgba/src local-mgba/wasm:2.0 && echo 'mGBA-wasm built successfully!'",

@@ -29,154 +29,6 @@ static struct mEmscriptenRenderer* renderer = NULL;
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
 static struct mLogger logCtx = { .log = _log };
 
-// full handling of fast forward, interrupts and thread logic included
-void updateFastForward(int multiplier) {
-	if (renderer->thread && renderer->videoSync) {
-		mCoreThreadInterrupt(renderer->thread);
-		renderer->thread->impl->sync.videoFrameWait = (multiplier > 1) ? false : renderer->videoSync;
-		renderer->thread->impl->sync.audioWait = (multiplier > 1) ? true : renderer->audioSync;
-		mCoreThreadContinue(renderer->thread);
-	}
-
-	if (renderer->core && renderer->thread && multiplier > 0) {
-		renderer->thread->impl->sync.fpsTarget = (double) renderer->baseFpsTarget * multiplier;
-		mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget",
-		                                (double) renderer->baseFpsTarget * multiplier);
-		renderer->core->reloadConfigOption(renderer->core, "fpsTarget", &renderer->core->config);
-
-		if (renderer->frameSkip == 0) {
-			// fast forward starts at 1, frameskip starts at 0
-			mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", multiplier - 1);
-			renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
-		}
-	}
-}
-
-// keypress utilities
-static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
-	if (event->keysym.sym == SDLK_f && renderer->fastForwardMultiplier == 1) {
-		updateFastForward(event->type == SDL_KEYDOWN ? 2 : 1);
-		return;
-	}
-	if (event->keysym.sym == SDLK_r) {
-		mCoreThreadSetRewinding(renderer->thread, event->type == SDL_KEYDOWN);
-		return;
-	}
-	int key = -1;
-	if (!(event->keysym.mod & ~(KMOD_NUM | KMOD_CAPS))) {
-		key = mInputMapKey(&renderer->core->inputMap, SDL_BINDING_KEY, event->keysym.sym);
-	}
-	if (key != -1) {
-		if (event->type == SDL_KEYDOWN) {
-			renderer->core->addKeys(renderer->core, 1 << key);
-		} else {
-			renderer->core->clearKeys(renderer->core, 1 << key);
-		}
-	}
-}
-
-// fps utilities
-void updateFPS() {
-	double now = emscripten_get_now();
-
-	if (renderer->fpsCounter.lastTime == 0) {
-		renderer->fpsCounter.lastTime = now;
-		return;
-	}
-
-	renderer->fpsCounter.frames++;
-
-	double elapsed = now - renderer->fpsCounter.lastTime;
-	if (elapsed >= 1000.0) { // every ~1 second
-		renderer->fpsCounter.fps = (double) renderer->fpsCounter.frames * 1000.0 / elapsed;
-		renderer->fpsCounter.frames = 0;
-		renderer->fpsCounter.lastTime = now;
-	}
-}
-
-void drawFPS(unsigned x, unsigned y) {
-	char fpsBuf[32];
-	snprintf(fpsBuf, sizeof(fpsBuf), "%.1f", renderer->fpsCounter.fps);
-
-	int scale = 1;
-	int charWidth = 8 * scale;
-	int charHeight = 10 * scale;
-	int width = strlen(fpsBuf) * charWidth;
-	int height = charHeight;
-
-	// save current draw color
-	Uint8 prevR, prevG, prevB, prevA;
-	SDL_GetRenderDrawColor(renderer->sdlRenderer, &prevR, &prevG, &prevB, &prevA);
-
-	// draw gray background
-	SDL_SetRenderDrawColor(renderer->sdlRenderer, 64, 64, 64, 255);
-	SDL_FRect bgRect = { x - 2, y - 2, width + 4, height + 4 };
-	SDL_RenderFillRectF(renderer->sdlRenderer, &bgRect);
-
-	// draw white text
-	SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 255, 255, 255);
-	SDL_RenderText(renderer->sdlRenderer, fpsBuf, scale, x, y);
-
-	// restore original draw color
-	SDL_SetRenderDrawColor(renderer->sdlRenderer, prevR, prevG, prevB, prevA);
-}
-
-// emscripten main run loop
-void runLoop() {
-	union SDL_Event event;
-
-	if (renderer->core) {
-		if (!renderer->thread) {
-			renderer->thread = malloc(sizeof(struct mCoreThread));
-			memset(renderer->thread, 0, sizeof(struct mCoreThread));
-
-			renderer->thread->core = renderer->core;
-			bool didFail = !mCoreThreadStart(renderer->thread);
-			if (didFail)
-				EM_ASM({ console.error("thread instantiation failed") });
-
-			mSDLInitAudio(&renderer->audio, renderer->thread);
-			mSDLResumeAudio(&renderer->audio);
-			updateFastForward(renderer->fastForwardMultiplier);
-		}
-
-		if (mCoreThreadIsActive(renderer->thread)) {
-			while (SDL_PollEvent(&event)) {
-				switch (event.type) {
-				case SDL_KEYDOWN:
-				case SDL_KEYUP:
-					if (renderer->core && renderer->thread) {
-						handleKeypressCore(&event.key);
-					}
-					break;
-				};
-			}
-			if (mCoreSyncWaitFrameStart(&renderer->thread->impl->sync)) {
-				unsigned w, h;
-				renderer->core->currentVideoSize(renderer->core, &w, &h);
-
-				SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
-
-				SDL_UnlockTexture(renderer->sdlTex);
-				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
-				if (renderer->showFpsCounter)
-					drawFPS(w - 35, h - LINE_HEIGHT);
-				SDL_RenderPresent(renderer->sdlRenderer);
-				int stride;
-				SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
-				renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
-			}
-			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);
-		}
-		if (renderer->showFpsCounter)
-			updateFPS();
-	} else {
-		// dont run the main loop if there is no core,  we don't
-		// want to handle events unless the core is running for now
-		emscripten_pause_main_loop();
-	}
-}
-
 /**
  * Exposed core contract methods
  */
@@ -257,6 +109,29 @@ EMSCRIPTEN_KEEPALIVE int getMainLoopTimingValue() {
 
 EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 	emscripten_set_main_loop_timing(mode, value);
+}
+
+// full handling of fast forward, interrupts and thread logic included
+void updateFastForward(int multiplier) {
+	if (renderer->thread && renderer->videoSync) {
+		mCoreThreadInterrupt(renderer->thread);
+		renderer->thread->impl->sync.videoFrameWait = (multiplier > 1) ? false : renderer->videoSync;
+		renderer->thread->impl->sync.audioWait = (multiplier > 1) ? true : renderer->audioSync;
+		mCoreThreadContinue(renderer->thread);
+	}
+
+	if (renderer->core && renderer->thread && multiplier > 0) {
+		renderer->thread->impl->sync.fpsTarget = (double) renderer->baseFpsTarget * multiplier;
+		mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget",
+		                                (double) renderer->baseFpsTarget * multiplier);
+		renderer->core->reloadConfigOption(renderer->core, "fpsTarget", &renderer->core->config);
+
+		if (renderer->frameSkip == 0) {
+			// fast forward starts at 1, frameskip starts at 0
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "frameskip", multiplier - 1);
+			renderer->core->reloadConfigOption(renderer->core, "frameskip", &renderer->core->config);
+		}
+	}
 }
 
 EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
@@ -630,6 +505,139 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		}
 	}
 }
+
+/*
+ * Rendering utilities and emscripten main rendering loop
+ */
+
+// keypress utilities
+static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
+	if (event->keysym.sym == SDLK_f && renderer->fastForwardMultiplier == 1) {
+		updateFastForward(event->type == SDL_KEYDOWN ? 2 : 1);
+		return;
+	}
+	if (event->keysym.sym == SDLK_r) {
+		mCoreThreadSetRewinding(renderer->thread, event->type == SDL_KEYDOWN);
+		return;
+	}
+	int key = -1;
+	if (!(event->keysym.mod & ~(KMOD_NUM | KMOD_CAPS))) {
+		key = mInputMapKey(&renderer->core->inputMap, SDL_BINDING_KEY, event->keysym.sym);
+	}
+	if (key != -1) {
+		if (event->type == SDL_KEYDOWN) {
+			renderer->core->addKeys(renderer->core, 1 << key);
+		} else {
+			renderer->core->clearKeys(renderer->core, 1 << key);
+		}
+	}
+}
+
+// fps utilities
+void updateFPS() {
+	double now = emscripten_get_now();
+
+	if (renderer->fpsCounter.lastTime == 0) {
+		renderer->fpsCounter.lastTime = now;
+		return;
+	}
+
+	renderer->fpsCounter.frames++;
+
+	double elapsed = now - renderer->fpsCounter.lastTime;
+	if (elapsed >= 1000.0) { // every ~1 second
+		renderer->fpsCounter.fps = (double) renderer->fpsCounter.frames * 1000.0 / elapsed;
+		renderer->fpsCounter.frames = 0;
+		renderer->fpsCounter.lastTime = now;
+	}
+}
+
+void drawFPS(unsigned x, unsigned y) {
+	char fpsBuf[32];
+	snprintf(fpsBuf, sizeof(fpsBuf), "%.1f", renderer->fpsCounter.fps);
+
+	int scale = 1;
+	int charWidth = 8 * scale;
+	int charHeight = 10 * scale;
+	int width = strlen(fpsBuf) * charWidth;
+	int height = charHeight;
+
+	// save current draw color
+	Uint8 prevR, prevG, prevB, prevA;
+	SDL_GetRenderDrawColor(renderer->sdlRenderer, &prevR, &prevG, &prevB, &prevA);
+
+	// draw gray background
+	SDL_SetRenderDrawColor(renderer->sdlRenderer, 64, 64, 64, 255);
+	SDL_FRect bgRect = { x - 2, y - 2, width + 4, height + 4 };
+	SDL_RenderFillRectF(renderer->sdlRenderer, &bgRect);
+
+	// draw white text
+	SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 255, 255, 255);
+	SDL_RenderText(renderer->sdlRenderer, fpsBuf, scale, x, y);
+
+	// restore original draw color
+	SDL_SetRenderDrawColor(renderer->sdlRenderer, prevR, prevG, prevB, prevA);
+}
+
+// emscripten main run loop
+void runLoop() {
+	union SDL_Event event;
+
+	if (renderer->core) {
+		if (!renderer->thread) {
+			renderer->thread = malloc(sizeof(struct mCoreThread));
+			memset(renderer->thread, 0, sizeof(struct mCoreThread));
+
+			renderer->thread->core = renderer->core;
+			bool didFail = !mCoreThreadStart(renderer->thread);
+			if (didFail)
+				EM_ASM({ console.error("thread instantiation failed") });
+
+			mSDLInitAudio(&renderer->audio, renderer->thread);
+			mSDLResumeAudio(&renderer->audio);
+			updateFastForward(renderer->fastForwardMultiplier);
+		}
+
+		if (mCoreThreadIsActive(renderer->thread)) {
+			while (SDL_PollEvent(&event)) {
+				switch (event.type) {
+				case SDL_KEYDOWN:
+				case SDL_KEYUP:
+					if (renderer->core && renderer->thread) {
+						handleKeypressCore(&event.key);
+					}
+					break;
+				};
+			}
+			if (mCoreSyncWaitFrameStart(&renderer->thread->impl->sync)) {
+				unsigned w, h;
+				renderer->core->currentVideoSize(renderer->core, &w, &h);
+
+				SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
+
+				SDL_UnlockTexture(renderer->sdlTex);
+				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
+				if (renderer->showFpsCounter)
+					drawFPS(w - 35, h - LINE_HEIGHT);
+				SDL_RenderPresent(renderer->sdlRenderer);
+				int stride;
+				SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
+				renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
+			}
+			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);
+		}
+		if (renderer->showFpsCounter)
+			updateFPS();
+	} else {
+		// dont run the main loop if there is no core,  we don't
+		// want to handle events unless the core is running for now
+		emscripten_pause_main_loop();
+	}
+}
+
+/*
+ * Initialization and main method (entrypoint)
+ */
 
 void _log(struct mLogger* logger, int category, enum mLogLevel level, const char* format, va_list args) {
 	UNUSED(logger);

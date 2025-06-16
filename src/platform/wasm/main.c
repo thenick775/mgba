@@ -245,6 +245,53 @@ EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
 	return false;
 }
 
+EMSCRIPTEN_KEEPALIVE bool autoSaveState() {
+	if (renderer->core) {
+		EM_ASM({ console.log('attempting to save auto save state') });
+		bool result = false;
+		struct VDir* autosaveDir = VDirOpen("/autosave");
+		char autoSaveName[PATH_MAX + 14];
+		snprintf(autoSaveName, sizeof(autoSaveName), "%s_auto.ss", renderer->core->dirs.baseName);
+
+		struct VFile* vf = autosaveDir->openFile(autosaveDir, autoSaveName, (O_CREAT | O_TRUNC | O_RDWR));
+
+		if (!vf)
+			return false;
+
+		result = mCoreSaveStateNamed(renderer->core, vf, SAVESTATE_ALL);
+		bool successfullyClosed = vf->close(vf);
+
+		EM_ASM({ console.log('auto save state completed with result', $0) }, result && successfullyClosed);
+		return result && successfullyClosed;
+	}
+
+	return false;
+}
+
+EMSCRIPTEN_KEEPALIVE bool loadAutoSaveState() {
+	bool result = false;
+	if (renderer->core) {
+		EM_ASM({ console.log('attempting to load auto save state') });
+		struct VDir* autosaveDir = VDirOpen("/autosave");
+		char autoSaveName[PATH_MAX + 14];
+		snprintf(autoSaveName, sizeof(autoSaveName), "%s_auto.ss", renderer->core->dirs.baseName);
+
+		struct VFile* vf = autosaveDir->openFile(autosaveDir, autoSaveName, O_RDONLY);
+
+		EM_ASM({ console.log('vf', $0) }, vf);
+
+		if (!vf) {
+			EM_ASM({ console.log('no vfile returning false early') });
+			return false;
+		}
+
+		result = mCoreLoadStateNamed(renderer->core, vf, SAVESTATE_ALL);
+		EM_ASM({ console.log('loaded auto save state, result:', $0) }, result);
+		return result;
+	}
+	return false;
+}
+
 // loads all cheats files located in the cores cheatsPath,
 // cheat files must match the name of the rom they are
 // to be applied to, and must end with the extension .cheats
@@ -461,6 +508,12 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->timestepSync = value;
 	} else if (strcmp(settingName, "showFpsCounter") == 0 && (value == true || value == false)) {
 		renderer->showFpsCounter = value;
+	} else if (strcmp(settingName, "autoSaveStateEnable") == 0 && (value == true || value == false)) {
+		renderer->autoSaveStateEnable = value;
+	} else if (strcmp(settingName, "restoreAutoSaveStateOnLoad") == 0 && (value == true || value == false)) {
+		renderer->restoreAutoSaveStateOnLoad = value;
+	} else if (strcmp(settingName, "autoSaveStateTimerIntervalSeconds") == 0 && value > 0) {
+		renderer->autoSaveStateTimer.intervalSeconds = value;
 	}
 
 	// core settings when running
@@ -579,6 +632,23 @@ void drawFPS(unsigned x, unsigned y) {
 	SDL_SetRenderDrawColor(renderer->sdlRenderer, prevR, prevG, prevB, prevA);
 }
 
+// auto save state utilities
+void updateAutoSaveState() {
+	double now = emscripten_get_now();
+
+	if (renderer->autoSaveStateTimer.lastTime == 0) {
+		renderer->autoSaveStateTimer.lastTime = now;
+		return;
+	}
+
+	double elapsed = now - renderer->autoSaveStateTimer.lastTime;
+	if (elapsed >= renderer->autoSaveStateTimer.intervalSeconds * 1000) {
+		bool successfulAutoSave = autoSaveState();
+		if (successfulAutoSave)
+			renderer->autoSaveStateTimer.lastTime = now;
+	}
+}
+
 // emscripten main run loop
 void runLoop() {
 	union SDL_Event event;
@@ -596,6 +666,9 @@ void runLoop() {
 			mSDLInitAudio(&renderer->audio, renderer->thread);
 			mSDLResumeAudio(&renderer->audio);
 			updateFastForward(renderer->fastForwardMultiplier);
+
+			if (renderer->restoreAutoSaveStateOnLoad)
+				loadAutoSaveState();
 		}
 
 		if (mCoreThreadIsActive(renderer->thread)) {
@@ -628,6 +701,8 @@ void runLoop() {
 		}
 		if (renderer->showFpsCounter)
 			updateFPS();
+		if (renderer->autoSaveStateEnable)
+			updateAutoSaveState();
 	} else {
 		// dont run the main loop if there is no core,  we don't
 		// want to handle events unless the core is running for now
@@ -697,6 +772,10 @@ int main() {
 	renderer->fpsCounter.lastTime = 0;
 	renderer->fpsCounter.fps = 0;
 	renderer->fpsCounter.frames = 0;
+	renderer->autoSaveStateEnable = true;
+	renderer->restoreAutoSaveStateOnLoad = true;
+	renderer->autoSaveStateTimer.lastTime = 0;
+	renderer->autoSaveStateTimer.intervalSeconds = 30;
 
 	mLogSetDefaultLogger(&logCtx);
 

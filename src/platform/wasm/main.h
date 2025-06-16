@@ -13,6 +13,11 @@ typedef struct {
 	int frames;
 } FPSCounter;
 
+typedef struct {
+	double lastTime;
+	int intervalSeconds;
+} AutoSaveStateTimer;
+
 // represents global items used in rendering mGBA in the wasm platform
 struct mEmscriptenRenderer {
 	struct mCore* core;
@@ -22,11 +27,13 @@ struct mEmscriptenRenderer {
 	SDL_Texture* sdlTex;
 	SDL_Renderer* sdlRenderer;
 	FPSCounter fpsCounter;
+	AutoSaveStateTimer autoSaveStateTimer;
 
 	struct mSDLAudio audio;
 	struct mCoreThread* thread;
 
-	// persistent options for the core at runtime, limited subset of mCoreOptions
+	// persistent options for the core at runtime, limited
+	// subset of mCoreOptions and custom functionality
 	int fastForwardMultiplier;
 	int frameSkip;
 	int baseFpsTarget;
@@ -36,6 +43,8 @@ struct mEmscriptenRenderer {
 	bool threadedVideo;
 	bool rewindEnable;
 	bool showFpsCounter;
+	bool restoreAutoSaveStateOnLoad;
+	bool autoSaveStateEnable;
 	int rewindBufferCapacity;
 	int rewindBufferInterval;
 };

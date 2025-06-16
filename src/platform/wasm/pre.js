@@ -34,11 +34,14 @@ Module.listSaves = () => {
   return FS.readdir('/data/saves/');
 };
 
-// yanked from main.c for ease of use
 Module.FSInit = () => {
   return new Promise((resolve, reject) => {
     FS.mkdir('/data');
     FS.mount(FS.filesystems.IDBFS, {}, '/data');
+
+    // mount auto save directory, this should auto persist, while the data mount should not
+    FS.mkdir('/autosave');
+    FS.mount(FS.filesystems.IDBFS, { autoPersist: true }, '/autosave');
 
     // load data from IDBFS
     FS.syncfs(true, (err) => {
@@ -320,6 +323,16 @@ Module.loadState = (slot) => {
   return loadState(slot);
 };
 
+Module.forceAutoSaveState = () => {
+  const autoSaveState = cwrap('autoSaveState', 'boolean', []);
+  return autoSaveState();
+};
+
+Module.loadAutoSaveState = () => {
+  const loadAutoSaveState = cwrap('loadAutoSaveState', 'boolean', []);
+  return loadAutoSaveState();
+};
+
 Module.saveStateSlot = (slot, flags) => {
   var saveStateSlot = cwrap('saveStateSlot', 'number', ['number', 'number']);
   Module.saveStateSlot = (slot, flags) => {
@@ -463,4 +476,28 @@ Module.setCoreSettings = (coreSettings) => {
 
   if (coreSettings.showFpsCounter !== undefined)
     setIntegerCoreSetting('showFpsCounter', coreSettings.showFpsCounter);
+
+  if (coreSettings.autoSaveStateTimerIntervalSeconds !== undefined)
+    setIntegerCoreSetting(
+      'autoSaveStateTimerIntervalSeconds',
+      coreSettings.autoSaveStateTimerIntervalSeconds
+    );
+
+  if (coreSettings.autoSaveStateEnable !== undefined)
+    setIntegerCoreSetting(
+      'autoSaveStateEnable',
+      coreSettings.autoSaveStateEnable
+    );
+
+  if (coreSettings.autoSaveStateTimerIntervalSeconds !== undefined)
+    setIntegerCoreSetting(
+      'autoSaveStateTimerIntervalSeconds',
+      coreSettings.autoSaveStateTimerIntervalSeconds
+    );
+
+  if (coreSettings.restoreAutoSaveStateOnLoad !== undefined)
+    setIntegerCoreSetting(
+      'restoreAutoSaveStateOnLoad',
+      coreSettings.restoreAutoSaveStateOnLoad
+    );
 };

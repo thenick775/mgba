@@ -270,7 +270,7 @@ EMSCRIPTEN_KEEPALIVE bool autoSaveState() {
 
 EMSCRIPTEN_KEEPALIVE bool loadAutoSaveState() {
 	bool result = false;
-	if (renderer->core) {
+	if (renderer->core && renderer->thread) {
 		EM_ASM({ console.log('attempting to load auto save state') });
 		struct VDir* autosaveDir = VDirOpen("/autosave");
 		char autoSaveName[PATH_MAX + 14];
@@ -285,7 +285,9 @@ EMSCRIPTEN_KEEPALIVE bool loadAutoSaveState() {
 			return false;
 		}
 
+		mCoreThreadInterrupt(renderer->thread);
 		result = mCoreLoadStateNamed(renderer->core, vf, SAVESTATE_ALL);
+		mCoreThreadContinue(renderer->thread);
 		EM_ASM({ console.log('loaded auto save state, result:', $0) }, result);
 		return result;
 	}

@@ -62,6 +62,11 @@ declare namespace mGBA {
     loadState(slot: number): boolean;
     forceAutoSaveState(): boolean;
     loadAutoSaveState(): boolean;
+    getAutoSaveState(): { autoSaveStateName: string; data: Uint8Array };
+    uploadAutoSaveState(
+      autoSaveStateName: string,
+      data: Uint8Array
+    ): Promise<void>;
     pauseAudio(): void;
     pauseGame(): void;
     quickReload(): void;
@@ -90,6 +95,7 @@ declare namespace mGBA {
     filePaths(): filePaths;
     gameName?: string;
     saveName?: string;
+    autoSaveStateName?: string;
     // extra exported runtime methods
     FS: typeof FS;
     // SDL2

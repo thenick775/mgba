@@ -12,10 +12,15 @@ Module.loadGame = (romPath, savePathOverride) => {
     arr.pop();
 
     const saveName = arr.join('.') + '.sav';
+    const autoSaveStateName = arr.join('.') + '_auto.ss';
 
     Module.gameName = romPath;
     Module.saveName =
       savePathOverride ?? saveName.replace('/data/games/', '/data/saves/');
+    Module.autoSaveStateName = autoSaveStateName.replace(
+      '/data/games/',
+      '/autosave/'
+    );
     return true;
   }
 
@@ -331,6 +336,37 @@ Module.forceAutoSaveState = () => {
 Module.loadAutoSaveState = () => {
   const loadAutoSaveState = cwrap('loadAutoSaveState', 'boolean', []);
   return loadAutoSaveState();
+};
+
+Module.getAutoSaveState = () => {
+  console.log('vancise in getAutoSaveState', Module.autoSaveStateName);
+  return {
+    autoSaveStateName: Module.autoSaveStateName,
+    data: FS.readFile(Module.autoSaveStateName),
+  };
+};
+
+Module.uploadAutoSaveState = async (autoSaveStateName, data) => {
+  return new Promise((resolve, reject) => {
+    try {
+      if (!(data instanceof Uint8Array)) {
+        console.warn('Auto save state data must be a Uint8Array');
+        return;
+      }
+
+      if (!autoSaveStateName.length) {
+        console.warn('Auto save state file name invalid');
+        return;
+      }
+
+      const path = `${autoSaveStateName}`;
+      FS.writeFile(path, data);
+
+      resolve();
+    } catch (err) {
+      reject(err);
+    }
+  });
 };
 
 Module.saveStateSlot = (slot, flags) => {

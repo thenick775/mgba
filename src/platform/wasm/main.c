@@ -169,10 +169,64 @@ EMSCRIPTEN_KEEPALIVE void quitMgba() {
 	exit(0);
 }
 
+EMSCRIPTEN_KEEPALIVE bool autoSaveState() {
+	if (renderer->core) {
+		EM_ASM({ console.log('attempting to save auto save state') });
+		bool result = false;
+		struct VDir* autosaveDir = VDirOpen("/autosave");
+		char autoSaveName[PATH_MAX + 14];
+		snprintf(autoSaveName, sizeof(autoSaveName), "%s_auto.ss", renderer->core->dirs.baseName);
+
+		struct VFile* vf = autosaveDir->openFile(autosaveDir, autoSaveName, (O_CREAT | O_TRUNC | O_RDWR));
+
+		if (!vf)
+			return false;
+
+		result = mCoreSaveStateNamed(renderer->core, vf, SAVESTATE_ALL);
+		bool successfullyClosed = vf->close(vf);
+
+		EM_ASM({ console.log('auto save state completed with result', $0) }, result && successfullyClosed);
+		return result && successfullyClosed;
+	}
+
+	return false;
+}
+
+EMSCRIPTEN_KEEPALIVE bool loadAutoSaveState() {
+	bool result = false;
+	if (renderer->core && renderer->thread) {
+		EM_ASM({ console.log('attempting to load auto save state') });
+		struct VDir* autosaveDir = VDirOpen("/autosave");
+		char autoSaveName[PATH_MAX + 14];
+		snprintf(autoSaveName, sizeof(autoSaveName), "%s_auto.ss", renderer->core->dirs.baseName);
+
+		struct VFile* vf = autosaveDir->openFile(autosaveDir, autoSaveName, O_RDONLY);
+
+		EM_ASM({ console.log('vf', $0) }, vf);
+
+		if (!vf) {
+			EM_ASM({ console.log('no vfile returning false early') });
+			return false;
+		}
+
+		mCoreThreadInterrupt(renderer->thread);
+		result = mCoreLoadStateNamed(renderer->core, vf, SAVESTATE_ALL);
+		mCoreThreadContinue(renderer->thread);
+		EM_ASM({ console.log('loaded auto save state, result:', $0) }, result);
+		return result;
+	}
+	return false;
+}
+
 EMSCRIPTEN_KEEPALIVE void quickReload() {
 	if (renderer->core && renderer->thread) {
 		mCoreThreadInterrupt(renderer->thread);
+
 		renderer->core->reset(renderer->core);
+
+		if (renderer->restoreAutoSaveStateOnLoad)
+			loadAutoSaveState();
+
 		mCoreThreadContinue(renderer->thread);
 	}
 }
@@ -240,55 +294,6 @@ EMSCRIPTEN_KEEPALIVE bool loadState(int slot) {
 		mCoreThreadInterrupt(renderer->thread);
 		result = mCoreLoadState(renderer->core, slot, SAVESTATE_ALL);
 		mCoreThreadContinue(renderer->thread);
-		return result;
-	}
-	return false;
-}
-
-EMSCRIPTEN_KEEPALIVE bool autoSaveState() {
-	if (renderer->core) {
-		EM_ASM({ console.log('attempting to save auto save state') });
-		bool result = false;
-		struct VDir* autosaveDir = VDirOpen("/autosave");
-		char autoSaveName[PATH_MAX + 14];
-		snprintf(autoSaveName, sizeof(autoSaveName), "%s_auto.ss", renderer->core->dirs.baseName);
-
-		struct VFile* vf = autosaveDir->openFile(autosaveDir, autoSaveName, (O_CREAT | O_TRUNC | O_RDWR));
-
-		if (!vf)
-			return false;
-
-		result = mCoreSaveStateNamed(renderer->core, vf, SAVESTATE_ALL);
-		bool successfullyClosed = vf->close(vf);
-
-		EM_ASM({ console.log('auto save state completed with result', $0) }, result && successfullyClosed);
-		return result && successfullyClosed;
-	}
-
-	return false;
-}
-
-EMSCRIPTEN_KEEPALIVE bool loadAutoSaveState() {
-	bool result = false;
-	if (renderer->core && renderer->thread) {
-		EM_ASM({ console.log('attempting to load auto save state') });
-		struct VDir* autosaveDir = VDirOpen("/autosave");
-		char autoSaveName[PATH_MAX + 14];
-		snprintf(autoSaveName, sizeof(autoSaveName), "%s_auto.ss", renderer->core->dirs.baseName);
-
-		struct VFile* vf = autosaveDir->openFile(autosaveDir, autoSaveName, O_RDONLY);
-
-		EM_ASM({ console.log('vf', $0) }, vf);
-
-		if (!vf) {
-			EM_ASM({ console.log('no vfile returning false early') });
-			return false;
-		}
-
-		mCoreThreadInterrupt(renderer->thread);
-		result = mCoreLoadStateNamed(renderer->core, vf, SAVESTATE_ALL);
-		mCoreThreadContinue(renderer->thread);
-		EM_ASM({ console.log('loaded auto save state, result:', $0) }, result);
 		return result;
 	}
 	return false;

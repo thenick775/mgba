@@ -207,7 +207,7 @@ EMSCRIPTEN_KEEPALIVE void quitMgba() {
 }
 
 EMSCRIPTEN_KEEPALIVE bool autoSaveState() {
-	if (renderer->core) {
+	if (renderer->core && renderer->thread) {
 		EM_ASM({ console.log('attempting to save auto save state') });
 		bool result = false;
 		struct VDir* autosaveDir = VDirOpen("/autosave");
@@ -219,7 +219,9 @@ EMSCRIPTEN_KEEPALIVE bool autoSaveState() {
 		if (!vf)
 			return false;
 
+		mCoreThreadInterrupt(renderer->thread);
 		result = mCoreSaveStateNamed(renderer->core, vf, SAVESTATE_ALL);
+		mCoreThreadContinue(renderer->thread);
 		bool successfullyClosed = vf->close(vf);
 
 		EM_ASM({ console.log('auto save state completed with result', $0) }, result && successfullyClosed);

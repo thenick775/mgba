@@ -24,9 +24,16 @@
   "keywords": [
     "mGBA",
     "wasm",
+    "web-assembly",
+    "webassembly",
     "emscripten",
     "emulator",
-    "javascript"
+    "emulation",
+    "javascript",
+    "typescript",
+    "game boy",
+    "game boy color",
+    "game boy advance"
   ],
   "author": "Nicholas VanCise",
   "license": "MPL-2.0",

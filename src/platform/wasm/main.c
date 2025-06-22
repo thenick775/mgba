@@ -29,6 +29,43 @@ static struct mEmscriptenRenderer* renderer = NULL;
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
 static struct mLogger logCtx = { .log = _log };
 
+// stored core callback function pointers
+typedef struct {
+	void (*alarm)(void*);
+	void (*coreCrashed)(void*);
+	void (*keysRead)(void*);
+	void (*savedataUpdated)(void*);
+	void (*videoFrameEnded)(void*);
+	void (*videoFrameStarted)(void*);
+	void (*autoSaveStateCaptured)(void*);
+	void (*autoSaveStateLoaded)(void*);
+} CallbackStorage;
+
+static CallbackStorage callbackStorage;
+
+// Macro to create wrapper functions, necessary as some core callbacks want to access
+// things like the file system on the CPU thread, which can only be done on the main thread.
+#define DEFINE_WRAPPER(field)                            \
+	static void wrapped_##field(void* context) {         \
+		MAIN_THREAD_EM_ASM(                              \
+		    {                                            \
+			    const funcPtr = $0;                      \
+			    const ctx = $1;                          \
+			    const func = wasmTable.get(funcPtr);     \
+			    if (func)                                \
+				    func(ctx);                           \
+		    },                                           \
+		    (int) callbackStorage.field, (int) context); \
+	}
+
+// Generate wrapper functions
+DEFINE_WRAPPER(alarm)
+DEFINE_WRAPPER(coreCrashed)
+DEFINE_WRAPPER(keysRead)
+DEFINE_WRAPPER(savedataUpdated)
+DEFINE_WRAPPER(videoFrameEnded)
+DEFINE_WRAPPER(videoFrameStarted)
+
 /**
  * Exposed core contract methods
  */
@@ -224,8 +261,11 @@ EMSCRIPTEN_KEEPALIVE void quickReload() {
 
 		renderer->core->reset(renderer->core);
 
-		if (renderer->restoreAutoSaveStateOnLoad)
-			loadAutoSaveState();
+		if (renderer->restoreAutoSaveStateOnLoad) {
+			bool successfulLoad = loadAutoSaveState();
+			if (successfulLoad && callbackStorage.autoSaveStateLoaded)
+				callbackStorage.autoSaveStateLoaded(NULL);
+		}
 
 		mCoreThreadContinue(renderer->thread);
 	}
@@ -409,45 +449,12 @@ EMSCRIPTEN_KEEPALIVE bool loadStateSlot(int slot, int flags) {
 	return mCoreLoadState(renderer->core, slot, flags);
 }
 
-typedef struct {
-	void (*alarm)(void*);
-	void (*coreCrashed)(void*);
-	void (*keysRead)(void*);
-	void (*savedataUpdated)(void*);
-	void (*videoFrameEnded)(void*);
-	void (*videoFrameStarted)(void*);
-} CallbackStorage;
-
-static CallbackStorage callbackStorage;
-
-// Macro to create wrapper functions
-#define DEFINE_WRAPPER(field)                            \
-	static void wrapped_##field(void* context) {         \
-		MAIN_THREAD_EM_ASM(                              \
-		    {                                            \
-			    const funcPtr = $0;                      \
-			    const ctx = $1;                          \
-			    const func = wasmTable.get(funcPtr);     \
-			    if (func)                                \
-				    func(ctx);                           \
-		    },                                           \
-		    (int) callbackStorage.field, (int) context); \
-	}
-
-// Generate wrapper functions
-DEFINE_WRAPPER(alarm)
-DEFINE_WRAPPER(coreCrashed)
-DEFINE_WRAPPER(keysRead)
-DEFINE_WRAPPER(savedataUpdated)
-DEFINE_WRAPPER(videoFrameEnded)
-DEFINE_WRAPPER(videoFrameStarted)
-
 // Function to ensure all callbacks execute on the main thread
-EMSCRIPTEN_KEEPALIVE void addCoreCallbacks(void (*alarmCallbackPtr)(void*), void (*coreCrashedCallbackPtr)(void*),
-                                           void (*keysReadCallbackPtr)(void*),
-                                           void (*saveDataUpdatedCallbackPtr)(void*),
-                                           void (*videoFrameEndedCallbackPtr)(void*),
-                                           void (*videoFrameStartedCallbackPtr)(void*)) {
+EMSCRIPTEN_KEEPALIVE void
+addCoreCallbacks(void (*alarmCallbackPtr)(void*), void (*coreCrashedCallbackPtr)(void*),
+                 void (*keysReadCallbackPtr)(void*), void (*saveDataUpdatedCallbackPtr)(void*),
+                 void (*videoFrameEndedCallbackPtr)(void*), void (*videoFrameStartedCallbackPtr)(void*),
+                 void (*autoSaveStateCapturedCallbackPtr)(void*), void (*autoSaveStateLoadedCallbackPtr)(void*)) {
 	if (renderer->core) {
 		struct mCoreCallbacks callbacks = {};
 		renderer->core->clearCoreCallbacks(renderer->core);
@@ -470,6 +477,12 @@ EMSCRIPTEN_KEEPALIVE void addCoreCallbacks(void (*alarmCallbackPtr)(void*), void
 			callbackStorage.videoFrameEnded = videoFrameEndedCallbackPtr;
 		if (videoFrameStartedCallbackPtr)
 			callbackStorage.videoFrameStarted = videoFrameStartedCallbackPtr;
+
+		// store original ad-hoc function pointers
+		if (autoSaveStateCapturedCallbackPtr)
+			callbackStorage.autoSaveStateCaptured = autoSaveStateCapturedCallbackPtr;
+		if (autoSaveStateLoadedCallbackPtr)
+			callbackStorage.autoSaveStateLoaded = autoSaveStateLoadedCallbackPtr;
 
 		// assign wrapped functions
 		if (alarmCallbackPtr)
@@ -651,8 +664,11 @@ void updateAutoSaveState() {
 	double elapsed = now - renderer->autoSaveStateTimer.lastTime;
 	if (elapsed >= renderer->autoSaveStateTimer.intervalSeconds * 1000) {
 		bool successfulAutoSave = autoSaveState();
-		if (successfulAutoSave)
+		if (successfulAutoSave) {
 			renderer->autoSaveStateTimer.lastTime = now;
+			if (callbackStorage.autoSaveStateCaptured)
+				callbackStorage.autoSaveStateCaptured(NULL);
+		}
 	}
 }
 
@@ -674,8 +690,11 @@ void runLoop() {
 			mSDLResumeAudio(&renderer->audio);
 			updateFastForward(renderer->fastForwardMultiplier);
 
-			if (renderer->restoreAutoSaveStateOnLoad)
-				loadAutoSaveState();
+			if (renderer->restoreAutoSaveStateOnLoad) {
+				bool successfulLoad = loadAutoSaveState();
+				if (successfulLoad && callbackStorage.autoSaveStateLoaded)
+					callbackStorage.autoSaveStateLoaded(NULL);
+			}
 		}
 
 		if (mCoreThreadIsActive(renderer->thread)) {

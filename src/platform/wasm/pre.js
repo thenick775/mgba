@@ -420,6 +420,8 @@ const coreCallbackStore = {
   saveDataUpdatedCallbackPtr: null,
   videoFrameEndedCallbackPtr: null,
   videoFrameStartedCallbackPtr: null,
+  autoSaveStateCapturedCallbackPtr: null,
+  autoSaveStateLoadedCallbackPtr: null,
 };
 
 // adds user callbacks to the callback store, and makes function(s) available to the core in c
@@ -449,7 +451,9 @@ Module.addCoreCallbacks = (callbacks) => {
     coreCallbackStore.keysReadCallbackPtr,
     coreCallbackStore.saveDataUpdatedCallbackPtr,
     coreCallbackStore.videoFrameEndedCallbackPtr,
-    coreCallbackStore.videoFrameStartedCallbackPtr
+    coreCallbackStore.videoFrameStartedCallbackPtr,
+    coreCallbackStore.autoSaveStateCapturedCallbackPtr,
+    coreCallbackStore.autoSaveStateLoadedCallbackPtr
   );
 };
 

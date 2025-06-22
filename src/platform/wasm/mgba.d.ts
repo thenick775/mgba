@@ -22,6 +22,8 @@ declare namespace mGBA {
     saveDataUpdatedCallback?: (() => void) | null;
     videoFrameEndedCallback?: (() => void) | null;
     videoFrameStartedCallback?: (() => void) | null;
+    autoSaveStateCapturedCallback?: (() => void) | null;
+    autoSaveStateLoadedCallback?: (() => void) | null;
   };
 
   export type coreSettings = {

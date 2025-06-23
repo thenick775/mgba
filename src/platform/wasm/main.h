@@ -37,6 +37,8 @@ struct mEmscriptenRenderer {
 	int fastForwardMultiplier;
 	int frameSkip;
 	int baseFpsTarget;
+	int rewindBufferCapacity;
+	int rewindBufferInterval;
 	bool videoSync;
 	bool audioSync;
 	bool timestepSync;
@@ -45,6 +47,4 @@ struct mEmscriptenRenderer {
 	bool showFpsCounter;
 	bool restoreAutoSaveStateOnLoad;
 	bool autoSaveStateEnable;
-	int rewindBufferCapacity;
-	int rewindBufferInterval;
 };

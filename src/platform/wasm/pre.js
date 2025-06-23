@@ -339,7 +339,6 @@ Module.loadAutoSaveState = () => {
 };
 
 Module.getAutoSaveState = () => {
-  console.log('vancise in getAutoSaveState', Module.autoSaveStateName);
   return {
     autoSaveStateName: Module.autoSaveStateName,
     data: FS.readFile(Module.autoSaveStateName),
@@ -527,12 +526,6 @@ Module.setCoreSettings = (coreSettings) => {
     setIntegerCoreSetting(
       'autoSaveStateEnable',
       coreSettings.autoSaveStateEnable
-    );
-
-  if (coreSettings.autoSaveStateTimerIntervalSeconds !== undefined)
-    setIntegerCoreSetting(
-      'autoSaveStateTimerIntervalSeconds',
-      coreSettings.autoSaveStateTimerIntervalSeconds
     );
 
   if (coreSettings.restoreAutoSaveStateOnLoad !== undefined)

@@ -12,10 +12,15 @@ Module.loadGame = (romPath, savePathOverride) => {
     arr.pop();
 
     const saveName = arr.join('.') + '.sav';
+    const autoSaveStateName = arr.join('.') + '_auto.ss';
 
     Module.gameName = romPath;
     Module.saveName =
       savePathOverride ?? saveName.replace('/data/games/', '/data/saves/');
+    Module.autoSaveStateName = autoSaveStateName.replace(
+      '/data/games/',
+      '/autosave/'
+    );
     return true;
   }
 
@@ -34,11 +39,14 @@ Module.listSaves = () => {
   return FS.readdir('/data/saves/');
 };
 
-// yanked from main.c for ease of use
 Module.FSInit = () => {
   return new Promise((resolve, reject) => {
     FS.mkdir('/data');
     FS.mount(FS.filesystems.IDBFS, {}, '/data');
+
+    // mount auto save directory, this should auto persist, while the data mount should not
+    FS.mkdir('/autosave');
+    FS.mount(FS.filesystems.IDBFS, { autoPersist: true }, '/autosave');
 
     // load data from IDBFS
     FS.syncfs(true, (err) => {
@@ -320,6 +328,46 @@ Module.loadState = (slot) => {
   return loadState(slot);
 };
 
+Module.forceAutoSaveState = () => {
+  const autoSaveState = cwrap('autoSaveState', 'boolean', []);
+  return autoSaveState();
+};
+
+Module.loadAutoSaveState = () => {
+  const loadAutoSaveState = cwrap('loadAutoSaveState', 'boolean', []);
+  return loadAutoSaveState();
+};
+
+Module.getAutoSaveState = () => {
+  return {
+    autoSaveStateName: Module.autoSaveStateName,
+    data: FS.readFile(Module.autoSaveStateName),
+  };
+};
+
+Module.uploadAutoSaveState = async (autoSaveStateName, data) => {
+  return new Promise((resolve, reject) => {
+    try {
+      if (!(data instanceof Uint8Array)) {
+        console.warn('Auto save state data must be a Uint8Array');
+        return;
+      }
+
+      if (!autoSaveStateName.length) {
+        console.warn('Auto save state file name invalid');
+        return;
+      }
+
+      const path = `${autoSaveStateName}`;
+      FS.writeFile(path, data);
+
+      resolve();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
+
 Module.saveStateSlot = (slot, flags) => {
   var saveStateSlot = cwrap('saveStateSlot', 'number', ['number', 'number']);
   Module.saveStateSlot = (slot, flags) => {
@@ -371,6 +419,8 @@ const coreCallbackStore = {
   saveDataUpdatedCallbackPtr: null,
   videoFrameEndedCallbackPtr: null,
   videoFrameStartedCallbackPtr: null,
+  autoSaveStateCapturedCallbackPtr: null,
+  autoSaveStateLoadedCallbackPtr: null,
 };
 
 // adds user callbacks to the callback store, and makes function(s) available to the core in c
@@ -400,7 +450,9 @@ Module.addCoreCallbacks = (callbacks) => {
     coreCallbackStore.keysReadCallbackPtr,
     coreCallbackStore.saveDataUpdatedCallbackPtr,
     coreCallbackStore.videoFrameEndedCallbackPtr,
-    coreCallbackStore.videoFrameStartedCallbackPtr
+    coreCallbackStore.videoFrameStartedCallbackPtr,
+    coreCallbackStore.autoSaveStateCapturedCallbackPtr,
+    coreCallbackStore.autoSaveStateLoadedCallbackPtr
   );
 };
 
@@ -463,4 +515,22 @@ Module.setCoreSettings = (coreSettings) => {
 
   if (coreSettings.showFpsCounter !== undefined)
     setIntegerCoreSetting('showFpsCounter', coreSettings.showFpsCounter);
+
+  if (coreSettings.autoSaveStateTimerIntervalSeconds !== undefined)
+    setIntegerCoreSetting(
+      'autoSaveStateTimerIntervalSeconds',
+      coreSettings.autoSaveStateTimerIntervalSeconds
+    );
+
+  if (coreSettings.autoSaveStateEnable !== undefined)
+    setIntegerCoreSetting(
+      'autoSaveStateEnable',
+      coreSettings.autoSaveStateEnable
+    );
+
+  if (coreSettings.restoreAutoSaveStateOnLoad !== undefined)
+    setIntegerCoreSetting(
+      'restoreAutoSaveStateOnLoad',
+      coreSettings.restoreAutoSaveStateOnLoad
+    );
 };

@@ -22,6 +22,8 @@ declare namespace mGBA {
     saveDataUpdatedCallback?: (() => void) | null;
     videoFrameEndedCallback?: (() => void) | null;
     videoFrameStartedCallback?: (() => void) | null;
+    autoSaveStateCapturedCallback?: (() => void) | null;
+    autoSaveStateLoadedCallback?: (() => void) | null;
   };
 
   export type coreSettings = {
@@ -31,6 +33,7 @@ declare namespace mGBA {
     rewindBufferInterval?: number;
     audioSampleRate?: number;
     audioBufferSize?: number;
+    autoSaveStateTimerIntervalSeconds?: number;
     allowOpposingDirections?: boolean;
     videoSync?: boolean;
     audioSync?: boolean;
@@ -38,6 +41,8 @@ declare namespace mGBA {
     rewindEnable?: boolean;
     timestepSync?: boolean;
     showFpsCounter?: boolean;
+    autoSaveStateEnable?: boolean;
+    restoreAutoSaveStateOnLoad?: boolean;
   };
 
   export interface mGBAEmulator extends EmscriptenModule {
@@ -57,6 +62,13 @@ declare namespace mGBA {
     listSaves(): string[];
     loadGame(romPath: string, savePathOverride?: string): boolean;
     loadState(slot: number): boolean;
+    forceAutoSaveState(): boolean;
+    loadAutoSaveState(): boolean;
+    getAutoSaveState(): { autoSaveStateName: string; data: Uint8Array };
+    uploadAutoSaveState(
+      autoSaveStateName: string,
+      data: Uint8Array
+    ): Promise<void>;
     pauseAudio(): void;
     pauseGame(): void;
     quickReload(): void;
@@ -76,7 +88,7 @@ declare namespace mGBA {
     uploadSaveOrSaveState(file: File, callback?: () => void): void;
     addCoreCallbacks(coreCallbacks: coreCallbacks): void;
     toggleRewind(enabled: boolean): void;
-    setCoreSettings(coreSettings: CoreSettings): void;
+    setCoreSettings(coreSettings: coreSettings): void;
     // custom variables
     version: {
       projectName: string;
@@ -85,6 +97,7 @@ declare namespace mGBA {
     filePaths(): filePaths;
     gameName?: string;
     saveName?: string;
+    autoSaveStateName?: string;
     // extra exported runtime methods
     FS: typeof FS;
     // SDL2

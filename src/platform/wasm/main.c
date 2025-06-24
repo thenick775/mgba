@@ -199,6 +199,8 @@ EMSCRIPTEN_KEEPALIVE void quitGame() {
 		renderer->core->deinit(renderer->core);
 		renderer->core = NULL;
 		renderer->audio.core = NULL;
+
+		renderer->autoSaveStateTimer.lastTime = 0;
 	}
 }
 
@@ -270,6 +272,8 @@ EMSCRIPTEN_KEEPALIVE void pauseGame() {
 
 	if (renderer->thread)
 		mCoreThreadPause(renderer->thread);
+
+	renderer->autoSaveStateTimer.lastTime = 0;
 
 	emscripten_pause_main_loop();
 }

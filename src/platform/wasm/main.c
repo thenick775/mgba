@@ -455,7 +455,12 @@ addCoreCallbacks(void (*alarmCallbackPtr)(void*), void (*coreCrashedCallbackPtr)
                  void (*autoSaveStateCapturedCallbackPtr)(void*), void (*autoSaveStateLoadedCallbackPtr)(void*)) {
 	if (renderer->core) {
 		struct mCoreCallbacks callbacks = {};
+		// clear core callbacks
 		renderer->core->clearCoreCallbacks(renderer->core);
+		// clear ad-hoc callbacks
+		callbackStorage.autoSaveStateCaptured = NULL;
+		callbackStorage.autoSaveStateLoaded = NULL;
+
 		// the thread has its own suite of callbacks where ours should overlay on top,
 		// after clearing the current core callbacks since there is not a mechanism to
 		// filter the callbacks, we need to re-add the thread callbacks

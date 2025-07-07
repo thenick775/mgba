@@ -9,6 +9,7 @@ declare namespace mGBA {
     saveStatePath: string;
     screenshotsPath: string;
     patchPath: string;
+    autosave: string;
   }
 
   // see: https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/state
@@ -56,7 +57,7 @@ declare namespace mGBA {
     getFastForwardMultiplier(): number;
     getMainLoopTimingMode(): number;
     getMainLoopTimingValue(): number;
-    getSave(): Uint8Array;
+    getSave(): Uint8Array | null;
     getVolume(): number;
     listRoms(): string[];
     listSaves(): string[];
@@ -64,7 +65,7 @@ declare namespace mGBA {
     loadState(slot: number): boolean;
     forceAutoSaveState(): boolean;
     loadAutoSaveState(): boolean;
-    getAutoSaveState(): { autoSaveStateName: string; data: Uint8Array };
+    getAutoSaveState(): { autoSaveStateName: string; data: Uint8Array } | null;
     uploadAutoSaveState(
       autoSaveStateName: string,
       data: Uint8Array

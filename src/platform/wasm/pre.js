@@ -28,7 +28,9 @@ Module.loadGame = (romPath, savePathOverride) => {
 };
 
 Module.getSave = () => {
-  return FS.readFile(Module.saveName);
+  const exists = FS.analyzePath(Module.saveName).exists;
+
+  return exists ? FS.readFile(Module.saveName) : null;
 };
 
 Module.listRoms = () => {
@@ -102,6 +104,7 @@ Module.filePaths = () => {
     saveStatePath: '/data/states',
     screenshotsPath: '/data/screenshots',
     patchPath: '/data/patches',
+    autosave: '/autosave',
   };
 };
 
@@ -339,10 +342,14 @@ Module.loadAutoSaveState = () => {
 };
 
 Module.getAutoSaveState = () => {
-  return {
-    autoSaveStateName: Module.autoSaveStateName,
-    data: FS.readFile(Module.autoSaveStateName),
-  };
+  const exists = FS.analyzePath(Module.autoSaveStateName).exists;
+
+  return exists
+    ? {
+        autoSaveStateName: Module.autoSaveStateName,
+        data: FS.readFile(Module.autoSaveStateName),
+      }
+    : null;
 };
 
 Module.uploadAutoSaveState = async (autoSaveStateName, data) => {

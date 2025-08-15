@@ -19,6 +19,7 @@
 #ifdef __EMSCRIPTEN__
 #include <sched.h> 
 #include <emscripten.h>
+#include <emscripten/threading.h>
 
 typedef struct {
 	double previousTime;
@@ -380,18 +381,35 @@ static THREAD_ENTRY _mCoreThreadRun(void* context) {
 #ifdef __EMSCRIPTEN__
 				bool timestepSync = false;
 				mCoreConfigGetBoolValue(&core->config, "timestepSync", &timestepSync);
+
 				if (timestepSync) {
-					double currentTime = emscripten_get_now();
-					double frameTime = currentTime - loop.previousTime;
-					if (frameTime > 250.0) frameTime = 250.0;
-					loop.accumulator += frameTime;
-	
-					double fixedDeltaTime = 1000.0 / impl->sync.fpsTarget; // Hz in ms
-					while (loop.accumulator >= fixedDeltaTime) {
+					const double stepMs     = 1000.0 / impl->sync.fpsTarget; // fixed step in ms
+					const double maxCatchup = 250.0;                         // clamp to avoid huge dt spikes
+					const double maxWaitMs  = 8.0;                           // used to avoid oversleep  
+					const int    maxSteps   = 4;                             // avoid spiral-of-death on slow frames
+
+					double now = emscripten_get_now();
+					double dt  = now - loop.previousTime;
+					if (dt > maxCatchup) dt = maxCatchup;
+					loop.previousTime = now;
+					loop.accumulator += dt;
+
+					int steps = 0;
+					while (loop.accumulator >= stepMs && steps++ < maxSteps) {
 						core->runFrame(core);
-						loop.accumulator -= fixedDeltaTime;
+						loop.accumulator -= stepMs;
 					}
-					loop.previousTime = currentTime;
+
+					if (steps == 0) {
+						double waitMs = stepMs - loop.accumulator;
+
+						if (waitMs > maxWaitMs) waitMs = maxWaitMs;
+						if (waitMs > 0.0) {
+							emscripten_thread_sleep(waitMs);
+						} else {
+							sched_yield();
+						}
+					}
 				} else {
 					core->runFrame(core);
 				}

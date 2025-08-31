@@ -87,6 +87,7 @@ declare namespace mGBA {
     uploadPatch(file: File, callback?: () => void): void;
     uploadRom(file: File, callback?: () => void): void;
     uploadSaveOrSaveState(file: File, callback?: () => void): void;
+    uploadScreenshot(file: File, callback?: () => void): void;
     addCoreCallbacks(coreCallbacks: coreCallbacks): void;
     toggleRewind(enabled: boolean): void;
     setCoreSettings(coreSettings: coreSettings): void;

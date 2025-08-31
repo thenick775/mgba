@@ -191,6 +191,33 @@ Module.uploadCheats = (file, callback) => {
   reader.readAsArrayBuffer(file);
 };
 
+Module.uploadScreenshot = (file, callback) => {
+  const split = file.name.split('.');
+  if (split.length < 2) {
+    console.warn('unrecognized file extension: ' + file.name);
+    return;
+  }
+  const extension = split[split.length - 1].toLowerCase();
+
+  let dir = null;
+  if (extension == 'png') {
+    dir = '/data/screenshots/';
+  } else {
+    console.warn('unrecognized file extension: ' + extension);
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    FS.writeFile(dir + file.name, new Uint8Array(e.target.result));
+    if (callback) {
+      callback();
+    }
+  };
+
+  reader.readAsArrayBuffer(file);
+};
+
 Module.uploadPatch = (file, callback) => {
   const split = file.name.split('.');
   if (split.length < 2) {

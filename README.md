@@ -105,6 +105,7 @@ Module.uploadCheats(file, callback)
 Module.uploadPatch(file, callback)
 Module.uploadRom(file, callback)
 Module.uploadSaveOrSaveState(file, callback)
+Module.uploadScreenshot(file, callback)
 ```
 
 As well as all the other emscripten Module convenience functions such as `Module.FS.writeFile(file, buf)` and many others.

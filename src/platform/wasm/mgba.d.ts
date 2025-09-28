@@ -102,6 +102,9 @@ declare namespace mGBA {
      */
     rewindBufferInterval?: number;
 
+    // TODO: document the high resolution scale if we pursue it fully
+    highResolutionScale?: number;
+
     /**
      * Requested audio sample rate in Hz for the audio output.
      * The core will attempt to use this rate, actual output depends on

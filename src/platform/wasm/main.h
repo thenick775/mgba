@@ -44,6 +44,7 @@ struct mEmscriptenRenderer {
 	int baseFpsTarget;
 	int rewindBufferCapacity;
 	int rewindBufferInterval;
+	int highResolutionScale;
 	bool videoSync;
 	bool audioSync;
 	bool timestepSync;

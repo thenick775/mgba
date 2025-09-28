@@ -14,13 +14,14 @@
 #include <mgba/internal/gba/input.h>
 
 #include "platform/sdl/sdl-audio.h"
-#include "platform/sdl/sdl-events.h"
 #include "platform/sdl/sdl-text.h"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_keyboard.h>
 #include <emscripten.h>
 #include <emscripten/threading.h>
+
+#define PORT "wasm"
 
 // global renderer
 static struct mEmscriptenRenderer* renderer = NULL;
@@ -364,6 +365,103 @@ EMSCRIPTEN_KEEPALIVE bool autoLoadCheats() {
 	return false;
 }
 
+void mGLCommonSwap(struct VideoBackend* context) {
+	struct mEmscriptenRenderer* renderer = (struct mEmscriptenRenderer*) context->user;
+	SDL_GL_SwapWindow(renderer->window);
+}
+
+EMSCRIPTEN_KEEPALIVE bool mGLES2Init(struct mEmscriptenRenderer* renderer, int width, int height) {
+	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+
+	EM_ASM({ console.log('mGLES2Init', $0, $1) }, width, height);
+
+	// Create SDL2 window
+	renderer->window =
+	    SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_OPENGL);
+	if (!renderer->window) {
+		EM_ASM({ console.error('SDL_CreateWindow failed') });
+		return false;
+	}
+
+	// Create OpenGL context
+	renderer->glCtx = SDL_GL_CreateContext(renderer->window);
+	if (!renderer->glCtx) {
+		SDL_DestroyWindow(renderer->window);
+		return false;
+	}
+	SDL_GL_MakeCurrent(renderer->window, renderer->glCtx);
+	SDL_GL_SetSwapInterval(1); // VSync
+
+	SDL_SetWindowMinimumSize(renderer->window, width, height);
+
+	// Allocate aligned output buffer
+	size_t size = width * height * BYTES_PER_PIXEL;
+	posix_memalign((void**) &renderer->outputBuffer, 16, size);
+	memset(renderer->outputBuffer, 0, size);
+
+	// Hook up video buffer to core
+	renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, width);
+
+	// Initialize GLES2 context
+	mGLES2ContextCreate(&renderer->gl2);
+
+	renderer->gl2.d.user = renderer;
+	renderer->gl2.d.lockAspectRatio = true;
+	renderer->gl2.d.lockIntegerScaling = true;
+	renderer->gl2.d.filter = false;
+	renderer->gl2.d.swap = mGLCommonSwap;
+	renderer->gl2.d.init(&renderer->gl2.d, 0);
+
+	// Set base layer dimensions (240x160 for GBA)
+	struct mRectangle dims = { .x = 0, .y = 0, .width = 240, .height = 160 };
+	renderer->gl2.d.setLayerDimensions(&renderer->gl2.d, VIDEO_LAYER_IMAGE, &dims);
+
+	// Store base resolution so `mGLES2ContextResized` can lock properly
+	renderer->gl2.width = 240;
+	renderer->gl2.height = 160;
+
+	double dpr = emscripten_get_device_pixel_ratio();
+	int pixelWidth = width * dpr;
+	int pixelHeight = height * dpr;
+	renderer->gl2.d.contextResized(&renderer->gl2.d, pixelWidth, pixelHeight, 0, 0);
+
+	// renderer->gl2.d.contextResized(&renderer->gl2.d, width, height, 0, 0);
+
+	return true;
+}
+
+EMSCRIPTEN_KEEPALIVE void loadShader(char* shaderPath) {
+	mCoreThreadInterrupt(renderer->thread);
+	if (renderer->customShader.passes) {
+		mGLES2ShaderDetach(&renderer->gl2);
+		mGLES2ShaderFree(&renderer->customShader);
+	}
+
+	struct VDir* currentShaderDir = VDirOpen(shaderPath);
+	EM_ASM({ console.log('loadShader attempting to load shader') });
+	if (mGLES2ShaderLoad(&renderer->customShader, currentShaderDir)) {
+		EM_ASM({ console.log('loadShader attaching shader') });
+		mGLES2ShaderAttach(&renderer->gl2, (struct mGLES2Shader*) renderer->customShader.passes,
+		                   renderer->customShader.nPasses);
+	} else {
+		EM_ASM({ console.log('loadShader failed to load shader') });
+	}
+	EM_ASM({ console.log('loadShader after load+attach shader') });
+	currentShaderDir->close(currentShaderDir);
+	mCoreThreadContinue(renderer->thread);
+}
+
+EMSCRIPTEN_KEEPALIVE void unloadShader() {
+	if (renderer->customShader.passes) {
+		mCoreThreadInterrupt(renderer->thread);
+		mGLES2ShaderDetach(&renderer->gl2);
+		mGLES2ShaderFree(&renderer->customShader);
+		mCoreThreadContinue(renderer->thread);
+	}
+}
+
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverride) {
 	if (renderer->thread && renderer->core) {
 		quitGame();
@@ -391,6 +489,17 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 		                                      .volume = 0x100,
 		                                      .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
 
+	unsigned w, h;
+	renderer->core->baseVideoSize(renderer->core, &w, &h);
+	EM_ASM({ console.log('base video size', $0, $1) }, w, h);
+
+	defaultConfigOpts.width = w * renderer->highResolutionScale;
+	defaultConfigOpts.height = h * renderer->highResolutionScale;
+
+	EM_ASM({ console.log('defaultConfigOpts video size', $0, $1) }, defaultConfigOpts.width,
+	       defaultConfigOpts.height);
+
+	mCoreInitConfig(renderer->core, PORT);
 	mCoreConfigLoadDefaults(&renderer->core->config, &defaultConfigOpts);
 	mCoreLoadConfig(renderer->core);
 
@@ -398,6 +507,8 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	mCoreConfigSetDefaultIntValue(&renderer->core->config, "timestepSync", renderer->timestepSync);
 	mCoreConfigSetDefaultValue(&renderer->core->config, "idleOptimization", "detect");
 	renderer->core->reloadConfigOption(renderer->core, "idleOptimization", &renderer->core->config);
+	mCoreConfigSetDefaultIntValue(&renderer->core->config, "videoScale", 1);
+	renderer->core->reloadConfigOption(renderer->core, "videoScale", &renderer->core->config);
 	mCoreConfigSetDefaultIntValue(&renderer->core->config, "allowOpposingDirections", true);
 	renderer->core->reloadConfigOption(renderer->core, "allowOpposingDirections", &renderer->core->config);
 	mCoreConfigSetDefaultIntValue(&renderer->core->config, "threadedVideo", renderer->threadedVideo);
@@ -430,11 +541,27 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	renderer->core->reset(renderer->core);
 
 	renderer->core->currentVideoSize(renderer->core, &w, &h);
+	w = w * renderer->highResolutionScale;
+	h = h * renderer->highResolutionScale;
+	EM_ASM({ console.log('current video size', $0, $1, $2) }, w, h, renderer->highResolutionScale);
+	mGLES2Init(renderer, w, h);
+	SDL_RenderSetLogicalSize(renderer->sdlRenderer, w, h);
 	SDL_SetWindowSize(renderer->window, w, h);
 	EM_ASM(
 	    {
-		    Module.canvas.width = $0;
-		    Module.canvas.height = $1;
+		    const dpr = window.devicePixelRatio || 1;
+		    // Module.canvas.style.width = $0 + "px";
+		    // Module.canvas.style.height = $1 + "px";
+		    // Module.canvas.width = $0 * dpr;
+		    // Module.canvas.height = $1 * dpr;
+		    // console.log('setting canvas width/height', Module.canvas.width, Module.canvas.height, dpr);
+		    // console.log('setting canvas style width/height', Module.canvas.style.width,
+		    //             Module.canvas.style.height);
+
+		    console.log('setting canvas width/height', $0, $1);
+		    Module.canvas.width = $0 * dpr;
+		    Module.canvas.height = $1 * dpr;
+		    console.log('canvas width/height', Module.canvas.width, Module.canvas.height, dpr);
 	    },
 	    w, h);
 
@@ -546,6 +673,8 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->restoreAutoSaveStateOnLoad = value;
 	} else if (strcmp(settingName, "autoSaveStateTimerIntervalSeconds") == 0 && value > 0) {
 		renderer->autoSaveStateTimer.intervalSeconds = value;
+	} else if (strcmp(settingName, "highResolutionScale") == 0 && value > 0) {
+		renderer->highResolutionScale = value;
 	}
 
 	// core settings when running
@@ -581,6 +710,19 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "timestepSync", value);
 			renderer->core->reloadConfigOption(renderer->core, "timestepSync", &renderer->core->config);
+		} else if (strcmp(settingName, "highResolutionScale") == 0 && value > 0) {
+			unsigned w, h;
+			renderer->core->currentVideoSize(renderer->core, &w, &h);
+			SDL_RenderSetLogicalSize(renderer->sdlRenderer, w, h);
+			w = w * renderer->highResolutionScale;
+			h = h * renderer->highResolutionScale;
+			SDL_SetWindowSize(renderer->window, w, h);
+			EM_ASM(
+			    {
+				    Module.canvas.width = $0;
+				    Module.canvas.height = $1;
+			    },
+			    w, h);
 		}
 
 		// thread settings when running
@@ -824,6 +966,7 @@ int main() {
 	renderer->restoreAutoSaveStateOnLoad = true;
 	renderer->autoSaveStateTimer.lastTime = 0;
 	renderer->autoSaveStateTimer.intervalSeconds = 30;
+	renderer->highResolutionScale = 1;
 
 	mLogSetDefaultLogger(&logCtx);
 

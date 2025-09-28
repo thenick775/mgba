@@ -616,6 +616,12 @@ Module.setCoreSettings = (coreSettings) => {
       "restoreAutoSaveStateOnLoad",
       coreSettings.restoreAutoSaveStateOnLoad,
     );
+
+  if (coreSettings.highResolutionScale !== undefined)
+    setIntegerCoreSetting(
+      'highResolutionScale',
+      coreSettings.highResolutionScale
+    );
 };
 
 let linkLocalSession;

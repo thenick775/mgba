@@ -207,7 +207,7 @@ EMSCRIPTEN_KEEPALIVE void quitGame() {
 		renderer->audio.core = NULL;
 
 		renderer->autoSaveStateTimer.lastTime = 0;
-		
+
 		renderer->gl2.d.deinit(&renderer->gl2.d);
 		SDL_GL_DeleteContext(renderer->glCtx);
 		free(renderer->outputBuffer);
@@ -414,20 +414,18 @@ EMSCRIPTEN_KEEPALIVE bool mGLES2Init(struct mEmscriptenRenderer* renderer, int w
 	renderer->gl2.d.swap = mGLCommonSwap;
 	renderer->gl2.d.init(&renderer->gl2.d, 0);
 
-	// Set base layer dimensions (240x160 for GBA)
-	struct mRectangle dims = { .x = 0, .y = 0, .width = 240, .height = 160 };
+	// Set base layer dimensions
+	struct mRectangle dims = { .x = 0, .y = 0, .width = width, .height = height };
 	renderer->gl2.d.setLayerDimensions(&renderer->gl2.d, VIDEO_LAYER_IMAGE, &dims);
 
 	// Store base resolution so `mGLES2ContextResized` can lock properly
-	renderer->gl2.width = 240;
-	renderer->gl2.height = 160;
+	renderer->gl2.width = GBA_VIDEO_HORIZONTAL_PIXELS;
+	renderer->gl2.height = GBA_VIDEO_VERTICAL_PIXELS;
 
 	double dpr = emscripten_get_device_pixel_ratio();
 	int pixelWidth = width * dpr;
 	int pixelHeight = height * dpr;
 	renderer->gl2.d.contextResized(&renderer->gl2.d, pixelWidth, pixelHeight, 0, 0);
-
-	// renderer->gl2.d.contextResized(&renderer->gl2.d, width, height, 0, 0);
 
 	return true;
 }
@@ -440,15 +438,10 @@ EMSCRIPTEN_KEEPALIVE void loadShader(char* shaderPath) {
 	}
 
 	struct VDir* currentShaderDir = VDirOpen(shaderPath);
-	EM_ASM({ console.log('loadShader attempting to load shader') });
 	if (mGLES2ShaderLoad(&renderer->customShader, currentShaderDir)) {
-		EM_ASM({ console.log('loadShader attaching shader') });
 		mGLES2ShaderAttach(&renderer->gl2, (struct mGLES2Shader*) renderer->customShader.passes,
 		                   renderer->customShader.nPasses);
-	} else {
-		EM_ASM({ console.log('loadShader failed to load shader') });
 	}
-	EM_ASM({ console.log('loadShader after load+attach shader') });
 	currentShaderDir->close(currentShaderDir);
 	mCoreThreadContinue(renderer->thread);
 }
@@ -496,8 +489,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	defaultConfigOpts.width = w * renderer->highResolutionScale;
 	defaultConfigOpts.height = h * renderer->highResolutionScale;
 
-	EM_ASM({ console.log('defaultConfigOpts video size', $0, $1) }, defaultConfigOpts.width,
-	       defaultConfigOpts.height);
+	EM_ASM({ console.log('defaultConfigOpts video size', $0, $1) }, defaultConfigOpts.width, defaultConfigOpts.height);
 
 	mCoreInitConfig(renderer->core, PORT);
 	mCoreConfigLoadDefaults(&renderer->core->config, &defaultConfigOpts);
@@ -507,7 +499,9 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	mCoreConfigSetDefaultIntValue(&renderer->core->config, "timestepSync", renderer->timestepSync);
 	mCoreConfigSetDefaultValue(&renderer->core->config, "idleOptimization", "detect");
 	renderer->core->reloadConfigOption(renderer->core, "idleOptimization", &renderer->core->config);
-	mCoreConfigSetDefaultIntValue(&renderer->core->config, "videoScale", 1);
+	mCoreConfigSetDefaultIntValue(&renderer->core->config, "hwaccelVideo", true);
+	renderer->core->reloadConfigOption(renderer->core, "hwaccelVideo", &renderer->core->config);
+	mCoreConfigSetDefaultIntValue(&renderer->core->config, "videoScale", 8);
 	renderer->core->reloadConfigOption(renderer->core, "videoScale", &renderer->core->config);
 	mCoreConfigSetDefaultIntValue(&renderer->core->config, "allowOpposingDirections", true);
 	renderer->core->reloadConfigOption(renderer->core, "allowOpposingDirections", &renderer->core->config);
@@ -525,17 +519,6 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	mCoreAutoloadPatch(renderer->core);
 	mSDLInitBindingsGBA(&renderer->core->inputMap);
 
-	// unsigned w, h;
-	// renderer->core->baseVideoSize(renderer->core, &w, &h);
-	// if (renderer->sdlTex) {
-	// 	SDL_DestroyTexture(renderer->sdlTex);
-	// }
-	// renderer->sdlTex =
-	//     SDL_CreateTexture(renderer->sdlRenderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h);
-
-	// int stride;
-	// SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
-	// renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
 	renderer->core->setAudioBufferSize(renderer->core, renderer->audio.samples);
 
 	renderer->core->reset(renderer->core);
@@ -550,18 +533,10 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	EM_ASM(
 	    {
 		    const dpr = window.devicePixelRatio || 1;
-		    // Module.canvas.style.width = $0 + "px";
-		    // Module.canvas.style.height = $1 + "px";
-		    // Module.canvas.width = $0 * dpr;
-		    // Module.canvas.height = $1 * dpr;
-		    // console.log('setting canvas width/height', Module.canvas.width, Module.canvas.height, dpr);
-		    // console.log('setting canvas style width/height', Module.canvas.style.width,
-		    //             Module.canvas.style.height);
-
 		    console.log('setting canvas width/height', $0, $1);
 		    Module.canvas.width = $0 * dpr;
 		    Module.canvas.height = $1 * dpr;
-		    console.log('canvas width/height', Module.canvas.width, Module.canvas.height, dpr);
+		    console.log('canvas width/height w/dpr', Module.canvas.width, Module.canvas.height, dpr);
 	    },
 	    w, h);
 
@@ -712,15 +687,18 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 			renderer->core->reloadConfigOption(renderer->core, "timestepSync", &renderer->core->config);
 		} else if (strcmp(settingName, "highResolutionScale") == 0 && value > 0) {
 			unsigned w, h;
-			renderer->core->currentVideoSize(renderer->core, &w, &h);
+			renderer->core->baseVideoSize(renderer->core, &w, &h);
+			double dpr = emscripten_get_device_pixel_ratio();
+			w = w * renderer->highResolutionScale * dpr;
+			h = h * renderer->highResolutionScale * dpr;
 			SDL_RenderSetLogicalSize(renderer->sdlRenderer, w, h);
-			w = w * renderer->highResolutionScale;
-			h = h * renderer->highResolutionScale;
 			SDL_SetWindowSize(renderer->window, w, h);
+			renderer->gl2.d.contextResized(&renderer->gl2.d, w, h, 0, 0);
 			EM_ASM(
 			    {
 				    Module.canvas.width = $0;
 				    Module.canvas.height = $1;
+				    console.log('resize setting canvas size to', $0, $1);
 			    },
 			    w, h);
 		}
@@ -868,19 +846,7 @@ void runLoop() {
 				};
 			}
 			if (mCoreSyncWaitFrameStart(&renderer->thread->impl->sync)) {
-				// unsigned w, h;
-				// renderer->core->currentVideoSize(renderer->core, &w, &h);
-
-				// SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
-
-				// SDL_UnlockTexture(renderer->sdlTex);
-				// SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
-				// if (renderer->showFpsCounter)
-				// 	drawFPS(w - 35, h - LINE_HEIGHT);
-				// SDL_RenderPresent(renderer->sdlRenderer);
-				// int stride;
-				// SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
-				// renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
+				// todo: something about drawFPS
 				renderer->gl2.d.setImage(&renderer->gl2.d, VIDEO_LAYER_IMAGE, renderer->outputBuffer);
 			}
 			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);

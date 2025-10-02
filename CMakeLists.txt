@@ -308,7 +308,7 @@ if(DEFINED SWITCH)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-	set(BUILD_GLES2 OFF CACHE BOOL "Build with OpenGL|ES 3" FORCE)
+	set(BUILD_GLES2 OFF CACHE BOOL "Build with OpenGL|ES 2" FORCE)
 	set(BUILD_GLES3 ON CACHE BOOL "Build with OpenGL|ES 3" FORCE)
 endif()
 

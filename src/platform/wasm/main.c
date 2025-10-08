@@ -11,6 +11,7 @@
 #include <mgba/core/thread.h>
 #include <mgba/core/version.h>
 #include <mgba/gba/interface.h>
+#include <mgba/internal/gb/gb.h>
 #include <mgba/internal/gba/input.h>
 
 #include "platform/sdl/sdl-audio.h"
@@ -419,8 +420,10 @@ EMSCRIPTEN_KEEPALIVE bool mGLES2Init(struct mEmscriptenRenderer* renderer, int w
 	renderer->gl2.d.setLayerDimensions(&renderer->gl2.d, VIDEO_LAYER_IMAGE, &dims);
 
 	// Store base resolution so `mGLES2ContextResized` can lock properly
-	renderer->gl2.width = GBA_VIDEO_HORIZONTAL_PIXELS;
-	renderer->gl2.height = GBA_VIDEO_VERTICAL_PIXELS;
+	unsigned w, h;
+	renderer->core->currentVideoSize(renderer->core, &w, &h);
+	renderer->gl2.width = w;
+	renderer->gl2.height = h;
 
 	double dpr = emscripten_get_device_pixel_ratio();
 	int pixelWidth = width * dpr;
@@ -484,6 +487,10 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 
 	unsigned w, h;
 	renderer->core->baseVideoSize(renderer->core, &w, &h);
+	if (w == 256 && h == 224) {
+		w = GB_VIDEO_HORIZONTAL_PIXELS;
+		h = GB_VIDEO_VERTICAL_PIXELS;
+	}
 	EM_ASM({ console.log('base video size', $0, $1) }, w, h);
 
 	defaultConfigOpts.width = w * renderer->highResolutionScale;
@@ -688,6 +695,10 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		} else if (strcmp(settingName, "highResolutionScale") == 0 && value > 0) {
 			unsigned w, h;
 			renderer->core->baseVideoSize(renderer->core, &w, &h);
+			if (w == 256 && h == 224) {
+				w = GB_VIDEO_HORIZONTAL_PIXELS;
+				h = GB_VIDEO_VERTICAL_PIXELS;
+			}
 			double dpr = emscripten_get_device_pixel_ratio();
 			w = w * renderer->highResolutionScale * dpr;
 			h = h * renderer->highResolutionScale * dpr;

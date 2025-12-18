@@ -567,4 +567,8 @@ Module.setCoreSettings = (coreSettings) => {
       'restoreAutoSaveStateOnLoad',
       coreSettings.restoreAutoSaveStateOnLoad
     );
+
+  // should explicitly be set after baseFpsTarget
+  if (coreSettings.useNativeFps !== undefined)
+    setIntegerCoreSetting('useNativeFps', coreSettings.useNativeFps);
 };

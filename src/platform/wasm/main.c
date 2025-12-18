@@ -11,6 +11,7 @@
 #include <mgba/core/thread.h>
 #include <mgba/core/version.h>
 #include <mgba/gba/interface.h>
+#include <mgba/internal/gba/gba.h>
 #include <mgba/internal/gba/input.h>
 
 #include "platform/sdl/sdl-audio.h"
@@ -527,6 +528,8 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->frameSkip = value;
 	} else if (strcmp(settingName, "baseFpsTarget") == 0 && value >= 0) {
 		renderer->baseFpsTarget = value;
+	} else if (strcmp(settingName, "useNativeFps") == 0 && (value == true || value == false)) {
+		renderer->useNativeFps = value;
 	} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
 		renderer->timestepSync = value;
 	} else if (strcmp(settingName, "showFpsCounter") == 0 && (value == true || value == false)) {
@@ -563,6 +566,18 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 			renderer->thread->impl->sync.fpsTarget = (double) value * renderer->fastForwardMultiplier;
 			mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget",
 			                                (double) value * renderer->fastForwardMultiplier);
+			renderer->core->reloadConfigOption(renderer->core, "fpsTarget", &renderer->core->config);
+		} else if (strcmp(settingName, "useNativeFps") == 0 && (value == true || value == false)) {
+			if (value == true) {
+				double nativeFps = (double) GBA_ARM7TDMI_FREQUENCY / (double) VIDEO_TOTAL_LENGTH;
+				renderer->thread->impl->sync.fpsTarget = nativeFps * renderer->fastForwardMultiplier;
+				mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget",
+				                                nativeFps * renderer->fastForwardMultiplier);
+			} else {
+				renderer->thread->impl->sync.fpsTarget = renderer->baseFpsTarget * renderer->fastForwardMultiplier;
+				mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget",
+				                                renderer->baseFpsTarget * renderer->fastForwardMultiplier);
+			}
 			renderer->core->reloadConfigOption(renderer->core, "fpsTarget", &renderer->core->config);
 		} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "timestepSync", value);
@@ -788,7 +803,8 @@ int main() {
 
 	renderer->audio.sampleRate = 48000;
 	renderer->audio.samples = 1024;
-	renderer->baseFpsTarget = 60.0;
+	renderer->baseFpsTarget = (double) GBA_ARM7TDMI_FREQUENCY / (double) VIDEO_TOTAL_LENGTH;
+	renderer->useNativeFps = true;
 	renderer->rewindBufferCapacity = 600;
 	renderer->rewindBufferInterval = 1;
 	renderer->fastForwardMultiplier = 1;

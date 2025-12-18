@@ -36,7 +36,7 @@ struct mEmscriptenRenderer {
 	// subset of mCoreOptions and custom functionality
 	int fastForwardMultiplier;
 	int frameSkip;
-	int baseFpsTarget;
+	double baseFpsTarget;
 	int rewindBufferCapacity;
 	int rewindBufferInterval;
 	bool videoSync;
@@ -47,4 +47,5 @@ struct mEmscriptenRenderer {
 	bool showFpsCounter;
 	bool restoreAutoSaveStateOnLoad;
 	bool autoSaveStateEnable;
+	bool useNativeFps;
 };

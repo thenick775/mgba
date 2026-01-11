@@ -149,7 +149,7 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 }
 
 // full handling of fast forward, interrupts and thread logic included
-void updateFastForward(int multiplier) {
+void updateFastForward(double multiplier) {
 	if (renderer->thread && renderer->videoSync) {
 		mCoreThreadInterrupt(renderer->thread);
 		renderer->thread->impl->sync.videoFrameWait = (multiplier > 1) ? false : renderer->videoSync;
@@ -157,7 +157,7 @@ void updateFastForward(int multiplier) {
 		mCoreThreadContinue(renderer->thread);
 	}
 
-	if (renderer->core && renderer->thread && multiplier > 0) {
+	if (renderer->core && renderer->thread && multiplier != 0) {
 		renderer->thread->impl->sync.fpsTarget = (double) renderer->baseFpsTarget * multiplier;
 		mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget",
 		                                (double) renderer->baseFpsTarget * multiplier);
@@ -172,10 +172,13 @@ void updateFastForward(int multiplier) {
 }
 
 EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
-	if (multiplier > 0)
+	if (multiplier > 0) {
 		renderer->fastForwardMultiplier = multiplier;
+	} else if (multiplier < 0) {
+		renderer->fastForwardMultiplier = -1.0 / (double) multiplier;
+	}
 
-	updateFastForward(multiplier);
+	updateFastForward(renderer->fastForwardMultiplier);
 }
 
 EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {

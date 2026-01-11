@@ -34,7 +34,7 @@ struct mEmscriptenRenderer {
 
 	// persistent options for the core at runtime, limited
 	// subset of mCoreOptions and custom functionality
-	int fastForwardMultiplier;
+	double fastForwardMultiplier;
 	int frameSkip;
 	int baseFpsTarget;
 	int rewindBufferCapacity;

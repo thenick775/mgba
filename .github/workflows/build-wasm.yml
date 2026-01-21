@@ -1,0 +1,55 @@
+name: Build mgba-wasm
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  wasm-docker-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build image
+        working-directory: src/platform/wasm
+        run: |
+          set -euo pipefail
+
+          npm run build:image && \
+          docker image inspect local-mgba/wasm:2.0 >/dev/null
+
+      - name: Build artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p "${GITHUB_WORKSPACE}/build-wasm"
+          chmod 0777 "${GITHUB_WORKSPACE}/build-wasm"
+
+          cd ./src/platform/wasm && \
+          npm run build
+
+      - name: Prepare dist/
+        working-directory: src/platform/wasm
+        run: npm run prepare
+
+      - name: Ensure output
+        working-directory: src/platform/wasm
+        run: |
+          set -euo pipefail
+
+          test -f dist/mgba.js
+          test -f dist/mgba.d.ts
+          test -f dist/mgba.wasm 
+          test -f dist/mgba.wasm.map
+
+          ls -larth dist
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: mgba-wasm-dist
+          path: src/platform/wasm/dist

@@ -12,37 +12,190 @@ declare namespace mGBA {
     autosave: string;
   }
 
-  // see: https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/state
-  //      interrupted is a valid property on iOS
-  type ExtendedAudioContextState = AudioContextState | 'interrupted';
-
   export type coreCallbacks = {
+    /**
+     * Callback fired when the emulation core has triggered an alarm.
+     */
     alarmCallback?: (() => void) | null;
+
+    /**
+     * Callback fired when the emulation core has crashed.
+     */
     coreCrashedCallback?: (() => void) | null;
+
+    /**
+     * Callback fired when the emulation core has read input keys.
+     */
     keysReadCallback?: (() => void) | null;
+
+    /**
+     * Callback fired when the emulation core has updated its save data.
+     */
     saveDataUpdatedCallback?: (() => void) | null;
+
+    /**
+     * Callback fired when the emulation core has finished rendering a video frame.
+     */
     videoFrameEndedCallback?: (() => void) | null;
+
+    /**
+     * Callback fired when the emulation core has started rendering a video frame.
+     */
     videoFrameStartedCallback?: (() => void) | null;
+
+    /**
+     * Callback fired when the emulation core has captured an auto save state.
+     */
     autoSaveStateCapturedCallback?: (() => void) | null;
+
+    /**
+     * Callback fired when the emulation core has finished loading an auto save state.
+     */
     autoSaveStateLoadedCallback?: (() => void) | null;
   };
 
   export type coreSettings = {
+    /**
+     * Number of frames to skip rendering between screen paints.
+     *
+     * Typical values: 0..10
+     *
+     * Default: 0
+     */
     frameSkip?: number;
+
+    /**
+     * Target base frames-per-second for the emulation core. Used by timing
+     * and frame-rate calculations.
+     *
+     * Typical values: 60, 30
+     *
+     * Default: 60
+     */
     baseFpsTarget?: number;
+
+    /**
+     * Maximum number of rewind states to keep in memory. Larger values allow
+     * longer rewind history at the cost of consumed memory. Value is a count of
+     * historical entries in the buffer.
+     *
+     * Typical values: 100..10000 is reasonable depending on memory pressure and
+     * the rewind interval.
+     *
+     * Default: 600
+     */
     rewindBufferCapacity?: number;
+
+    /**
+     * The speed at which rewind snapshots are taken. Larger numbers mean rewind happens faster.
+     *
+     * Typical values: 1..10
+     *
+     * Default: 1
+     */
     rewindBufferInterval?: number;
+
+    /**
+     * Requested audio sample rate in Hz for the audio output.
+     * The core will attempt to use this rate, actual output depends on
+     * the host audio device (best effort).
+     *
+     * Typical values: 22050, 32000, 44100, 48000
+     *
+     * Default: 48000
+     */
     audioSampleRate?: number;
+
+    /**
+     * Preferred size, in samples, of the audio buffer. Smaller buffers reduce
+     * latency but increase the chance of underruns, larger buffers increase
+     * latency but are more stable.
+     *
+     * Typical values: 256..4096
+     *
+     * Default: 1024
+     */
     audioBufferSize?: number;
+
+    /**
+     * Interval, in seconds, between periodic autosave-state captures. A value
+     * of 0 disables the timer-based autosave.
+     *
+     * Typical values: 10..300
+     *
+     * Default: 30
+     */
     autoSaveStateTimerIntervalSeconds?: number;
+
+    /**
+     * If true, allows opposing directional inputs (ex. left + right) to be
+     * accepted simultaneously. When false, only a single directional input
+     * is accepted at a time.
+     *
+     * Default: true
+     */
     allowOpposingDirections?: boolean;
+
+    /**
+     * If true, synchronize the video frame rate to the host display refresh rate (vsync).
+     *
+     * Default: false
+     */
     videoSync?: boolean;
+
+    /**
+     * If true, synchronizes the video frame rate to the audio output speed.
+     *
+     * Default: false
+     */
     audioSync?: boolean;
+
+    /**
+     * If true, render video on a separate thread (if supported).
+     * Can provide speedup on multi-core systems but is platform dependent.
+     *
+     * Default: false
+     */
     threadedVideo?: boolean;
+
+    /**
+     * Enable/disable rewind. When true, rewind is available, when false rewind is disabled.
+     *
+     * Default: true
+     */
     rewindEnable?: boolean;
+
+    /**
+     * If true, the core will sync using discrete timestep increments based on
+     * the baseFpsTarget value rather than variable-step delta timing (audio/video).
+     *
+     * Default: true
+     */
     timestepSync?: boolean;
+
+    /**
+     * Show an on-screen (real) FPS counter overlay when set to true.
+     *
+     * Default: false
+     */
     showFpsCounter?: boolean;
+
+    /**
+     * If true, attempt to automatically restore the most recent autosave
+     * state when a game is loaded. If false, autosave states are ignored on
+     * load and must be applied manually.
+     *
+     * Default: true
+     */
     autoSaveStateEnable?: boolean;
+
+    /**
+     * If true, attempt to automatically restore the most recent autosave
+     * state when a game is loaded. If false, autosave states are ignored on
+     * load and must be applied manually.
+     *
+     * Default: true
+     */
     restoreAutoSaveStateOnLoad?: boolean;
   };
 
@@ -108,9 +261,7 @@ declare namespace mGBA {
         currentOutputBuffer: AudioBuffer;
         scriptProcessorNode: ScriptProcessorNode;
       };
-      audioContext: Omit<AudioContext, 'state'> & {
-        readonly state: ExtendedAudioContextState;
-      };
+      audioContext: AudioContext;
     };
   }
 

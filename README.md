@@ -3,7 +3,10 @@
 <div>
     <a href="https://www.npmjs.com/package/@thenick775/mgba-wasm"> 
         <img alt="NPM Version" src="https://img.shields.io/npm/v/%40thenick775%2Fmgba-wasm" />
-    </a>	
+    </a>
+    <a href="https://github.com/thenick775/mgba/actions/workflows/build-wasm.yml">
+        <img alt="Build" src="https://github.com/thenick775/mgba/actions/workflows/build-wasm.yml/badge.svg" />
+    </a>
 </div>
 
 <br/>

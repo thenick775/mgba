@@ -1,5 +1,23 @@
 /// <reference types="emscripten" />
 
+/**
+ * WebAssembly mGBA module for the browser.
+ *
+ * This emulator core is meant to be used like a **controlled frontend component**:
+ * it bootstraps the emulator runtime, canvas wiring, keyboard events, and autonomous functions using emscripten.
+ *
+ * The consuming app then drives everything after initialization, such as
+ * loading ROM/save files, pausing/resuming, settings, saves, etc.
+ *
+ * **Initialization flow:**
+ * - create a `<canvas />`
+ * - call `mGBA({ canvas })` to get the `Module`
+ * - call `await Module.FSInit()` once
+ * - keep the `Module` in state and call methods on it from your UI
+ *
+ * This core uses threads, so your app must be served with cross-origin isolation enabled
+ * (`COOP: same-origin` + `COEP: require-corp`), otherwise it will not run correctly.
+ */
 declare namespace mGBA {
   export interface filePaths {
     root: string;
@@ -201,7 +219,6 @@ declare namespace mGBA {
 
   export interface mGBAEmulator extends EmscriptenModule {
     // custom methods from preamble
-
     /**
      * Attempts to automatically load cheats from the proper path for the currently loaded rom file.
      *

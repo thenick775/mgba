@@ -118,8 +118,8 @@ declare namespace mGBA {
     audioBufferSize?: number;
 
     /**
-     * Interval, in seconds, between periodic autosave-state captures. A value
-     * of 0 disables the timer-based autosave.
+     * Interval, in seconds, between periodic auto save state captures. A value
+     * of 0 disables the timer-based auto save.
      *
      * Typical values: 10..300
      *
@@ -181,8 +181,8 @@ declare namespace mGBA {
     showFpsCounter?: boolean;
 
     /**
-     * If true, attempt to automatically restore the most recent autosave
-     * state when a game is loaded. If false, autosave states are ignored on
+     * If true, attempt to automatically restore the most recent auto save
+     * state when a game is loaded. If false, auto save states are ignored on
      * load and must be applied manually.
      *
      * Default: true
@@ -190,8 +190,8 @@ declare namespace mGBA {
     autoSaveStateEnable?: boolean;
 
     /**
-     * If true, attempt to automatically restore the most recent autosave
-     * state when a game is loaded. If false, autosave states are ignored on
+     * If true, attempt to automatically restore the most recent auto save
+     * state when a game is loaded. If false, auto save states are ignored on
      * load and must be applied manually.
      *
      * Default: true
@@ -201,49 +201,274 @@ declare namespace mGBA {
 
   export interface mGBAEmulator extends EmscriptenModule {
     // custom methods from preamble
+
+    /**
+     * Attempts to automatically load cheats from the proper path for the currently loaded rom file.
+     *
+     * @returns True if cheats were loaded successfully, otherwise false.
+     */
     autoLoadCheats(): boolean;
+
+    /**
+     * Binds a physical input (SDL key name) to a GBA input action.
+     *
+     * Intended for use with browser `KeyboardEvent` values transformed into
+     * Emscripten SDL key names (ex. "Return" for Enter, "Left" for ArrowLeft,
+     * and "Keypad X" for numpad keys) prior to calling.
+     *
+     * @param bindingName - SDL key name to bind (derived from browser keyboard input).
+     * @param inputName - GBA input/action to trigger (ex. "A", "B", "Start", "Up").
+     */
     bindKey(bindingName: string, inputName: string): void;
+
+    /**
+     * Presses a named emulated button.
+     *
+     * @param name - Button name to press (ex. "A", "B", "Start", "Select", "Up").
+     */
     buttonPress(name: string): void;
+
+    /**
+     * Releases (unpress) a named emulated button.
+     *
+     * @param name - Button name to release (ex. "A", "B", "Start", "Select", "Up").
+     */
     buttonUnpress(name: string): void;
+
+    /**
+     * Initializes the Emscripten filesystem and any runtime FS mounts needed by the emulator.
+     */
     FSInit(): Promise<void>;
+
+    /**
+     * Synchronizes filesystem state to the backing store, ex. IDBFS.
+     */
     FSSync(): Promise<void>;
+
+    /**
+     * Gets the current fast forward multiplier.
+     *
+     * - `multiplier = 1` = normal speed
+     * - `multiplier > 1` = fast forward (`xN`)
+     * - `multiplier < 0` = slow down (`1/abs(N)`)
+     *
+     * @returns Current fast forward multiplier.
+     */
     getFastForwardMultiplier(): number;
+
+    /**
+     * Gets the current main loop timing mode.
+     *
+     * @returns Current timing mode value.
+     */
     getMainLoopTimingMode(): number;
+
+    /**
+     * Gets the current main loop timing value for the current mode.
+     *
+     * @returns Current timing value.
+     */
     getMainLoopTimingValue(): number;
+
+    /**
+     * Reads the currently loaded game save data.
+     *
+     * @returns Save data as bytes, or null if no save exists.
+     */
     getSave(): Uint8Array | null;
+
     getVolume(): number;
+
     listRoms(): string[];
+
     listSaves(): string[];
+
+    /**
+     * Loads a rom into the emulator and runs the game, optionally overriding the save path used.
+     *
+     * @param romPath - Path to the rom file within the emulated filesystem.
+     * @param savePathOverride - Optional override for the save path.
+     * @returns True if the game loaded successfully, otherwise false.
+     */
     loadGame(romPath: string, savePathOverride?: string): boolean;
+
+    /**
+     * Loads a save state from a given slot.
+     *
+     * @param slot - State slot index.
+     * @returns True if the state loaded successfully, otherwise false.
+     */
     loadState(slot: number): boolean;
+
+    /**
+     * Forces an autosave-state capture immediately.
+     *
+     * @returns True if the autosave-state was captured successfully, otherwise false.
+     */
     forceAutoSaveState(): boolean;
+
+    /**
+     * Reads the current autosave state from the filesystem (if present).
+     *
+     * @returns The autosave state name and bytes, or null if none exists.
+     */
     loadAutoSaveState(): boolean;
+
+    /**
+     * Reads the current autosave state from the filesystem (if present).
+     *
+     * @returns The autosave state name and bytes, or null if none exists.
+     */
     getAutoSaveState(): { autoSaveStateName: string; data: Uint8Array } | null;
+
+    /**
+     * Uploads autosave state data into the emulator's filesystem.
+     *
+     * @param autoSaveStateName - File name to store as in the autosave location.
+     * @param data - Raw autosave state bytes.
+     */
     uploadAutoSaveState(
       autoSaveStateName: string,
-      data: Uint8Array
+      data: Uint8Array,
     ): Promise<void>;
+
+    /**
+     * Pauses audio output without pausing emulation.
+     */
     pauseAudio(): void;
+
+    /**
+     * Pauses the game emulation.
+     */
     pauseGame(): void;
+
+    /**
+     * Performs a quick reload of the current rom file.
+     */
     quickReload(): void;
+
+    /**
+     * Quits the currently running game session.
+     */
     quitGame(): void;
+
+    /**
+     * Quits the emulator core/runtime.
+     */
     quitMgba(): void;
+
+    /**
+     * Resumes audio output.
+     */
     resumeAudio(): void;
+
+    /**
+     * Resumes game emulation and audio.
+     */
     resumeGame(): void;
+
+    /**
+     * Saves a save state to a given slot.
+     *
+     * @param slot - State slot index.
+     * @returns True if the state saved successfully, otherwise false.
+     */
     saveState(slot: number): boolean;
+
+    /**
+     * Captures a screenshot and writes it to the screenshot directory in the embedded file system.
+     *
+     * @param fileName - Optional custom screenshot file name.
+     * @returns True if screenshot was captured successfully, otherwise false.
+     */
     screenshot(fileName?: string): boolean;
+
+    /**
+     * Sets the current fast forward multiplier.
+     *
+     * - `multiplier = 1` = normal speed
+     * - `multiplier > 1` = fast forward (`xN`)
+     * - `multiplier < 0` = slow down (`1/abs(N)`)
+     *
+     * @param multiplier - The fast forward multiplier to apply.
+     */
     setFastForwardMultiplier(multiplier: number): void;
+
+    /**
+     * Sets the main loop timing mode and value.
+     *
+     * See: https://emscripten.org/docs/api_reference/emscripten.h.html#c.emscripten_set_main_loop_timing
+     *
+     * @param mode - Timing mode identifier.
+     * @param value - Timing value associated with the mode.
+     */
     setMainLoopTiming(mode: number, value: number): void;
+
     setVolume(percent: number): void;
+
+    /**
+     * Enables or disables keyboard input handling.
+     *
+     * @param enabled - If true input is accepted, if false input is ignored.
+     */
     toggleInput(enabled: boolean): void;
+
+    /**
+     * Uploads a cheats file into the emulator filesystem.
+     *
+     * @param file - Cheats file to upload.
+     * @param callback - Optional callback fired after upload completes.
+     */
     uploadCheats(file: File, callback?: () => void): void;
+
+    /**
+     * Uploads a patch file into the emulator filesystem.
+     *
+     * @param file - Patch file to upload.
+     * @param callback - Optional callback fired after upload completes.
+     */
     uploadPatch(file: File, callback?: () => void): void;
+
+    /**
+     * Uploads a rom file into the emulator filesystem.
+     *
+     * @param file - Rom file to upload.
+     * @param callback - Optional callback fired after upload completes.
+     */
     uploadRom(file: File, callback?: () => void): void;
+
+    /**
+     * Uploads a save or save state file into the emulator filesystem.
+     *
+     * @param file - Save or state file to upload.
+     * @param callback - Optional callback fired after upload completes.
+     */
     uploadSaveOrSaveState(file: File, callback?: () => void): void;
+
+    /**
+     * Uploads a screenshot file into the emulator filesystem.
+     *
+     * @param file - Screenshot file to upload.
+     * @param callback - Optional callback fired after upload completes.
+     */
     uploadScreenshot(file: File, callback?: () => void): void;
+
+    /**
+     * Registers core callbacks for emulator lifecycle and custom events.
+     *
+     * @param coreCallbacks - Callback object to register.
+     */
     addCoreCallbacks(coreCallbacks: coreCallbacks): void;
+
     toggleRewind(enabled: boolean): void;
+
+    /**
+     * Applies core settings to the emulator runtime.
+     *
+     * @param coreSettings - Settings object to apply.
+     */
     setCoreSettings(coreSettings: coreSettings): void;
+
     // custom variables
     version: {
       projectName: string;

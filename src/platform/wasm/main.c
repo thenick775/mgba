@@ -182,7 +182,9 @@ EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
 }
 
 EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
-	return renderer->fastForwardMultiplier;
+	double m = renderer->fastForwardMultiplier;
+	// reverse the translation used in setFastForwardMultiplier
+	return (m < 1.0) ? (int) (-1.0 / m) : (int) m;
 }
 
 EMSCRIPTEN_KEEPALIVE void quitGame() {
@@ -562,6 +564,11 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		} else if (strcmp(settingName, "threadedVideo") == 0 && (value == true || value == false)) {
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "threadedVideo", value);
 			renderer->core->reloadConfigOption(renderer->core, "threadedVideo", &renderer->core->config);
+		} else if (strcmp(settingName, "rewindEnable") == 0 && (value == true || value == false)) {
+			renderer->core->opts.rewindEnable = value;
+			mCoreThreadRewindParamsChanged(renderer->thread);
+			mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindEnable", value);
+			renderer->core->reloadConfigOption(renderer->core, "rewindEnable", &renderer->core->config);
 		} else if (strcmp(settingName, "baseFpsTarget") == 0 && value >= 0.0) {
 			renderer->thread->impl->sync.fpsTarget = (double) value * renderer->fastForwardMultiplier;
 			mCoreConfigSetDefaultFloatValue(&renderer->core->config, "fpsTarget",

@@ -182,7 +182,9 @@ EMSCRIPTEN_KEEPALIVE void setFastForwardMultiplier(int multiplier) {
 }
 
 EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
-	return renderer->fastForwardMultiplier;
+	double m = renderer->fastForwardMultiplier;
+	// reverse the translation used in setFastForwardMultiplier
+	return (m < 1.0) ? (int) (-1.0 / m) : (int) m;
 }
 
 EMSCRIPTEN_KEEPALIVE void quitGame() {

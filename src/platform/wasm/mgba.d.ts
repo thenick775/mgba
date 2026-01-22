@@ -1,24 +1,12 @@
 /// <reference types="emscripten" />
 
-/**
- * WebAssembly mGBA module for the browser.
- *
- * This emulator core is meant to be used like a **controlled frontend component**:
- * it bootstraps the emulator runtime, canvas wiring, keyboard events, and autonomous functions using emscripten.
- *
- * The consuming app then drives everything after initialization, such as
- * loading ROM/save files, pausing/resuming, settings, saves, etc.
- *
- * **Initialization flow:**
- * - create a `<canvas />`
- * - call `mGBA({ canvas })` to get the `Module`
- * - call `await Module.FSInit()` once
- * - keep the `Module` in state and call methods on it from your UI
- *
- * This core uses threads, so your app must be served with cross-origin isolation enabled
- * (`COOP: same-origin` + `COEP: require-corp`), otherwise it will not run correctly.
- */
 declare namespace mGBA {
+  /**
+   * Common filesystem paths for the embedded virtual file system (IDBFS).
+   *
+   * These are the mount points/directories created by `FSInit` (ex. `/data/*`, `/autosave`, etc),
+   * these are needed for building paths when you’re reading/writing files via `Module.FS`.
+   */
   export interface filePaths {
     root: string;
     cheatsPath: string;
@@ -76,7 +64,7 @@ declare namespace mGBA {
     /**
      * Number of frames to skip rendering between screen paints.
      *
-     * Typical values: 0..10
+     * Typical values: `0..10`
      *
      * Default: 0
      */
@@ -97,7 +85,7 @@ declare namespace mGBA {
      * longer rewind history at the cost of consumed memory. Value is a count of
      * historical entries in the buffer.
      *
-     * Typical values: 100..10000 is reasonable depending on memory pressure and
+     * Typical values: `100..10000` is reasonable depending on memory pressure and
      * the rewind interval.
      *
      * Default: 600
@@ -107,7 +95,7 @@ declare namespace mGBA {
     /**
      * The speed at which rewind snapshots are taken. Larger numbers mean rewind happens faster.
      *
-     * Typical values: 1..10
+     * Typical values: `1..10`
      *
      * Default: 1
      */
@@ -129,17 +117,16 @@ declare namespace mGBA {
      * latency but increase the chance of underruns, larger buffers increase
      * latency but are more stable.
      *
-     * Typical values: 256..4096
+     * Typical values: `256..4096`
      *
      * Default: 1024
      */
     audioBufferSize?: number;
 
     /**
-     * Interval, in seconds, between periodic auto save state captures. A value
-     * of 0 disables the timer-based auto save.
+     * Interval in seconds between periodic auto save state captures.
      *
-     * Typical values: 10..300
+     * Typical values: `10..30`
      *
      * Default: 30
      */
@@ -170,14 +157,13 @@ declare namespace mGBA {
 
     /**
      * If true, render video on a separate thread (if supported).
-     * Can provide speedup on multi-core systems but is platform dependent.
      *
      * Default: false
      */
     threadedVideo?: boolean;
 
     /**
-     * Enable/disable rewind. When true, rewind is available, when false rewind is disabled.
+     * Enable/disable rewind support.
      *
      * Default: true
      */
@@ -192,25 +178,21 @@ declare namespace mGBA {
     timestepSync?: boolean;
 
     /**
-     * Show an on-screen (real) FPS counter overlay when set to true.
+     * If true, show an on-screen true FPS counter overlay.
      *
      * Default: false
      */
     showFpsCounter?: boolean;
 
     /**
-     * If true, attempt to automatically restore the most recent auto save
-     * state when a game is loaded. If false, auto save states are ignored on
-     * load and must be applied manually.
+     * Enable/disable periodic auto save state capture.
      *
      * Default: true
      */
     autoSaveStateEnable?: boolean;
 
     /**
-     * If true, attempt to automatically restore the most recent auto save
-     * state when a game is loaded. If false, auto save states are ignored on
-     * load and must be applied manually.
+     * If true, attempts to load the latest auto save state after a game load/reset.
      *
      * Default: true
      */
@@ -220,21 +202,17 @@ declare namespace mGBA {
   export interface mGBAEmulator extends EmscriptenModule {
     // custom methods from preamble
     /**
-     * Attempts to automatically load cheats from the proper path for the currently loaded rom file.
+     * Attempts to automatically load cheats for the currently loaded game.
      *
      * @returns True if cheats were loaded successfully, otherwise false.
      */
     autoLoadCheats(): boolean;
 
     /**
-     * Binds a physical input (SDL key name) to a GBA input action.
+     * Binds a physical key (SDL key name) to a GBA input action.
      *
-     * Intended for use with browser `KeyboardEvent` values transformed into
-     * Emscripten SDL key names (ex. "Return" for Enter, "Left" for ArrowLeft,
-     * and "Keypad X" for numpad keys) prior to calling.
-     *
-     * @param bindingName - SDL key name to bind (derived from browser keyboard input).
-     * @param inputName - GBA input/action to trigger (ex. "A", "B", "Start", "Up").
+     * @param bindingName - SDL key name (ex. "Return", "Left", "Keypad X").
+     * @param inputName - GBA input/action (ex. "A", "B", "Start", "Up").
      */
     bindKey(bindingName: string, inputName: string): void;
 
@@ -258,7 +236,7 @@ declare namespace mGBA {
     FSInit(): Promise<void>;
 
     /**
-     * Synchronizes filesystem state to the backing store, ex. IDBFS.
+     * Synchronizes filesystem state to the backing store (IDBFS).
      */
     FSSync(): Promise<void>;
 
@@ -294,10 +272,28 @@ declare namespace mGBA {
      */
     getSave(): Uint8Array | null;
 
+    /**
+     * Gets the current audio volume multiplier.
+     *
+     * - `1.0` = 100%
+     * - Range is `0.0..2.0` (0%..200%)
+     *
+     * @returns Current volume multiplier.
+     */
     getVolume(): number;
 
+    /**
+     * Lists ROM file names under the game directory.
+     *
+     * @returns Directory entries from `filePaths().gamePath`.
+     */
     listRoms(): string[];
 
+    /**
+     * Lists save file names under the save directory.
+     *
+     * @returns Directory entries from `filePaths().savePath`.
+     */
     listSaves(): string[];
 
     /**
@@ -318,31 +314,31 @@ declare namespace mGBA {
     loadState(slot: number): boolean;
 
     /**
-     * Forces an autosave-state capture immediately.
+     * Forces an auto save state capture immediately.
      *
-     * @returns True if the autosave-state was captured successfully, otherwise false.
+     * @returns True if the auto save state was captured successfully, otherwise false.
      */
     forceAutoSaveState(): boolean;
 
     /**
-     * Reads the current autosave state from the filesystem (if present).
+     * Loads the current auto save state (if present).
      *
-     * @returns The autosave state name and bytes, or null if none exists.
+     * @returns True if the auto save state loaded successfully, otherwise false.
      */
     loadAutoSaveState(): boolean;
 
     /**
-     * Reads the current autosave state from the filesystem (if present).
+     * Reads the current auto save state from the filesystem (if present).
      *
-     * @returns The autosave state name and bytes, or null if none exists.
+     * @returns The auto save state name and bytes, or null if none exists.
      */
     getAutoSaveState(): { autoSaveStateName: string; data: Uint8Array } | null;
 
     /**
-     * Uploads autosave state data into the emulator's filesystem.
+     * Uploads auto save state data into the emulator filesystem.
      *
-     * @param autoSaveStateName - File name to store as in the autosave location.
-     * @param data - Raw autosave state bytes.
+     * @param autoSaveStateName - Full auto save path to write to.
+     * @param data - Raw auto save state bytes.
      */
     uploadAutoSaveState(
       autoSaveStateName: string,
@@ -360,7 +356,7 @@ declare namespace mGBA {
     pauseGame(): void;
 
     /**
-     * Performs a quick reload of the current rom file.
+     * Performs a quick reload of the current ROM file.
      */
     quickReload(): void;
 
@@ -370,7 +366,7 @@ declare namespace mGBA {
     quitGame(): void;
 
     /**
-     * Quits the emulator core/runtime.
+     * Exits the emulator runtime.
      */
     quitMgba(): void;
 
@@ -393,7 +389,7 @@ declare namespace mGBA {
     saveState(slot: number): boolean;
 
     /**
-     * Captures a screenshot and writes it to the screenshot directory in the embedded file system.
+     * Captures a screenshot and writes it to the screenshots directory.
      *
      * @param fileName - Optional custom screenshot file name.
      * @returns True if screenshot was captured successfully, otherwise false.
@@ -421,6 +417,14 @@ declare namespace mGBA {
      */
     setMainLoopTiming(mode: number, value: number): void;
 
+    /**
+     * Sets the audio volume multiplier.
+     *
+     * - `1.0` = 100%
+     * - Range is `0.0..2.0` (0%..200%)
+     *
+     * @param percent - Volume multiplier to apply.
+     */
     setVolume(percent: number): void;
 
     /**
@@ -447,9 +451,9 @@ declare namespace mGBA {
     uploadPatch(file: File, callback?: () => void): void;
 
     /**
-     * Uploads a rom file into the emulator filesystem.
+     * Uploads a ROM file into the emulator filesystem.
      *
-     * @param file - Rom file to upload.
+     * @param file - ROM file to upload.
      * @param callback - Optional callback fired after upload completes.
      */
     uploadRom(file: File, callback?: () => void): void;
@@ -477,6 +481,11 @@ declare namespace mGBA {
      */
     addCoreCallbacks(coreCallbacks: coreCallbacks): void;
 
+    /**
+     * Enables/disables active rewinding while the core is running.
+     *
+     * @param enabled - If true the core rewinds, if false rewind stops.
+     */
     toggleRewind(enabled: boolean): void;
 
     /**
@@ -491,9 +500,25 @@ declare namespace mGBA {
       projectName: string;
       projectVersion: string;
     };
+
+    /**
+     * Returns common filesystem path strings used by this build.
+     */
     filePaths(): filePaths;
+
+    /**
+     * Last loaded ROM path set after `loadGame` succeeds.
+     */
     gameName?: string;
+
+    /**
+     * Save path used for the current game set after `loadGame` succeeds.
+     */
     saveName?: string;
+
+    /**
+     * Auto save state path and file name used for the current game set after `loadGame` succeeds.
+     */
     autoSaveStateName?: string;
     // extra exported runtime methods
     FS: typeof FS;
@@ -507,6 +532,29 @@ declare namespace mGBA {
     };
   }
 
+  /**
+   * Generates a web assembly mGBA module for the browser.
+   *
+   * This emulator core is meant to be used like a controlled frontend component:
+   * it bootstraps the emulator runtime, canvas wiring, keyboard events, and other autonomous
+   * functions using emscripten, exposing an imperative API used to control the core.
+   *
+   * The consuming UI then drives all actions after initialization using the API above, such as
+   * loading ROM/save files, pausing/resuming, settings, saves, etc.
+   *
+   * **Initialization flow:**
+   * - create a `<canvas />`
+   * - call `mGBA({ canvas })` to get the `Module`
+   * - call `await Module.FSInit()` once to mount + load persisted file system data
+   * - keep the `Module` accessible and call methods on it from your UI
+   *
+   * This core uses threads, your app must be served with cross-origin isolation enabled
+   * (`COOP: same-origin` + `COEP: require-corp`), otherwise it will not run correctly.
+   *
+   * @param options - Module options.
+   * @param options.canvas - Canvas used for video output.
+   * @returns The initialized emulator `Module`.
+   */
   // eslint-disable-next-line import/no-default-export
   export default function mGBA(options: {
     canvas: HTMLCanvasElement;

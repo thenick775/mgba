@@ -41,12 +41,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          ls -larth dist
+
           test -f dist/mgba.js
           test -f dist/mgba.d.ts
           test -f dist/mgba.wasm 
           test -f dist/mgba.wasm.map
-
-          ls -larth dist
+          test -f dist/mgba.data
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v6

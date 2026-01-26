@@ -11,6 +11,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
 	-s EXPORT_NAME=${CMAKE_PROJECT_NAME} \
 	-s MIN_WEBGL_VERSION=2 \
 	-s MAX_WEBGL_VERSION=2 \
+	-gsource-map \
 	--flto \
 	-pthread \
 	--pre-js ${CMAKE_CURRENT_SOURCE_DIR}/pre.js \

@@ -9,6 +9,10 @@ permissions:
   actions: write
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   change-detect:
     runs-on: ubuntu-latest

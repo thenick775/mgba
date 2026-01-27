@@ -560,14 +560,16 @@ declare namespace mGBA {
    * This core uses threads, your app must be served with cross-origin isolation enabled
    * (`COOP: same-origin` + `COEP: require-corp`), otherwise it will not run correctly.
    *
-   * @param options - Module options.
-   * @param options.canvas - Canvas used for video output.
-   * @returns The initialized emulator `Module`.
+   * @param options - All default emscripten Module options. See https://emscripten.org/docs/api_reference/module.html
+   * @param options.canvas - Extra type definition for the canvas used for video output.
+   * @returns The initialized mGBA emulator `Module`.
    */
   // eslint-disable-next-line import/no-default-export
-  export default function mGBA(options: {
-    canvas: HTMLCanvasElement;
-  }): Promise<mGBAEmulator>;
+  export default function mGBA(
+    options: Partial<EmscriptenModule> & {
+      canvas: HTMLCanvasElement;
+    },
+  ): Promise<mGBAEmulator>;
 }
 
 export = mGBA;

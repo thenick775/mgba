@@ -2,9 +2,10 @@
   "name": "@thenick775/mgba-wasm",
   "version": "2.4.1",
   "description": "mGBA emulator compiled to webassembly",
-  "main": "./dist/mgba.js",
+  "main": "./dist/mgba.wrapper.js",
   "types": "./dist/mgba.d.ts",
   "files": [
+    "./dist/mgba.wrapper.js",
     "./dist/mgba.js",
     "./dist/mgba.d.ts",
     "./dist/mgba.wasm",

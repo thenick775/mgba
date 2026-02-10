@@ -487,7 +487,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 
 	unsigned w, h;
 	renderer->core->baseVideoSize(renderer->core, &w, &h);
-	if (w == 256 && h == 224) {
+	if (w == SGB_VIDEO_HORIZONTAL_PIXELS && h == SGB_VIDEO_VERTICAL_PIXELS) {
 		w = GB_VIDEO_HORIZONTAL_PIXELS;
 		h = GB_VIDEO_VERTICAL_PIXELS;
 	}
@@ -695,7 +695,7 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		} else if (strcmp(settingName, "highResolutionScale") == 0 && value > 0) {
 			unsigned w, h;
 			renderer->core->baseVideoSize(renderer->core, &w, &h);
-			if (w == 256 && h == 224) {
+			if (w == SGB_VIDEO_HORIZONTAL_PIXELS && h == SGB_VIDEO_VERTICAL_PIXELS) {
 				w = GB_VIDEO_HORIZONTAL_PIXELS;
 				h = GB_VIDEO_VERTICAL_PIXELS;
 			}

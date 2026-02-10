@@ -17,6 +17,12 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} \
 	-pthread \
 	--pre-js ${CMAKE_CURRENT_SOURCE_DIR}/pre.js \
 	--preload-file ${CMAKE_CURRENT_SOURCE_DIR}/shaders@/shaders")
+
+# Clean .DS_Store files before building (prevents them from being baked into WASM bundle)
+add_custom_target(clean_ds_store ALL
+	COMMAND find ${CMAKE_CURRENT_SOURCE_DIR}/shaders -name ".DS_Store" -delete
+)
+
 add_executable(${BINARY_NAME}.js main.c memory.c ../sdl/sdl-audio.c ../sdl/sdl-events.c ../sdl/sdl-text.c ../sdl/gl-common.c)
 set_target_properties(${BINARY_NAME}.js PROPERTIES
 	COMPILE_DEFINITIONS "${OS_DEFINES};${FEATURE_DEFINES};${FUNCTION_DEFINES}"

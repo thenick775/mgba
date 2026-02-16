@@ -535,7 +535,6 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	h = h * renderer->highResolutionScale;
 	EM_ASM({ console.log('current video size', $0, $1, $2) }, w, h, renderer->highResolutionScale);
 	mGLES2Init(renderer, w, h);
-	SDL_RenderSetLogicalSize(renderer->sdlRenderer, w, h);
 	SDL_SetWindowSize(renderer->window, w, h);
 	EM_ASM(
 	    {
@@ -702,7 +701,6 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 			double dpr = emscripten_get_device_pixel_ratio();
 			w = w * renderer->highResolutionScale * dpr;
 			h = h * renderer->highResolutionScale * dpr;
-			SDL_RenderSetLogicalSize(renderer->sdlRenderer, w, h);
 			SDL_SetWindowSize(renderer->window, w, h);
 			renderer->gl2.d.contextResized(&renderer->gl2.d, w, h, 0, 0);
 			EM_ASM(
@@ -773,32 +771,32 @@ void updateFPS() {
 	}
 }
 
-void drawFPS(unsigned x, unsigned y) {
-	char fpsBuf[32];
-	snprintf(fpsBuf, sizeof(fpsBuf), "%.1f", renderer->fpsCounter.fps);
+// void drawFPS(unsigned x, unsigned y) {
+// 	char fpsBuf[32];
+// 	snprintf(fpsBuf, sizeof(fpsBuf), "%.1f", renderer->fpsCounter.fps);
 
-	int scale = 1;
-	int charWidth = 8 * scale;
-	int charHeight = 10 * scale;
-	int width = strlen(fpsBuf) * charWidth;
-	int height = charHeight;
+// 	int scale = 1;
+// 	int charWidth = 8 * scale;
+// 	int charHeight = 10 * scale;
+// 	int width = strlen(fpsBuf) * charWidth;
+// 	int height = charHeight;
 
-	// save current draw color
-	Uint8 prevR, prevG, prevB, prevA;
-	SDL_GetRenderDrawColor(renderer->sdlRenderer, &prevR, &prevG, &prevB, &prevA);
+// 	// save current draw color
+// 	Uint8 prevR, prevG, prevB, prevA;
+// 	SDL_GetRenderDrawColor(renderer->sdlRenderer, &prevR, &prevG, &prevB, &prevA);
 
-	// draw gray background
-	SDL_SetRenderDrawColor(renderer->sdlRenderer, 64, 64, 64, 255);
-	SDL_FRect bgRect = { x - 2, y - 2, width + 4, height + 4 };
-	SDL_RenderFillRectF(renderer->sdlRenderer, &bgRect);
+// 	// draw gray background
+// 	SDL_SetRenderDrawColor(renderer->sdlRenderer, 64, 64, 64, 255);
+// 	SDL_FRect bgRect = { x - 2, y - 2, width + 4, height + 4 };
+// 	SDL_RenderFillRectF(renderer->sdlRenderer, &bgRect);
 
-	// draw white text
-	SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 255, 255, 255);
-	SDL_RenderText(renderer->sdlRenderer, fpsBuf, scale, x, y);
+// 	// draw white text
+// 	SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 255, 255, 255);
+// 	SDL_RenderText(renderer->sdlRenderer, fpsBuf, scale, x, y);
 
-	// restore original draw color
-	SDL_SetRenderDrawColor(renderer->sdlRenderer, prevR, prevG, prevB, prevA);
-}
+// 	// restore original draw color
+// 	SDL_SetRenderDrawColor(renderer->sdlRenderer, prevR, prevG, prevB, prevA);
+// }
 
 // auto save state utilities
 void updateAutoSaveState() {
@@ -948,10 +946,6 @@ int main() {
 	mLogSetDefaultLogger(&logCtx);
 
 	SDL_Init(SDL_INIT_VIDEO);
-	renderer->window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-	                                    GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
-	renderer->sdlRenderer =
-	    SDL_CreateRenderer(renderer->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
 	// exclude specific key events
 	SDL_SetEventFilter(excludeKeys, NULL);

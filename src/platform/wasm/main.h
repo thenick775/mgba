@@ -27,7 +27,6 @@ struct mEmscriptenRenderer {
 	mColor* outputBuffer;
 
 	SDL_Window* window;
-	SDL_Renderer* sdlRenderer;
 	SDL_GLContext* glCtx;
 	struct mGLES2Context gl2;
 	struct VideoShader customShader;

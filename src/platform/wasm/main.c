@@ -14,8 +14,8 @@
 #include <mgba/internal/gb/gb.h>
 #include <mgba/internal/gba/input.h>
 
+#include "draw-fps.h"
 #include "platform/sdl/sdl-audio.h"
-#include "platform/sdl/sdl-text.h"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_keyboard.h>
@@ -26,6 +26,9 @@
 
 // global renderer
 static struct mEmscriptenRenderer* renderer = NULL;
+
+static unsigned gOutputBufW = 0;
+static unsigned gOutputBufH = 0;
 
 // log utilities
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
@@ -212,6 +215,9 @@ EMSCRIPTEN_KEEPALIVE void quitGame() {
 		renderer->gl2.d.deinit(&renderer->gl2.d);
 		SDL_GL_DeleteContext(renderer->glCtx);
 		free(renderer->outputBuffer);
+		renderer->outputBuffer = NULL;
+		gOutputBufW = 0;
+		gOutputBufH = 0;
 	}
 }
 
@@ -401,6 +407,9 @@ EMSCRIPTEN_KEEPALIVE bool mGLES2Init(struct mEmscriptenRenderer* renderer, int w
 	size_t size = width * height * BYTES_PER_PIXEL;
 	posix_memalign((void**) &renderer->outputBuffer, 16, size);
 	memset(renderer->outputBuffer, 0, size);
+
+	gOutputBufW = (unsigned) width;
+	gOutputBufH = (unsigned) height;
 
 	// Hook up video buffer to core
 	renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, width);
@@ -771,33 +780,6 @@ void updateFPS() {
 	}
 }
 
-// void drawFPS(unsigned x, unsigned y) {
-// 	char fpsBuf[32];
-// 	snprintf(fpsBuf, sizeof(fpsBuf), "%.1f", renderer->fpsCounter.fps);
-
-// 	int scale = 1;
-// 	int charWidth = 8 * scale;
-// 	int charHeight = 10 * scale;
-// 	int width = strlen(fpsBuf) * charWidth;
-// 	int height = charHeight;
-
-// 	// save current draw color
-// 	Uint8 prevR, prevG, prevB, prevA;
-// 	SDL_GetRenderDrawColor(renderer->sdlRenderer, &prevR, &prevG, &prevB, &prevA);
-
-// 	// draw gray background
-// 	SDL_SetRenderDrawColor(renderer->sdlRenderer, 64, 64, 64, 255);
-// 	SDL_FRect bgRect = { x - 2, y - 2, width + 4, height + 4 };
-// 	SDL_RenderFillRectF(renderer->sdlRenderer, &bgRect);
-
-// 	// draw white text
-// 	SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 255, 255, 255);
-// 	SDL_RenderText(renderer->sdlRenderer, fpsBuf, scale, x, y);
-
-// 	// restore original draw color
-// 	SDL_SetRenderDrawColor(renderer->sdlRenderer, prevR, prevG, prevB, prevA);
-// }
-
 // auto save state utilities
 void updateAutoSaveState() {
 	double now = emscripten_get_now();
@@ -855,7 +837,10 @@ void runLoop() {
 				};
 			}
 			if (mCoreSyncWaitFrameStart(&renderer->thread->impl->sync)) {
-				// todo: something about drawFPS
+				if (renderer->showFpsCounter) {
+					drawFPSOverlayIntoOutputBuffer(2, 2, gOutputBufW, gOutputBufH, (uint8_t*) renderer->outputBuffer,
+					                               renderer->fpsCounter.fps);
+				}
 				renderer->gl2.d.setImage(&renderer->gl2.d, VIDEO_LAYER_IMAGE, renderer->outputBuffer);
 			}
 			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);

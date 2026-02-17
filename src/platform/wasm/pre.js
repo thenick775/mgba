@@ -619,8 +619,8 @@ Module.setCoreSettings = (coreSettings) => {
 
   if (coreSettings.highResolutionScale !== undefined)
     setIntegerCoreSetting(
-      'highResolutionScale',
-      coreSettings.highResolutionScale
+      "highResolutionScale",
+      coreSettings.highResolutionScale,
     );
 };
 

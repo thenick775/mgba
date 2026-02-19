@@ -674,7 +674,8 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 			renderer->core->reloadConfigOption(renderer->core, "allowOpposingDirections", &renderer->core->config);
 		} else if (strcmp(settingName, "rewindBufferCapacity") == 0 && value > 0) {
 			renderer->core->opts.rewindBufferCapacity = value;
-			mCoreThreadRewindParamsChanged(renderer->thread);
+			if (renderer->thread)
+				mCoreThreadRewindParamsChanged(renderer->thread);
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindBufferCapacity", value);
 			renderer->core->reloadConfigOption(renderer->core, "rewindBufferCapacity", &renderer->core->config);
 		} else if (strcmp(settingName, "rewindBufferInterval") == 0 && value > 0) {
@@ -689,7 +690,8 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 			renderer->core->reloadConfigOption(renderer->core, "threadedVideo", &renderer->core->config);
 		} else if (strcmp(settingName, "rewindEnable") == 0 && (value == true || value == false)) {
 			renderer->core->opts.rewindEnable = value;
-			mCoreThreadRewindParamsChanged(renderer->thread);
+			if (renderer->thread)
+				mCoreThreadRewindParamsChanged(renderer->thread);
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindEnable", value);
 			renderer->core->reloadConfigOption(renderer->core, "rewindEnable", &renderer->core->config);
 		} else if (strcmp(settingName, "baseFpsTarget") == 0 && value >= 0.0) {

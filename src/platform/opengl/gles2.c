@@ -12,8 +12,6 @@
 #include <mgba-util/vector.h>
 #include <mgba-util/vfs.h>
 
-#include <emscripten.h>
-
 mLOG_DECLARE_CATEGORY(OPENGL);
 mLOG_DEFINE_CATEGORY(OPENGL, "OpenGL", "video.ogl");
 
@@ -304,9 +302,13 @@ static void mGLES2ContextResized(struct VideoBackend* v, unsigned w, unsigned h,
 	}
 	context->finalShader.dirty = true;
 	context->interframeShader.dirty = true;
-	glBindTexture(GL_TEXTURE_2D, context->finalShader.tex);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, drawW, drawH, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-	glBindFramebuffer(GL_FRAMEBUFFER, context->finalShader.fbo);
+	if (context->finalShader.tex && context->finalShader.fbo) {
+        glBindTexture(GL_TEXTURE_2D, context->finalShader.tex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, drawW, drawH, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, context->finalShader.fbo);
+    } else {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
 	glViewport((w - drawW) / 2, (h - drawH) / 2, drawW, drawH);
 }
 
@@ -531,7 +533,7 @@ static void mGLES2ContextImageSize(struct VideoBackend* v, enum VideoLayer layer
 		*height = context->layerDims[layer].height;
 	} else {
 		*width = context->imageSizes[layer].width;
-		*height = context->imageSizes[layer].height;		
+		*height = context->imageSizes[layer].height;
 	}
 }
 
@@ -619,7 +621,7 @@ void mGLES2ShaderInit(struct mGLES2Shader* shader, const char* vs, const char* f
 	if (shader->width > 0 && shader->height > 0) {
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, shader->width, shader->height, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 	} else {
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 512, 512, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);		
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 512, 512, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 	}
 
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, shader->tex, 0);
@@ -628,7 +630,6 @@ void mGLES2ShaderInit(struct mGLES2Shader* shader, const char* vs, const char* f
 	shader->fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
 	const GLchar* shaderBuffer[2];
 	const GLubyte* version = glGetString(GL_VERSION);
-	EM_ASM({console.log('opengl version', UTF8ToString($0))}, (const char*)version);
 	if (strncmp((const char*) version, "OpenGL ES ", strlen("OpenGL ES ")) == 0) {
 		shaderBuffer[0] = _gles2Header;
 	} else if (version[0] == '2') {
@@ -1103,7 +1104,7 @@ bool mGLES2ShaderLoad(struct VideoShader* shader, struct VDir* dir) {
 			struct mGLES2Shader* shaderBlock = calloc(inShaders, sizeof(struct mGLES2Shader));
 			int n;
 			for (n = 0; n < inShaders; ++n) {
-				char passName[12];
+				char passName[16];
 				snprintf(passName, sizeof(passName), "pass.%u", n);
 				const char* fs = ConfigurationGetValue(&description, passName, "fragmentShader");
 				const char* vs = ConfigurationGetValue(&description, passName, "vertexShader");

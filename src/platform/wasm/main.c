@@ -382,8 +382,6 @@ EMSCRIPTEN_KEEPALIVE bool mGLES2Init(struct mEmscriptenRenderer* renderer, int w
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
 
-	EM_ASM({ console.log('mGLES2Init', $0, $1) }, width, height);
-
 	// Create SDL2 window
 	renderer->window =
 	    SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_OPENGL);
@@ -500,12 +498,9 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 		w = GB_VIDEO_HORIZONTAL_PIXELS;
 		h = GB_VIDEO_VERTICAL_PIXELS;
 	}
-	EM_ASM({ console.log('base video size', $0, $1) }, w, h);
 
 	defaultConfigOpts.width = w * renderer->highResolutionScale;
 	defaultConfigOpts.height = h * renderer->highResolutionScale;
-
-	EM_ASM({ console.log('defaultConfigOpts video size', $0, $1) }, defaultConfigOpts.width, defaultConfigOpts.height);
 
 	mCoreInitConfig(renderer->core, PORT);
 	mCoreConfigLoadDefaults(&renderer->core->config, &defaultConfigOpts);
@@ -542,16 +537,13 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	renderer->core->currentVideoSize(renderer->core, &w, &h);
 	w = w * renderer->highResolutionScale;
 	h = h * renderer->highResolutionScale;
-	EM_ASM({ console.log('current video size', $0, $1, $2) }, w, h, renderer->highResolutionScale);
 	mGLES2Init(renderer, w, h);
 	SDL_SetWindowSize(renderer->window, w, h);
 	EM_ASM(
 	    {
 		    const dpr = window.devicePixelRatio || 1;
-		    console.log('setting canvas width/height', $0, $1);
 		    Module.canvas.width = $0 * dpr;
 		    Module.canvas.height = $1 * dpr;
-		    console.log('canvas width/height w/dpr', Module.canvas.width, Module.canvas.height, dpr);
 	    },
 	    w, h);
 
@@ -718,7 +710,6 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 			    {
 				    Module.canvas.width = $0;
 				    Module.canvas.height = $1;
-				    console.log('resize setting canvas size to', $0, $1);
 			    },
 			    w, h);
 		}

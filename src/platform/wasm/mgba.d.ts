@@ -102,7 +102,15 @@ declare namespace mGBA {
      */
     rewindBufferInterval?: number;
 
-    // TODO: document the high resolution scale if we pursue it fully
+    /**
+     * Controls the pixel density of the screen allowing for sharper texture rendering.
+     *
+     * Note: this is _not_ true high resolution upscaling yet, but does facilitate proper pixel scaling.
+     *
+     * Typical values: `1..16`
+     *
+     * Default: 1
+     */
     highResolutionScale?: number;
 
     /**
@@ -499,9 +507,21 @@ declare namespace mGBA {
      */
     setCoreSettings(coreSettings: coreSettings): void;
 
-    // TODO: document shader actions
+    /**
+     * Returns a list of available shader paths in the in-memory file system.
+     */
     listShaders(): string[];
+
+    /**
+     * Loads the shader from the specified path.
+     *
+     * @param shaderPath - Path of shader to load from the in-memory file system.
+     */
     loadShader(shaderPath: string): void;
+
+    /**
+     * Unloads the currently active shader.
+     */
     unloadShader(): void;
 
     // custom variables

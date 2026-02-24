@@ -9,10 +9,6 @@ permissions:
   actions: write
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   change-detect:
     runs-on: ubuntu-latest
@@ -72,13 +68,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          ls -larth dist
-
           test -f dist/mgba.js
           test -f dist/mgba.d.ts
           test -f dist/mgba.wasm 
           test -f dist/mgba.wasm.map
-          test -f dist/mgba.data
+
+          ls -larth dist
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v6

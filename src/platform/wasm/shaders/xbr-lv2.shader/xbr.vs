@@ -24,6 +24,10 @@
    Incorporates some of the ideas from SABR shader. Thanks to Joshua Street.
 */
 
+attribute vec4 position;
+
+uniform vec2 texSize;
+
 varying vec2 texCoord;
 varying vec4 TEX1;
 varying vec4 TEX2;
@@ -32,31 +36,28 @@ varying vec4 TEX4;
 varying vec4 TEX5;
 varying vec4 TEX6;
 varying vec4 TEX7;
-attribute vec4 position;
 
-uniform vec2 texSize;
-
-/*    VERTEX_SHADER    */
-void main()
-{
+void main() {
 	gl_Position = position;
 
 	vec2 ps = vec2(1.0) / texSize;
 	float dx = ps.x;
 	float dy = ps.y;
 
-	//    A1 B1 C1
+	// A1 B1 C1
 	// A0  A  B  C C4
 	// D0  D  E  F F4
 	// G0  G  H  I I4
 	//    G5 H5 I5
 
 	texCoord = (position.st + vec2(1.0, 1.0)) * vec2(0.5, 0.5);
-	TEX1 = texCoord.xxxy + vec4( -dx, 0, dx,-2.0*dy); // A1 B1 C1
-	TEX2 = texCoord.xxxy + vec4( -dx, 0, dx,    -dy); //  A  B  C
-	TEX3 = texCoord.xxxy + vec4( -dx, 0, dx,      0); //  D  E  F
-	TEX4 = texCoord.xxxy + vec4( -dx, 0, dx,     dy); //  G  H  I
-	TEX5 = texCoord.xxxy + vec4( -dx, 0, dx, 2.0*dy); // G5 H5 I5
-	TEX6 = texCoord.xyyy + vec4(-2.0*dx,-dy, 0,  dy); // A0 D0 G0
-	TEX7 = texCoord.xyyy + vec4( 2.0*dx,-dy, 0,  dy); // C4 F4 I4
+
+	// IMPORTANT: use 0.0 (float literal) for strict GLSL ES 1.00 compilers
+	TEX1 = texCoord.xxxy + vec4(-dx, 0.0,  dx, -2.0 * dy); // A1 B1 C1
+	TEX2 = texCoord.xxxy + vec4(-dx, 0.0,  dx, -1.0 * dy); //  A  B  C
+	TEX3 = texCoord.xxxy + vec4(-dx, 0.0,  dx,  0.0      ); //  D  E  F
+	TEX4 = texCoord.xxxy + vec4(-dx, 0.0,  dx,  1.0 * dy); //  G  H  I
+	TEX5 = texCoord.xxxy + vec4(-dx, 0.0,  dx,  2.0 * dy); // G5 H5 I5
+	TEX6 = texCoord.xyyy + vec4(-2.0 * dx, -dy, 0.0,  dy); // A0 D0 G0
+	TEX7 = texCoord.xyyy + vec4( 2.0 * dx, -dy, 0.0,  dy); // C4 F4 I4
 }

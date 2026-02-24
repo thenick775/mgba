@@ -213,6 +213,10 @@ EMSCRIPTEN_KEEPALIVE void quitGame() {
 		renderer->autoSaveStateTimer.lastTime = 0;
 
 		renderer->gl2.d.deinit(&renderer->gl2.d);
+		if (renderer->customShader.passes) {
+			mGLES2ShaderDetach(&renderer->gl2);
+			mGLES2ShaderFree(&renderer->customShader);
+		}
 		SDL_GL_DeleteContext(renderer->glCtx);
 		free(renderer->outputBuffer);
 		renderer->outputBuffer = NULL;
@@ -510,10 +514,6 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	mCoreConfigSetDefaultIntValue(&renderer->core->config, "timestepSync", renderer->timestepSync);
 	mCoreConfigSetDefaultValue(&renderer->core->config, "idleOptimization", "detect");
 	renderer->core->reloadConfigOption(renderer->core, "idleOptimization", &renderer->core->config);
-	mCoreConfigSetDefaultIntValue(&renderer->core->config, "hwaccelVideo", true);
-	renderer->core->reloadConfigOption(renderer->core, "hwaccelVideo", &renderer->core->config);
-	mCoreConfigSetDefaultIntValue(&renderer->core->config, "videoScale", 8);
-	renderer->core->reloadConfigOption(renderer->core, "videoScale", &renderer->core->config);
 	mCoreConfigSetDefaultIntValue(&renderer->core->config, "allowOpposingDirections", true);
 	renderer->core->reloadConfigOption(renderer->core, "allowOpposingDirections", &renderer->core->config);
 	mCoreConfigSetDefaultIntValue(&renderer->core->config, "threadedVideo", renderer->threadedVideo);

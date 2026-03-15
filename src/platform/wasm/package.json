@@ -1,14 +1,16 @@
 {
   "name": "@thenick775/mgba-wasm",
-  "version": "2.4.1",
+  "version": "2.5.0-beta.2",
   "description": "mGBA emulator compiled to webassembly",
-  "main": "./dist/mgba.js",
+  "main": "./dist/mgba.wrapper.js",
   "types": "./dist/mgba.d.ts",
   "files": [
+    "./dist/mgba.wrapper.js",
     "./dist/mgba.js",
     "./dist/mgba.d.ts",
     "./dist/mgba.wasm",
-    "./dist/mgba.wasm.map"
+    "./dist/mgba.wasm.map",
+    "./dist/mgba.data"
   ],
   "scripts": {
     "build": "cd ../../.. && docker run --rm -t -v $PWD:/home/mgba/src local-mgba/wasm:2.0 && echo 'mGBA-wasm built successfully!'",

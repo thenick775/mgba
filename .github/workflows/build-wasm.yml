@@ -5,6 +5,10 @@ on:
     branches: ['**']
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   wasm-docker-build:
     runs-on: ubuntu-latest
@@ -41,12 +45,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          ls -larth dist
+
           test -f dist/mgba.js
           test -f dist/mgba.d.ts
           test -f dist/mgba.wasm 
           test -f dist/mgba.wasm.map
-
-          ls -larth dist
+          test -f dist/mgba.data
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v6

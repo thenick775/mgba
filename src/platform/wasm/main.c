@@ -11,19 +11,24 @@
 #include <mgba/core/thread.h>
 #include <mgba/core/version.h>
 #include <mgba/gba/interface.h>
+#include <mgba/internal/gb/gb.h>
 #include <mgba/internal/gba/input.h>
 
+#include "draw-fps.h"
 #include "platform/sdl/sdl-audio.h"
-#include "platform/sdl/sdl-events.h"
-#include "platform/sdl/sdl-text.h"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_keyboard.h>
 #include <emscripten.h>
 #include <emscripten/threading.h>
 
+#define PORT "wasm"
+
 // global renderer
 static struct mEmscriptenRenderer* renderer = NULL;
+
+static unsigned gOutputBufW = 0;
+static unsigned gOutputBufH = 0;
 
 // log utilities
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
@@ -206,6 +211,17 @@ EMSCRIPTEN_KEEPALIVE void quitGame() {
 		renderer->audio.core = NULL;
 
 		renderer->autoSaveStateTimer.lastTime = 0;
+
+		renderer->gl2.d.deinit(&renderer->gl2.d);
+		if (renderer->customShader.passes) {
+			mGLES2ShaderDetach(&renderer->gl2);
+			mGLES2ShaderFree(&renderer->customShader);
+		}
+		SDL_GL_DeleteContext(renderer->glCtx);
+		free(renderer->outputBuffer);
+		renderer->outputBuffer = NULL;
+		gOutputBufW = 0;
+		gOutputBufH = 0;
 	}
 }
 
@@ -360,6 +376,99 @@ EMSCRIPTEN_KEEPALIVE bool autoLoadCheats() {
 	return false;
 }
 
+void mGLCommonSwap(struct VideoBackend* context) {
+	struct mEmscriptenRenderer* renderer = (struct mEmscriptenRenderer*) context->user;
+	SDL_GL_SwapWindow(renderer->window);
+}
+
+EMSCRIPTEN_KEEPALIVE bool mGLES2Init(struct mEmscriptenRenderer* renderer, int width, int height) {
+	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+
+	// Create SDL2 window
+	renderer->window =
+	    SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_OPENGL);
+	if (!renderer->window) {
+		EM_ASM({ console.error('SDL_CreateWindow failed') });
+		return false;
+	}
+
+	// Create OpenGL context
+	renderer->glCtx = SDL_GL_CreateContext(renderer->window);
+	if (!renderer->glCtx) {
+		SDL_DestroyWindow(renderer->window);
+		return false;
+	}
+	SDL_GL_MakeCurrent(renderer->window, renderer->glCtx);
+	SDL_GL_SetSwapInterval(1); // VSync
+
+	SDL_SetWindowMinimumSize(renderer->window, width, height);
+
+	// Allocate aligned output buffer
+	size_t size = width * height * BYTES_PER_PIXEL;
+	posix_memalign((void**) &renderer->outputBuffer, 16, size);
+	memset(renderer->outputBuffer, 0, size);
+
+	gOutputBufW = (unsigned) width;
+	gOutputBufH = (unsigned) height;
+
+	// Hook up video buffer to core
+	renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, width);
+
+	// Initialize GLES2 context
+	mGLES2ContextCreate(&renderer->gl2);
+
+	renderer->gl2.d.user = renderer;
+	renderer->gl2.d.lockAspectRatio = true;
+	renderer->gl2.d.lockIntegerScaling = true;
+	renderer->gl2.d.filter = false;
+	renderer->gl2.d.swap = mGLCommonSwap;
+	renderer->gl2.d.init(&renderer->gl2.d, 0);
+
+	// Set base layer dimensions
+	struct mRectangle dims = { .x = 0, .y = 0, .width = width, .height = height };
+	renderer->gl2.d.setLayerDimensions(&renderer->gl2.d, VIDEO_LAYER_IMAGE, &dims);
+
+	// Store base resolution so `mGLES2ContextResized` can lock properly
+	unsigned w, h;
+	renderer->core->currentVideoSize(renderer->core, &w, &h);
+	renderer->gl2.width = w;
+	renderer->gl2.height = h;
+
+	double dpr = emscripten_get_device_pixel_ratio();
+	int pixelWidth = width * dpr;
+	int pixelHeight = height * dpr;
+	renderer->gl2.d.contextResized(&renderer->gl2.d, pixelWidth, pixelHeight, 0, 0);
+
+	return true;
+}
+
+EMSCRIPTEN_KEEPALIVE void loadShader(char* shaderPath) {
+	mCoreThreadInterrupt(renderer->thread);
+	if (renderer->customShader.passes) {
+		mGLES2ShaderDetach(&renderer->gl2);
+		mGLES2ShaderFree(&renderer->customShader);
+	}
+
+	struct VDir* currentShaderDir = VDirOpen(shaderPath);
+	if (mGLES2ShaderLoad(&renderer->customShader, currentShaderDir)) {
+		mGLES2ShaderAttach(&renderer->gl2, (struct mGLES2Shader*) renderer->customShader.passes,
+		                   renderer->customShader.nPasses);
+	}
+	currentShaderDir->close(currentShaderDir);
+	mCoreThreadContinue(renderer->thread);
+}
+
+EMSCRIPTEN_KEEPALIVE void unloadShader() {
+	if (renderer->customShader.passes) {
+		mCoreThreadInterrupt(renderer->thread);
+		mGLES2ShaderDetach(&renderer->gl2);
+		mGLES2ShaderFree(&renderer->customShader);
+		mCoreThreadContinue(renderer->thread);
+	}
+}
+
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverride) {
 	if (renderer->thread && renderer->core) {
 		quitGame();
@@ -387,6 +496,17 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 		                                      .volume = 0x100,
 		                                      .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
 
+	unsigned w, h;
+	renderer->core->baseVideoSize(renderer->core, &w, &h);
+	if (w == SGB_VIDEO_HORIZONTAL_PIXELS && h == SGB_VIDEO_VERTICAL_PIXELS) {
+		w = GB_VIDEO_HORIZONTAL_PIXELS;
+		h = GB_VIDEO_VERTICAL_PIXELS;
+	}
+
+	defaultConfigOpts.width = w * renderer->highResolutionScale;
+	defaultConfigOpts.height = h * renderer->highResolutionScale;
+
+	mCoreInitConfig(renderer->core, PORT);
 	mCoreConfigLoadDefaults(&renderer->core->config, &defaultConfigOpts);
 	mCoreLoadConfig(renderer->core);
 
@@ -410,27 +530,20 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	mCoreAutoloadPatch(renderer->core);
 	mSDLInitBindingsGBA(&renderer->core->inputMap);
 
-	unsigned w, h;
-	renderer->core->baseVideoSize(renderer->core, &w, &h);
-	if (renderer->sdlTex) {
-		SDL_DestroyTexture(renderer->sdlTex);
-	}
-	renderer->sdlTex =
-	    SDL_CreateTexture(renderer->sdlRenderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h);
-
-	int stride;
-	SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
-	renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
 	renderer->core->setAudioBufferSize(renderer->core, renderer->audio.samples);
 
 	renderer->core->reset(renderer->core);
 
 	renderer->core->currentVideoSize(renderer->core, &w, &h);
+	w = w * renderer->highResolutionScale;
+	h = h * renderer->highResolutionScale;
+	mGLES2Init(renderer, w, h);
 	SDL_SetWindowSize(renderer->window, w, h);
 	EM_ASM(
 	    {
-		    Module.canvas.width = $0;
-		    Module.canvas.height = $1;
+		    const dpr = window.devicePixelRatio || 1;
+		    Module.canvas.width = $0 * dpr;
+		    Module.canvas.height = $1 * dpr;
 	    },
 	    w, h);
 
@@ -542,6 +655,8 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->restoreAutoSaveStateOnLoad = value;
 	} else if (strcmp(settingName, "autoSaveStateTimerIntervalSeconds") == 0 && value > 0) {
 		renderer->autoSaveStateTimer.intervalSeconds = value;
+	} else if (strcmp(settingName, "highResolutionScale") == 0 && value > 0) {
+		renderer->highResolutionScale = value;
 	}
 
 	// core settings when running
@@ -551,7 +666,8 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 			renderer->core->reloadConfigOption(renderer->core, "allowOpposingDirections", &renderer->core->config);
 		} else if (strcmp(settingName, "rewindBufferCapacity") == 0 && value > 0) {
 			renderer->core->opts.rewindBufferCapacity = value;
-			mCoreThreadRewindParamsChanged(renderer->thread);
+			if (renderer->thread)
+				mCoreThreadRewindParamsChanged(renderer->thread);
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindBufferCapacity", value);
 			renderer->core->reloadConfigOption(renderer->core, "rewindBufferCapacity", &renderer->core->config);
 		} else if (strcmp(settingName, "rewindBufferInterval") == 0 && value > 0) {
@@ -566,7 +682,8 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 			renderer->core->reloadConfigOption(renderer->core, "threadedVideo", &renderer->core->config);
 		} else if (strcmp(settingName, "rewindEnable") == 0 && (value == true || value == false)) {
 			renderer->core->opts.rewindEnable = value;
-			mCoreThreadRewindParamsChanged(renderer->thread);
+			if (renderer->thread)
+				mCoreThreadRewindParamsChanged(renderer->thread);
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "rewindEnable", value);
 			renderer->core->reloadConfigOption(renderer->core, "rewindEnable", &renderer->core->config);
 		} else if (strcmp(settingName, "baseFpsTarget") == 0 && value >= 0.0) {
@@ -577,6 +694,24 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		} else if (strcmp(settingName, "timestepSync") == 0 && (value == true || value == false)) {
 			mCoreConfigSetDefaultIntValue(&renderer->core->config, "timestepSync", value);
 			renderer->core->reloadConfigOption(renderer->core, "timestepSync", &renderer->core->config);
+		} else if (strcmp(settingName, "highResolutionScale") == 0 && value > 0) {
+			unsigned w, h;
+			renderer->core->baseVideoSize(renderer->core, &w, &h);
+			if (w == SGB_VIDEO_HORIZONTAL_PIXELS && h == SGB_VIDEO_VERTICAL_PIXELS) {
+				w = GB_VIDEO_HORIZONTAL_PIXELS;
+				h = GB_VIDEO_VERTICAL_PIXELS;
+			}
+			double dpr = emscripten_get_device_pixel_ratio();
+			w = w * renderer->highResolutionScale * dpr;
+			h = h * renderer->highResolutionScale * dpr;
+			SDL_SetWindowSize(renderer->window, w, h);
+			renderer->gl2.d.contextResized(&renderer->gl2.d, w, h, 0, 0);
+			EM_ASM(
+			    {
+				    Module.canvas.width = $0;
+				    Module.canvas.height = $1;
+			    },
+			    w, h);
 		}
 
 		// thread settings when running
@@ -638,33 +773,6 @@ void updateFPS() {
 	}
 }
 
-void drawFPS(unsigned x, unsigned y) {
-	char fpsBuf[32];
-	snprintf(fpsBuf, sizeof(fpsBuf), "%.1f", renderer->fpsCounter.fps);
-
-	int scale = 1;
-	int charWidth = 8 * scale;
-	int charHeight = 10 * scale;
-	int width = strlen(fpsBuf) * charWidth;
-	int height = charHeight;
-
-	// save current draw color
-	Uint8 prevR, prevG, prevB, prevA;
-	SDL_GetRenderDrawColor(renderer->sdlRenderer, &prevR, &prevG, &prevB, &prevA);
-
-	// draw gray background
-	SDL_SetRenderDrawColor(renderer->sdlRenderer, 64, 64, 64, 255);
-	SDL_FRect bgRect = { x - 2, y - 2, width + 4, height + 4 };
-	SDL_RenderFillRectF(renderer->sdlRenderer, &bgRect);
-
-	// draw white text
-	SDL_SetRenderDrawColor(renderer->sdlRenderer, 255, 255, 255, 255);
-	SDL_RenderText(renderer->sdlRenderer, fpsBuf, scale, x, y);
-
-	// restore original draw color
-	SDL_SetRenderDrawColor(renderer->sdlRenderer, prevR, prevG, prevB, prevA);
-}
-
 // auto save state utilities
 void updateAutoSaveState() {
 	double now = emscripten_get_now();
@@ -722,22 +830,18 @@ void runLoop() {
 				};
 			}
 			if (mCoreSyncWaitFrameStart(&renderer->thread->impl->sync)) {
-				unsigned w, h;
-				renderer->core->currentVideoSize(renderer->core, &w, &h);
-
-				SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
-
-				SDL_UnlockTexture(renderer->sdlTex);
-				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
-				if (renderer->showFpsCounter)
-					drawFPS(w - 35, h - LINE_HEIGHT);
-				SDL_RenderPresent(renderer->sdlRenderer);
-				int stride;
-				SDL_LockTexture(renderer->sdlTex, 0, (void**) &renderer->outputBuffer, &stride);
-				renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, stride / BYTES_PER_PIXEL);
+				if (renderer->showFpsCounter) {
+					drawFPSOverlayIntoOutputBuffer(2, 2, gOutputBufW, gOutputBufH, (uint8_t*) renderer->outputBuffer,
+					                               renderer->fpsCounter.fps);
+				}
+				renderer->gl2.d.setImage(&renderer->gl2.d, VIDEO_LAYER_IMAGE, renderer->outputBuffer);
 			}
 			mCoreSyncWaitFrameEnd(&renderer->thread->impl->sync);
 		}
+
+		renderer->gl2.d.drawFrame(&renderer->gl2.d);
+		renderer->gl2.d.swap(&renderer->gl2.d);
+
 		if (renderer->showFpsCounter)
 			updateFPS();
 		if (renderer->autoSaveStateEnable)
@@ -815,14 +919,11 @@ int main() {
 	renderer->restoreAutoSaveStateOnLoad = true;
 	renderer->autoSaveStateTimer.lastTime = 0;
 	renderer->autoSaveStateTimer.intervalSeconds = 30;
+	renderer->highResolutionScale = 1;
 
 	mLogSetDefaultLogger(&logCtx);
 
 	SDL_Init(SDL_INIT_VIDEO);
-	renderer->window = SDL_CreateWindow(NULL, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-	                                    GBA_VIDEO_HORIZONTAL_PIXELS, GBA_VIDEO_VERTICAL_PIXELS, SDL_WINDOW_OPENGL);
-	renderer->sdlRenderer =
-	    SDL_CreateRenderer(renderer->window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
 
 	// exclude specific key events
 	SDL_SetEventFilter(excludeKeys, NULL);

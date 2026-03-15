@@ -19,7 +19,7 @@ Module.loadGame = (romPath, savePathOverride) => {
       savePathOverride ?? saveName.replace('/data/games/', '/data/saves/');
     Module.autoSaveStateName = autoSaveStateName.replace(
       '/data/games/',
-      '/autosave/'
+      '/autosave/',
     );
     return true;
   }
@@ -105,6 +105,7 @@ Module.filePaths = () => {
     screenshotsPath: '/data/screenshots',
     patchPath: '/data/patches',
     autosave: '/autosave',
+    shaderPath: '/shaders',
   };
 };
 
@@ -440,7 +441,7 @@ Module.getFastForwardMultiplier = () => {
   const getFastForwardMultiplier = cwrap(
     'getFastForwardMultiplier',
     'number',
-    []
+    [],
   );
   return getFastForwardMultiplier();
 };
@@ -460,7 +461,16 @@ const coreCallbackStore = {
 // adds user callbacks to the callback store, and makes function(s) available to the core in c
 // passing null clears the callback, allowing for partial additions/removals of callbacks
 Module.addCoreCallbacks = (callbacks) => {
-  const addCoreCallbacks = cwrap('addCoreCallbacks', null, ['number']);
+  const addCoreCallbacks = cwrap('addCoreCallbacks', null, [
+    'number',
+    'number',
+    'number',
+    'number',
+    'number',
+    'number',
+    'number',
+    'number',
+  ]);
 
   Object.keys(coreCallbackStore).forEach((callbackKey) => {
     const callbackName = callbackKey.replace('CallbackPtr', 'Callback');
@@ -486,7 +496,7 @@ Module.addCoreCallbacks = (callbacks) => {
     coreCallbackStore.videoFrameEndedCallbackPtr,
     coreCallbackStore.videoFrameStartedCallbackPtr,
     coreCallbackStore.autoSaveStateCapturedCallbackPtr,
-    coreCallbackStore.autoSaveStateLoadedCallbackPtr
+    coreCallbackStore.autoSaveStateLoadedCallbackPtr,
   );
 };
 
@@ -505,19 +515,19 @@ Module.setCoreSettings = (coreSettings) => {
   if (coreSettings.allowOpposingDirections !== undefined)
     setIntegerCoreSetting(
       'allowOpposingDirections',
-      coreSettings.allowOpposingDirections
+      coreSettings.allowOpposingDirections,
     );
 
   if (coreSettings.rewindBufferCapacity !== undefined)
     setIntegerCoreSetting(
       'rewindBufferCapacity',
-      coreSettings.rewindBufferCapacity
+      coreSettings.rewindBufferCapacity,
     );
 
   if (coreSettings.rewindBufferInterval !== undefined)
     setIntegerCoreSetting(
       'rewindBufferInterval',
-      coreSettings.rewindBufferInterval
+      coreSettings.rewindBufferInterval,
     );
 
   if (coreSettings?.frameSkip !== undefined)
@@ -553,18 +563,38 @@ Module.setCoreSettings = (coreSettings) => {
   if (coreSettings.autoSaveStateTimerIntervalSeconds !== undefined)
     setIntegerCoreSetting(
       'autoSaveStateTimerIntervalSeconds',
-      coreSettings.autoSaveStateTimerIntervalSeconds
+      coreSettings.autoSaveStateTimerIntervalSeconds,
     );
 
   if (coreSettings.autoSaveStateEnable !== undefined)
     setIntegerCoreSetting(
       'autoSaveStateEnable',
-      coreSettings.autoSaveStateEnable
+      coreSettings.autoSaveStateEnable,
     );
 
   if (coreSettings.restoreAutoSaveStateOnLoad !== undefined)
     setIntegerCoreSetting(
       'restoreAutoSaveStateOnLoad',
-      coreSettings.restoreAutoSaveStateOnLoad
+      coreSettings.restoreAutoSaveStateOnLoad,
     );
+
+  if (coreSettings.highResolutionScale !== undefined)
+    setIntegerCoreSetting(
+      'highResolutionScale',
+      coreSettings.highResolutionScale,
+    );
+};
+
+Module.listShaders = () => {
+  return FS.readdir('/shaders/');
+};
+
+Module.loadShader = (shaderPath) => {
+  const loadShader = cwrap('loadShader', null, ['string']);
+  loadShader(shaderPath);
+};
+
+Module.unloadShader = () => {
+  const unloadShader = cwrap('unloadShader', null, []);
+  unloadShader();
 };

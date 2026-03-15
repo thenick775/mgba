@@ -16,6 +16,7 @@ declare namespace mGBA {
     screenshotsPath: string;
     patchPath: string;
     autosave: string;
+    shaderPath: string;
   }
 
   export type coreCallbacks = {
@@ -100,6 +101,17 @@ declare namespace mGBA {
      * Default: 1
      */
     rewindBufferInterval?: number;
+
+    /**
+     * Controls the pixel density of the screen allowing for sharper texture rendering.
+     *
+     * Note: this is _not_ true high resolution upscaling yet, but does facilitate proper pixel scaling.
+     *
+     * Typical values: `1..16`
+     *
+     * Default: 1
+     */
+    highResolutionScale?: number;
 
     /**
      * Requested audio sample rate in Hz for the audio output.
@@ -495,6 +507,23 @@ declare namespace mGBA {
      */
     setCoreSettings(coreSettings: coreSettings): void;
 
+    /**
+     * Returns a list of available shader paths in the in-memory file system.
+     */
+    listShaders(): string[];
+
+    /**
+     * Loads the shader from the specified path.
+     *
+     * @param shaderPath - Path of shader to load from the in-memory file system.
+     */
+    loadShader(shaderPath: string): void;
+
+    /**
+     * Unloads the currently active shader.
+     */
+    unloadShader(): void;
+
     // custom variables
     version: {
       projectName: string;
@@ -551,14 +580,16 @@ declare namespace mGBA {
    * This core uses threads, your app must be served with cross-origin isolation enabled
    * (`COOP: same-origin` + `COEP: require-corp`), otherwise it will not run correctly.
    *
-   * @param options - Module options.
-   * @param options.canvas - Canvas used for video output.
-   * @returns The initialized emulator `Module`.
+   * @param options - All default emscripten Module options. See https://emscripten.org/docs/api_reference/module.html
+   * @param options.canvas - Extra type definition for the canvas used for video output.
+   * @returns The initialized mGBA emulator `Module`.
    */
   // eslint-disable-next-line import/no-default-export
-  export default function mGBA(options: {
-    canvas: HTMLCanvasElement;
-  }): Promise<mGBAEmulator>;
+  export default function mGBA(
+    options: Partial<EmscriptenModule> & {
+      canvas: HTMLCanvasElement;
+    },
+  ): Promise<mGBAEmulator>;
 }
 
 export = mGBA;

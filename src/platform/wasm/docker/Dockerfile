@@ -1,10 +1,10 @@
-FROM emscripten/emsdk:4.0.4
+FROM emscripten/emsdk:6.0.5
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends make cmake git && \
     apt-get autoremove -y && apt-get clean
 
-RUN userdel emscripten -r && useradd mgba -m
+RUN useradd -m mgba
 VOLUME /home/mgba/src
 USER mgba
 WORKDIR /home/mgba/src

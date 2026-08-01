@@ -28,6 +28,18 @@ static struct mEmscriptenRenderer* renderer = NULL;
 // log utilities
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
 static struct mLogger logCtx = { .log = _log };
+static void (*logCallback)(int, const char*, const char*) = NULL;
+
+static void wrapped_log(int level, const char* categoryName, const char* message) {
+	MAIN_THREAD_EM_ASM(
+	    {
+		    const funcPtr = $0;
+		    const func = wasmTable.get(funcPtr);
+		    if (func)
+			    func($1, $2, $3);
+	    },
+	    (int) logCallback, level, categoryName, message);
+}
 
 // stored core callback function pointers
 typedef struct {
@@ -459,7 +471,7 @@ addCoreCallbacks(void (*alarmCallbackPtr)(void*), void (*coreCrashedCallbackPtr)
                  void (*videoFrameEndedCallbackPtr)(void*), void (*videoFrameStartedCallbackPtr)(void*),
                  void (*autoSaveStateCapturedCallbackPtr)(void*), void (*autoSaveStateLoadedCallbackPtr)(void*)) {
 	if (renderer->core) {
-		struct mCoreCallbacks callbacks = {};
+		struct mCoreCallbacks callbacks = { };
 		// clear core callbacks
 		renderer->core->clearCoreCallbacks(renderer->core);
 		// clear ad-hoc callbacks
@@ -508,6 +520,10 @@ addCoreCallbacks(void (*alarmCallbackPtr)(void*), void (*coreCrashedCallbackPtr)
 
 		renderer->core->addCoreCallbacks(renderer->core, &callbacks);
 	}
+}
+
+EMSCRIPTEN_KEEPALIVE void setLogCallback(void (*logCallbackPtr)(int, const char*, const char*)) {
+	logCallback = logCallbackPtr;
 }
 
 EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
@@ -695,6 +711,7 @@ void runLoop() {
 			memset(renderer->thread, 0, sizeof(struct mCoreThread));
 
 			renderer->thread->core = renderer->core;
+			renderer->thread->logger.logger = &logCtx;
 			bool didFail = !mCoreThreadStart(renderer->thread);
 			if (didFail)
 				EM_ASM({ console.error("thread instantiation failed") });
@@ -755,10 +772,26 @@ void runLoop() {
 
 void _log(struct mLogger* logger, int category, enum mLogLevel level, const char* format, va_list args) {
 	UNUSED(logger);
-	UNUSED(category);
-	UNUSED(level);
-	UNUSED(format);
-	UNUSED(args);
+
+	char buffer[2048];
+	const char* categoryName = mLogCategoryName(category);
+
+	vsnprintf(buffer, sizeof(buffer), format, args);
+
+	if (!categoryName) {
+		categoryName = "";
+	}
+
+	if (!logCallback) {
+		if (categoryName[0]) {
+			printf("%s: %s\n", categoryName, buffer);
+		} else {
+			printf("%s\n", buffer);
+		}
+		return;
+	}
+
+	wrapped_log((int) level, categoryName, buffer);
 }
 
 EMSCRIPTEN_KEEPALIVE void setupConstants(void) {

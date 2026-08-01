@@ -60,6 +60,21 @@ declare namespace mGBA {
     autoSaveStateLoadedCallback?: (() => void) | null;
   };
 
+  export type LogLevel =
+    | 'FATAL'
+    | 'ERROR'
+    | 'WARN'
+    | 'INFO'
+    | 'DEBUG'
+    | 'STUB'
+    | 'GAME ERROR';
+
+  export type LogEntry = {
+    level: LogLevel;
+    category: string;
+    message: string;
+  };
+
   export type coreSettings = {
     /**
      * Number of frames to skip rendering between screen paints.
@@ -480,6 +495,19 @@ declare namespace mGBA {
      * @param coreCallbacks - Callback object to register.
      */
     addCoreCallbacks(coreCallbacks: coreCallbacks): void;
+
+    /**
+     * Registers a callback for mGBA core log output.
+     *
+     * Use this to capture emulator logs in your application UI, such as a log
+     * panel, instead of relying on browser console output alone.
+     *
+     * Passing `null` removes the custom logger and restores default console
+     * logging.
+     *
+     * @param callback - Log handler, or `null` to clear it.
+     */
+    setLogger(callback: ((entry: LogEntry) => void) | null): void;
 
     /**
      * Enables/disables active rewinding while the core is running.

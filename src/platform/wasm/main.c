@@ -27,7 +27,11 @@ static struct mEmscriptenRenderer* renderer = NULL;
 
 // log utilities
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
-static struct mLogger logCtx = { .log = _log };
+static struct mLogFilter logFilter;
+static struct mLogger logCtx = {
+	.log = _log,
+	.filter = &logFilter,
+};
 static void (*logCallback)(int, const char*, const char*) = NULL;
 
 static void wrapped_log(int level, const char* categoryName, const char* message) {
@@ -524,6 +528,7 @@ addCoreCallbacks(void (*alarmCallbackPtr)(void*), void (*coreCrashedCallbackPtr)
 
 EMSCRIPTEN_KEEPALIVE void setLogCallback(void (*logCallbackPtr)(int, const char*, const char*)) {
 	logCallback = logCallbackPtr;
+	logCtx.filter = logCallbackPtr ? NULL : &logFilter;
 }
 
 EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
@@ -848,6 +853,10 @@ int main() {
 	renderer->restoreAutoSaveStateOnLoad = true;
 	renderer->autoSaveStateTimer.lastTime = 0;
 	renderer->autoSaveStateTimer.intervalSeconds = 30;
+
+	mLogFilterInit(&logFilter);
+	logFilter.defaultLevels = mLOG_FATAL | mLOG_ERROR;
+	logCtx.filter = &logFilter;
 
 	mLogSetDefaultLogger(&logCtx);
 

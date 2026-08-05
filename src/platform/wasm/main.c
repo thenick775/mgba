@@ -855,7 +855,7 @@ int main() {
 	renderer->autoSaveStateTimer.intervalSeconds = 30;
 
 	mLogFilterInit(&logFilter);
-	logFilter.defaultLevels = mLOG_FATAL | mLOG_ERROR;
+	logFilter.defaultLevels = 0;
 	logCtx.filter = &logFilter;
 
 	mLogSetDefaultLogger(&logCtx);

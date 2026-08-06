@@ -445,6 +445,45 @@ Module.getFastForwardMultiplier = () => {
   return getFastForwardMultiplier();
 };
 
+const logLevels = {
+  1: 'FATAL',
+  2: 'ERROR',
+  4: 'WARN',
+  8: 'INFO',
+  16: 'DEBUG',
+  32: 'STUB',
+  64: 'GAME ERROR',
+};
+
+const loggerStore = {
+  callbackPtr: null,
+};
+
+Module.setLogger = (callback) => {
+  const setLogCallback = cwrap('setLogCallback', null, ['number']);
+
+  if (loggerStore.callbackPtr) {
+    removeFunction(loggerStore.callbackPtr);
+    loggerStore.callbackPtr = null;
+  }
+
+  if (typeof callback === 'function') {
+    loggerStore.callbackPtr = addFunction(
+      (levelValue, categoryPtr, messagePtr) => {
+        const level = logLevels[levelValue] ?? 'INFO';
+        callback({
+          level,
+          category: UTF8ToString(categoryPtr),
+          message: UTF8ToString(messagePtr),
+        });
+      },
+      'viii'
+    );
+  }
+
+  setLogCallback(loggerStore.callbackPtr);
+};
+
 // core callback store, used to persist long lived js function pointers for use in core callbacks in c
 const coreCallbackStore = {
   alarmCallbackPtr: null,

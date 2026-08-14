@@ -37,34 +37,33 @@ Once this has completed, your compiled files can be found at:
 ./build-wasm/wasm/mgba.wasm
 ```
 
-Include these files in your client's resources, and then instantiate your emulator as follows in your html/javascript:
+Include the last two files above in your client's resources, and then instantiate your emulator as follows in your html/javascript:
 
-```
-<canvas
-    id="screen"
-    width="240"
-    height="160"
-/>
+```html
+<canvas id="canvas" width="240" height="160"></canvas>
+
+<script type="module">
+  import mGBA from "./mgba.js";
+
+  const canvas = document.getElementById("canvas");
+  const Module = await mGBA({ canvas });
+  await Module.FSInit();
+
+  console.log(
+    `version ${Module.version.projectName + " " + Module.version.projectVersion}`,
+  );
+</script>
 ```
 
-```
-let canvas_id = 'screen'
-var Module = {
-	canvas: (function () {
-		return document.getElementById(canvas_id);
-	})()
-};
+To test the repo's bundled vanilla sample page directly:
 
-mGBA(this.module).then(function (Module) {
-	mGBAVersion =
-		Module.version.projectName +
-		' ' +
-		Module.version.projectVersion;
-
-    console.log(mGBAVersion);
-	Module.FSInit();
-});
+```bash
+cd src/platform/wasm
+npm run build:image && npm run build && npm run prepare
+npx statikk --coi --port 8000
 ```
+
+See `http://localhost:8000`.
 
 Now you will have access to the following contract:
 
@@ -124,11 +123,11 @@ The contract is defined in these 3 files:
 ./src/platform/wasm/mgba.d.ts
 ```
 
-This core uses threads, you must serve these files in a way that supports cross origin isolation:
+This core uses threads, you must serve these files with cross-origin isolation enabled:
 
 ```
-Cross-Origin-Opener-Policy same-origin
-Cross-Origin-Embedder-Policy require-corp
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
 ```
 
 ## TODO

@@ -1,51 +1,510 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
-    <meta charset="utf-8">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>mGBA</title>
     <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        background: #111827;
+        color: #e5e7eb;
+        font-family: Inter, system-ui, sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+      }
+
+      .app {
+        width: min(96vw, 620px);
+        display: grid;
+        gap: 12px;
+        padding: 16px;
+        box-sizing: border-box;
+      }
+
+      .screen {
+        background: #0b1220;
+        border: 1px solid #374151;
+        border-radius: 12px;
+        padding: 12px;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+      }
+
       #canvas {
+        background: #000;
+        border-radius: 8px;
+        display: block;
         image-rendering: crisp-edges;
+        image-rendering: pixelated;
+        width: 100%;
+        height: auto;
+        aspect-ratio: 3 / 2;
+      }
+
+      .controls {
+        background: #172033;
+        border: 1px solid #374151;
+        border-radius: 12px;
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .button-row {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .field-row {
+        display: grid;
+        gap: 8px;
+      }
+
+      .touch-controls {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: end;
+      }
+
+      .touch-panel {
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 12px;
+      }
+
+      .touch-panel h2 {
+        color: #94a3b8;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        margin: 0 0 10px;
+        text-transform: uppercase;
+      }
+
+      .dpad {
+        display: grid;
+        gap: 8px;
+        grid-template-areas:
+          ". up ."
+          "left center right"
+          ". down .";
+        grid-template-columns: repeat(3, minmax(0, 68px));
+        justify-content: center;
+      }
+
+      .actions {
+        align-items: center;
+        display: grid;
+        gap: 10px;
+        grid-template-areas:
+          ". a"
+          "b .";
+        grid-template-columns: repeat(2, minmax(64px, 88px));
+        justify-content: center;
+      }
+
+      .system-buttons {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .play-controls {
+        display: grid;
+        gap: 10px;
+      }
+
+      .utility-controls {
+        border-top: 1px solid #334155;
+        display: grid;
+        gap: 10px;
+        padding-top: 12px;
+      }
+
+      .volume-row {
+        align-items: center;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: auto 1fr auto;
+      }
+
+      button,
+      input[type="file"] {
+        font: inherit;
+      }
+
+      button {
+        background: #2563eb;
+        border: 0;
+        border-radius: 8px;
+        color: #eff6ff;
+        cursor: pointer;
+        min-height: 48px;
+        padding: 10px 12px;
+        touch-action: manipulation;
+        user-select: none;
+      }
+
+      button:hover {
+        background: #1d4ed8;
+      }
+
+      button:disabled {
+        background: #374151;
+        color: #9ca3af;
+        cursor: not-allowed;
+      }
+
+      input[type="file"] {
+        background: #0f172a;
+        border: 1px solid #374151;
+        border-radius: 8px;
+        color: #cbd5e1;
+        padding: 5px 0;
+        width: 100%;
+      }
+
+      input[type="range"] {
+        width: 100%;
+      }
+
+      .meta {
+        color: #94a3b8;
+        display: grid;
+        gap: 6px;
+        font-size: 14px;
+      }
+
+      .status {
+        color: #cbd5e1;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        min-height: 1.2em;
+      }
+
+      .touch-button {
+        background: #1e3a8a;
+        font-weight: 600;
+      }
+
+      .dpad .touch-button {
+        font-size: 26px;
+        line-height: 1;
+        padding: 0;
+      }
+
+      .touch-button:active,
+      .touch-button.is-pressed {
+        background: #1d4ed8;
+        transform: translateY(1px);
+      }
+
+      .touch-button[data-button="up"] {
+        grid-area: up;
+      }
+
+      .touch-button[data-button="left"] {
+        grid-area: left;
+      }
+
+      .touch-button[data-button="right"] {
+        grid-area: right;
+      }
+
+      .touch-button[data-button="down"] {
+        grid-area: down;
+      }
+
+      .touch-button[data-button="a"] {
+        grid-area: a;
+      }
+
+      .touch-button[data-button="b"] {
+        grid-area: b;
+      }
+
+      @media (max-width: 520px) {
+        .app {
+          padding: 12px;
+        }
+
+        .system-buttons {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .button-row {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
-    <script src="mgba.js"></script>
   </head>
   <body>
-    <canvas id="canvas"></canvas>
-    <script type="text/javascript">
-      function loadBuffer(name, buffer) {
-        Module.FS.writeFile(name, new Uint8Array(buffer));
-        Module.loadFile(name);
-      }
+    <main class="app">
+      <section class="screen">
+        <canvas id="canvas" width="240" height="160"></canvas>
+      </section>
 
-      function loadFile(romFile) {
-        var reader = new FileReader();
-        reader.onload = function(e) {
-          loadBuffer(romFile.name, e.target.result);
+      <section class="controls">
+        <div class="field-row">
+          <input id="rom" type="file" accept=".gba,.gbc,.gb,.zip,.7z" />
+        </div>
+
+        <div class="play-controls">
+          <div class="touch-controls">
+            <section class="touch-panel">
+              <h2>Movement</h2>
+              <div class="dpad">
+                <button
+                  class="touch-button"
+                  data-button="up"
+                  type="button"
+                  aria-label="Up"
+                >
+                  ▲
+                </button>
+                <button
+                  class="touch-button"
+                  data-button="left"
+                  type="button"
+                  aria-label="Left"
+                >
+                  ◀
+                </button>
+                <button
+                  class="touch-button"
+                  data-button="right"
+                  type="button"
+                  aria-label="Right"
+                >
+                  ▶
+                </button>
+                <button
+                  class="touch-button"
+                  data-button="down"
+                  type="button"
+                  aria-label="Down"
+                >
+                  ▼
+                </button>
+              </div>
+            </section>
+
+            <section class="touch-panel">
+              <h2>Actions</h2>
+              <div class="actions">
+                <button class="touch-button" data-button="b" type="button">
+                  B
+                </button>
+                <button class="touch-button" data-button="a" type="button">
+                  A
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <div class="system-buttons">
+            <button class="touch-button" data-button="select" type="button">
+              Select
+            </button>
+            <button class="touch-button" data-button="start" type="button">
+              Start
+            </button>
+            <button class="touch-button" data-button="l" type="button">
+              L
+            </button>
+            <button class="touch-button" data-button="r" type="button">
+              R
+            </button>
+          </div>
+        </div>
+
+        <div class="utility-controls">
+          <div class="button-row">
+            <button id="pause-toggle" type="button">Pause</button>
+            <button id="download-save" type="button">Download Save</button>
+            <button id="save-state" type="button">Save State</button>
+            <button id="load-state" type="button">Load State</button>
+          </div>
+
+          <label class="volume-row" for="volume">
+            <span>Volume</span>
+            <input id="volume" type="range" min="0" max="200" value="100" />
+            <span id="volume-value">100%</span>
+          </label>
+
+          <div class="meta">
+            <span id="version"></span>
+            <span class="status" id="status">Initializing...</span>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script type="module">
+      import mGBA from "./dist/mgba.js";
+
+      const canvas = document.getElementById("canvas");
+      const romInput = document.getElementById("rom");
+      const pauseToggleButton = document.getElementById("pause-toggle");
+      const downloadSaveButton = document.getElementById("download-save");
+      const saveStateButton = document.getElementById("save-state");
+      const loadStateButton = document.getElementById("load-state");
+      const volumeInput = document.getElementById("volume");
+      const volumeValue = document.getElementById("volume-value");
+      const version = document.getElementById("version");
+      const status = document.getElementById("status");
+      const touchButtons = document.querySelectorAll("[data-button]");
+
+      const setStatus = (message) => {
+        status.textContent = message;
+      };
+
+      const syncVolumeUI = () => {
+        volumeInput.value = String(Math.round(Module.getVolume() * 100));
+        volumeValue.textContent = volumeInput.value + "%";
+      };
+
+      let isPaused = false;
+
+      const syncPauseUI = () => {
+        pauseToggleButton.textContent = isPaused ? "Resume" : "Pause";
+      };
+
+      const pressedButtons = new Map();
+
+      const pressButton = (buttonName, element) => {
+        if (pressedButtons.has(buttonName)) {
+          return;
         }
-        reader.readAsArrayBuffer(romFile);
+
+        pressedButtons.set(buttonName, element);
+        element.classList.add("is-pressed");
+        Module.buttonPress(buttonName);
+      };
+
+      const releaseButton = (buttonName) => {
+        const element = pressedButtons.get(buttonName);
+        if (!element) {
+          return;
+        }
+
+        element.classList.remove("is-pressed");
+        pressedButtons.delete(buttonName);
+        Module.buttonUnpress(buttonName);
+      };
+
+      const Module = await mGBA({ canvas });
+      await Module.FSInit();
+
+      version.textContent =
+        Module.version.projectName + " " + Module.version.projectVersion;
+      volumeInput.value = "100";
+      volumeValue.textContent = "100%";
+      syncPauseUI();
+      setStatus("Ready. Load a ROM to start playing.");
+
+      romInput.addEventListener("change", (event) => {
+        const file = event.target.files?.[0];
+        if (!file) {
+          return;
+        }
+
+        setStatus("Loading " + file.name + "...");
+        Module.uploadRom(file, () => {
+          const didLoad = Module.loadGame("/data/games/" + file.name);
+          if (didLoad) {
+            syncVolumeUI();
+          }
+          setStatus(
+            didLoad ? "Running " + file.name : "Failed to load " + file.name,
+          );
+        });
+      });
+
+      pauseToggleButton.addEventListener("click", async () => {
+        if (isPaused) {
+          await Module.SDL2?.audioContext?.resume();
+          Module.resumeGame();
+          isPaused = false;
+          setStatus("Game resumed.");
+        } else {
+          Module.pauseGame();
+          isPaused = true;
+          setStatus("Game paused.");
+        }
+
+        syncPauseUI();
+      });
+
+      downloadSaveButton.addEventListener("click", () => {
+        const save = Module.getSave();
+        if (!save || !Module.saveName) {
+          setStatus("No save data available yet.");
+          return;
+        }
+
+        const blob = new Blob([save], { type: "application/octet-stream" });
+        const href = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = href;
+        link.download = Module.saveName.split("/").pop();
+        link.click();
+        URL.revokeObjectURL(href);
+        setStatus("Downloaded " + link.download + ".");
+      });
+
+      saveStateButton.addEventListener("click", () => {
+        Module.saveState(1);
+        setStatus("Saved state slot 1.");
+      });
+
+      loadStateButton.addEventListener("click", () => {
+        Module.loadState(1);
+        setStatus("Loaded state slot 1.");
+      });
+
+      volumeInput.addEventListener("input", () => {
+        const volumePercent = Number(volumeInput.value);
+        Module.setVolume(volumePercent / 100);
+        volumeValue.textContent = volumePercent + "%";
+      });
+
+      for (const button of touchButtons) {
+        const buttonName = button.dataset.button;
+
+        const startPress = (event) => {
+          event.preventDefault();
+          pressButton(buttonName, button);
+        };
+
+        const endPress = (event) => {
+          event.preventDefault();
+          releaseButton(buttonName);
+        };
+
+        button.addEventListener("pointerdown", startPress);
+        button.addEventListener("pointerup", endPress);
+        button.addEventListener("pointercancel", endPress);
+        button.addEventListener("pointerleave", (event) => {
+          if (event.buttons === 1) {
+            endPress(event);
+          }
+        });
+        button.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+        });
       }
 
-      function saveFile(a) {
-        var save = Module.getSave();
-        a.download = Module.saveName;
-        var blob = new Blob([save], { type: 'application/octet-stream' });
-        a.href = URL.createObjectURL(blob);
-        setTimeout(function() {
-          URL.revokeObjectURL(a.href);
-          a.href = '#';
-        }, 0);
-      }
-
-      var Module = {
-        canvas: (function() { return document.getElementById('canvas'); })()
-      }
-      mGBA(Module).then(function(Module) {
-        document.getElementById('version').textContent = Module.version.projectName + ' ' + Module.version.projectVersion;
+      window.addEventListener("pointerup", () => {
+        for (const buttonName of [...pressedButtons.keys()]) {
+          releaseButton(buttonName);
+        }
       });
     </script>
-    <input type="file" onchange="loadFile(this.files[0]);"/>
-    <a href="#" onclick="saveFile(this)">Download savedata</a>
-    <span id="version"></span>
   </body>
 </html>

@@ -55,6 +55,60 @@
         gap: 10px;
       }
 
+      .desktop-help {
+        display: none;
+      }
+
+      .keyboard-panel {
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 12px;
+      }
+
+      .keyboard-panel h2 {
+        color: #94a3b8;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        margin: 0 0 10px;
+        text-transform: uppercase;
+      }
+
+      .key-grid {
+        display: grid;
+        gap: 8px;
+      }
+
+      .key-row {
+        align-items: center;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      }
+
+      .key-label {
+        color: #cbd5e1;
+        font-size: 14px;
+      }
+
+      .key-combo {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: flex-end;
+      }
+
+      kbd {
+        background: #1f2937;
+        border: 1px solid #475569;
+        border-bottom-width: 2px;
+        border-radius: 6px;
+        color: #f8fafc;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+
       .button-row {
         display: grid;
         gap: 8px;
@@ -242,6 +296,33 @@
           grid-template-columns: 1fr;
         }
       }
+
+      @media (min-width: 900px) {
+        .app {
+          width: min(96vw, 1100px);
+          grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.9fr);
+          align-items: start;
+        }
+
+        .screen {
+          padding: 16px;
+          position: sticky;
+          top: 16px;
+        }
+
+        .controls {
+          gap: 12px;
+        }
+
+        .touch-controls,
+        .system-buttons {
+          display: none;
+        }
+
+        .desktop-help {
+          display: block;
+        }
+      }
     </style>
   </head>
   <body>
@@ -254,6 +335,42 @@
         <div class="field-row">
           <input id="rom" type="file" accept=".gba,.gbc,.gb,.zip,.7z" />
         </div>
+
+        <section
+          class="desktop-help keyboard-panel"
+          aria-label="Keyboard controls"
+        >
+          <h2>Keyboard</h2>
+          <div class="key-grid">
+            <div class="key-row">
+              <span class="key-label">Move</span>
+              <span class="key-combo">
+                <kbd>Arrow Keys</kbd>
+              </span>
+            </div>
+            <div class="key-row">
+              <span class="key-label">A / B</span>
+              <span class="key-combo">
+                <kbd>X</kbd>
+                <kbd>Z</kbd>
+              </span>
+            </div>
+            <div class="key-row">
+              <span class="key-label">Start / Select</span>
+              <span class="key-combo">
+                <kbd>Enter</kbd>
+                <kbd>Backspace</kbd>
+              </span>
+            </div>
+            <div class="key-row">
+              <span class="key-label">L / R</span>
+              <span class="key-combo">
+                <kbd>A</kbd>
+                <kbd>S</kbd>
+              </span>
+            </div>
+          </div>
+        </section>
 
         <div class="play-controls">
           <div class="touch-controls">

@@ -235,10 +235,11 @@
 
       input[type="file"] {
         background: #0f172a;
+        box-sizing: border-box;
         border: 1px solid #374151;
         border-radius: 8px;
         color: #cbd5e1;
-        padding: 5px 0;
+        padding: 10px;
         width: 100%;
       }
 
@@ -332,8 +333,8 @@
 
       @media (min-width: 900px) {
         .app {
-          width: min(96vw, 1100px);
-          grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.9fr);
+          width: min(96vw, 1400px);
+          grid-template-columns: minmax(0, 3fr) minmax(280px, 1fr);
           align-items: start;
         }
 
@@ -367,7 +368,9 @@
       <section class="controls">
         <div class="field-row">
           <input id="rom" type="file" />
-          <span class="field-hint">Supported ROMs: .gba, .gbc, .gb, .zip, .7z</span>
+          <span class="field-hint"
+            >Supported ROMs: .gba, .gbc, .gb, .zip, .7z</span
+          >
         </div>
 
         <section
@@ -573,7 +576,9 @@
 
         if (!isSupportedRom) {
           romInput.value = "";
-          setStatus("Unsupported file type. Use .gba, .gbc, .gb, .zip, or .7z.");
+          setStatus(
+            "Unsupported file type. Use .gba, .gbc, .gb, .zip, or .7z.",
+          );
           return;
         }
 

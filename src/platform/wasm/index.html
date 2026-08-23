@@ -120,6 +120,11 @@
         gap: 8px;
       }
 
+      .field-hint {
+        color: #94a3b8;
+        font-size: 13px;
+      }
+
       .touch-controls {
         display: grid;
         gap: 12px;
@@ -361,7 +366,8 @@
 
       <section class="controls">
         <div class="field-row">
-          <input id="rom" type="file" accept=".gba,.gbc,.gb,.zip,.7z" />
+          <input id="rom" type="file" />
+          <span class="field-hint">Supported ROMs: .gba, .gbc, .gb, .zip, .7z</span>
         </div>
 
         <section
@@ -504,6 +510,7 @@
       const version = document.getElementById("version");
       const status = document.getElementById("status");
       const touchButtons = document.querySelectorAll("[data-button]");
+      const supportedRomExtensions = [".gba", ".gbc", ".gb", ".zip", ".7z"];
 
       const setStatus = (message) => {
         status.textContent = message;
@@ -556,6 +563,17 @@
       romInput.addEventListener("change", (event) => {
         const file = event.target.files?.[0];
         if (!file) {
+          return;
+        }
+
+        const normalizedName = file.name.toLowerCase();
+        const isSupportedRom = supportedRomExtensions.some((extension) =>
+          normalizedName.endsWith(extension),
+        );
+
+        if (!isSupportedRom) {
+          romInput.value = "";
+          setStatus("Unsupported file type. Use .gba, .gbc, .gb, .zip, or .7z.");
           return;
         }
 

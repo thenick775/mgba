@@ -39,7 +39,7 @@ Once this has completed, your compiled files can be found at:
 
 ## Vanilla Browser Usage
 
-Serve `mgba.js` and `mgba.wasm` from the same origin as your page, then instantiate the emulator like this:
+Serve `mgba.js` and `mgba.wasm` from the same origin as your page, then instantiate the emulator:
 
 ```html
 <canvas id="canvas" width="240" height="160"></canvas>

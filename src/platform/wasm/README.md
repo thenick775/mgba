@@ -4,6 +4,8 @@ This package is a bundled version of my [mGBA fork](https://github.com/thenick77
 
 This core is framework agnostic, and can be instantiated in any framework, including vanilla javascript.
 
+See the [api documentation](https://thenick775.github.io/mgba/) for in depth details.
+
 This core currently powers [gbajs3](https://gba.nicholas-vancise.dev)!
 
 ## Install
@@ -45,7 +47,7 @@ export const useEmulator = (canvas: HTMLCanvasElement | null) => {
 };
 ```
 
-## Vanilla Browser
+## Vanilla
 
 In a vanilla javascript project with no bundler, first download the published package tarball:
 
@@ -58,7 +60,7 @@ Extract these files from `package/dist/` and serve them from the same origin as 
 - `mgba.js`
 - `mgba.wasm`
 
-Then instantiate the emulator like this:
+Then instantiate the emulator as follows:
 
 ```html
 <canvas id="canvas" width="240" height="160"></canvas>
@@ -76,7 +78,7 @@ Then instantiate the emulator like this:
 </script>
 ```
 
-## Serving Requirements
+## Cross-origin Isolation
 
 This core uses threads, so the page serving these files must enable cross-origin isolation:
 
@@ -89,7 +91,7 @@ Cross-Origin-Embedder-Policy: require-corp
 
 ## API
 
-The instantiated `Module` exposes the following emulator APIs in addition to standard Emscripten `Module` utilities such as `Module.FS`. This is a stateful emulator runtime designed to be created once, retained by the host application, and driven through the imperative API below over time.
+The core exposes the following contract in addition to some standard Emscripten `Module` utilities such as `Module.FS`. This is a stateful emulator runtime designed to be created once, retained by the host application, and driven through the imperative API below.
 
 Lifecycle:
 

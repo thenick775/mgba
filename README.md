@@ -7,6 +7,9 @@
     <a href="https://github.com/thenick775/mgba/actions/workflows/build-wasm.yml">
         <img alt="Build" src="https://github.com/thenick775/mgba/actions/workflows/build-wasm.yml/badge.svg" />
     </a>
+    <a href="https://thenick775.github.io/mgba/">
+        <img alt="docs" src="https://img.shields.io/badge/docs-TypeDoc-blue">
+    </a>
 </div>
 
 <br/>

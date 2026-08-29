@@ -61,13 +61,13 @@ declare namespace mGBA {
   };
 
   export type LogLevel =
-    | 'FATAL'
-    | 'ERROR'
-    | 'WARN'
-    | 'INFO'
-    | 'DEBUG'
-    | 'STUB'
-    | 'GAME ERROR';
+    | "FATAL"
+    | "ERROR"
+    | "WARN"
+    | "INFO"
+    | "DEBUG"
+    | "STUB"
+    | "GAME ERROR";
 
   export type LogEntry = {
     level: LogLevel;
@@ -329,6 +329,20 @@ declare namespace mGBA {
     loadState(slot: number): boolean;
 
     /**
+     * Loads a save state from a given slot using explicit binary literal flags.
+     *
+     * @deprecated Prefer `loadState(slot)`. This is an old/raw API and may be
+     * removed in a future major version.
+     *
+     * If `flags` is omitted, the runtime uses its default load mask.
+     *
+     * @param slot - State slot index.
+     * @param flags - Bitmask controlling which save state sections are restored.
+     * @returns True if the state loaded successfully, otherwise false.
+     */
+    loadStateSlot(slot: number, flags?: number): boolean;
+
+    /**
      * Forces an auto save state capture immediately.
      *
      * @returns True if the auto save state was captured successfully, otherwise false.
@@ -402,6 +416,20 @@ declare namespace mGBA {
      * @returns True if the state saved successfully, otherwise false.
      */
     saveState(slot: number): boolean;
+
+    /**
+     * Saves a save state to a given slot using explicit binary literal flags.
+     *
+     * @deprecated Prefer `saveState(slot)`. This is an old/raw API and may be
+     * removed in a future major version.
+     *
+     * If `flags` is omitted, the runtime uses its default save mask.
+     *
+     * @param slot - State slot index.
+     * @param flags - Bitmask controlling which save state sections are written.
+     * @returns True if the state saved successfully, otherwise false.
+     */
+    saveStateSlot(slot: number, flags?: number): boolean;
 
     /**
      * Captures a screenshot and writes it to the screenshots directory.

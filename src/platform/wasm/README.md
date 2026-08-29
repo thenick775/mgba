@@ -47,7 +47,7 @@ export const useEmulator = (canvas: HTMLCanvasElement | null) => {
 
 ## Vanilla Browser
 
-For a vanilla javascript project with no bundler, first download the published package tarball:
+In a vanilla javascript project with no bundler, first download the published package tarball:
 
 ```bash
 npm pack @thenick775/mgba-wasm
@@ -87,8 +87,78 @@ Cross-Origin-Embedder-Policy: require-corp
 
 `mgba.js` must be same-origin with the page because the threaded runtime starts its pthread worker from that script URL.
 
-See the feature/wasm [README](https://github.com/thenick775/mgba/tree/feature/wasm#readme) for further details such as:
+## API
 
-- available emulator interface methods
+The instantiated `Module` exposes the following emulator APIs in addition to standard Emscripten `Module` utilities such as `Module.FS`. This is a stateful emulator runtime designed to be created once, retained by the host application, and driven through the imperative API below over time.
+
+Lifecycle:
+
+- `FSInit()`
+- `FSSync()`
+- `pauseGame()`
+- `resumeGame()`
+- `pauseAudio()`
+- `resumeAudio()`
+- `quickReload()`
+- `quitGame()`
+- `quitMgba()`
+
+ROM and file management:
+
+- `loadGame(romPath, savePathOverride)`
+- `listRoms()`
+- `listSaves()`
+- `filePaths()`
+- `uploadRom(file, callback)`
+- `uploadSaveOrSaveState(file, callback)`
+- `uploadCheats(file, callback)`
+- `uploadPatch(file, callback)`
+- `uploadScreenshot(file, callback)`
+- `uploadAutoSaveState(autoSaveStateName, data)`
+
+Input management:
+
+- `bindKey(bindingName, inputName)`
+- `buttonPress(name)`
+- `buttonUnpress(name)`
+- `toggleInput(enabled)`
+
+Save data and save states:
+
+- `getSave()`
+- `saveState(slot)`
+- `loadState(slot)`
+- `saveStateSlot(slot, flags)`
+- `loadStateSlot(slot, flags)`
+- `forceAutoSaveState()`
+- `loadAutoSaveState()`
+- `getAutoSaveState()`
+
+Audio, timing, and speed:
+
+- `getVolume()`
+- `setVolume(percent)`
+- `getMainLoopTimingMode()`
+- `getMainLoopTimingValue()`
+- `setMainLoopTiming(mode, value)`
+- `getFastForwardMultiplier()`
+- `setFastForwardMultiplier(multiplier)`
+- `screenshot(fileName)`
+
+Callbacks and core settings:
+
+- `addCoreCallbacks(coreCallbacks)`
+- `autoLoadCheats()`
+- `setLogger(callback)`
+- `setCoreSettings(coreSettings)`
+- `toggleRewind(toggle)`
+
+See `dist/mgba.d.ts` for full signatures and inline documentation.
+
+## Source
+
+See the repo [README](https://github.com/thenick775/mgba/tree/feature/wasm#readme) for further details such as:
+
 - building from source
-- embedding and usage in vanilla javascript
+- running the bundled demo
+- repository and implementation details

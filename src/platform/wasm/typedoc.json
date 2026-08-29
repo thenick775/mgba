@@ -1,9 +1,10 @@
 {
   "entryPoints": ["mgba.d.ts"],
+  "plugin": ["typedoc-github-theme"],
   "tsconfig": "tsconfig.json",
   "out": "typedoc-site",
   "readme": "README.md",
-  "name": "mGBA-wasm API",
+  "name": "API Docs",
   "hideGenerator": true,
   "searchInComments": true,
   "githubPages": true

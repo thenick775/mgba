@@ -34,6 +34,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: src/platform/wasm/.nvmrc
+          cache: npm
+          cache-dependency-path: src/platform/wasm/package-lock.json
+
       - name: Build image
         working-directory: src/platform/wasm
         run: |
@@ -43,14 +50,13 @@ jobs:
           docker image inspect local-mgba/wasm:2.0 >/dev/null
 
       - name: Build artifacts
-        shell: bash
+        working-directory: src/platform/wasm
         run: |
           set -euo pipefail
 
           mkdir -p "${GITHUB_WORKSPACE}/build-wasm"
           chmod 0777 "${GITHUB_WORKSPACE}/build-wasm"
 
-          cd ./src/platform/wasm && \
           npm run build
 
       - name: Prepare dist/

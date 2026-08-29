@@ -1,0 +1,65 @@
+name: Publish mGBA-wasm API Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-typedoc.yml
+      - src/platform/wasm/.nvmrc
+      - src/platform/wasm/package.json
+      - src/platform/wasm/package-lock.json
+      - src/platform/wasm/mgba.d.ts
+      - src/platform/wasm/README.md
+      - src/platform/wasm/tsconfig.json
+      - src/platform/wasm/typedoc.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: src/platform/wasm/.nvmrc
+          cache: npm
+          cache-dependency-path: src/platform/wasm/package-lock.json
+
+      - name: Install dependencies
+        working-directory: src/platform/wasm
+        run: npm ci
+
+      - name: Build API docs
+        working-directory: src/platform/wasm
+        run: npm run typedoc
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./src/platform/wasm/typedoc-site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

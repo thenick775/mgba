@@ -15,7 +15,13 @@
     "build:image": "cd ./docker && docker build -t local-mgba/wasm:2.0 . && echo 'Image Built Successfully!'",
     "prepare": "mkdir -p ./dist && cp -r ../../../build-wasm/wasm/* ./dist/ || { echo 'Copy failed'; exit 1; }",
     "prepack": "npm run prepare",
-    "clean": "rm -rf ./dist"
+    "clean": "rm -rf ./dist",
+    "typedoc": "typedoc --options typedoc.json"
+  },
+  "devDependencies": {
+    "@types/emscripten": "^1.41.5",
+    "typedoc": "^0.28.20",
+    "typescript": "^6.0.3"
   },
   "repository": {
     "type": "git",

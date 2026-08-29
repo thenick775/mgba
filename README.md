@@ -37,34 +37,46 @@ Once this has completed, your compiled files can be found at:
 ./build-wasm/wasm/mgba.wasm
 ```
 
-Include these files in your client's resources, and then instantiate your emulator as follows in your html/javascript:
+## Vanilla Browser Usage
+
+Serve `mgba.js` and `mgba.wasm` from the same origin as your page, then instantiate the emulator:
+
+```html
+<canvas id="canvas" width="240" height="160"></canvas>
+
+<script type="module">
+  import mGBA from "./mgba.js";
+
+  const canvas = document.getElementById("canvas");
+  const Module = await mGBA({ canvas });
+  await Module.FSInit();
+
+  console.log(
+    `version ${Module.version.projectName + " " + Module.version.projectVersion}`,
+  );
+</script>
+```
+
+This core uses threads, so the page serving these files must enable cross-origin isolation:
 
 ```
-<canvas
-    id="screen"
-    width="240"
-    height="160"
-/>
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
 ```
 
-```
-let canvas_id = 'screen'
-var Module = {
-	canvas: (function () {
-		return document.getElementById(canvas_id);
-	})()
-};
+`mgba.js` must be same-origin with the page because the threaded runtime starts its pthread worker from that script URL.
 
-mGBA(this.module).then(function (Module) {
-	mGBAVersion =
-		Module.version.projectName +
-		' ' +
-		Module.version.projectVersion;
+## Bundled Demo
 
-    console.log(mGBAVersion);
-	Module.FSInit();
-});
+To test the repo's bundled vanilla sample page directly:
+
+```bash
+cd src/platform/wasm
+npm run build:image && npm run build && npm run prepare
+npx statikk --coi --port 8000
 ```
+
+See `http://localhost:8000`.
 
 Now you will have access to the following contract:
 
@@ -102,6 +114,7 @@ Module.saveStateSlot(slot, flags)
 Module.screenshot(fileName)
 Module.setCoreSettings(coreSettings)
 Module.setFastForwardMultiplier(multiplier)
+Module.setLogger(callback)
 Module.setMainLoopTiming(mode, value)
 Module.setVolume(percent)
 Module.toggleInput(enabled)
@@ -122,13 +135,6 @@ The contract is defined in these 3 files:
 ./src/platform/wasm/main.c
 ./src/platform/wasm/pre.js
 ./src/platform/wasm/mgba.d.ts
-```
-
-This core uses threads, you must serve these files in a way that supports cross origin isolation:
-
-```
-Cross-Origin-Opener-Policy same-origin
-Cross-Origin-Embedder-Policy require-corp
 ```
 
 ## TODO

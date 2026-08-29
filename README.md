@@ -55,6 +55,13 @@ Include the last two files above in your client's resources, and then instantiat
 </script>
 ```
 
+This core uses threads, you must serve these files in a way that supports cross origin isolation:
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
 To test the repo's bundled vanilla sample page directly:
 
 ```bash
@@ -101,6 +108,7 @@ Module.saveStateSlot(slot, flags)
 Module.screenshot(fileName)
 Module.setCoreSettings(coreSettings)
 Module.setFastForwardMultiplier(multiplier)
+Module.setLogger(callback)
 Module.setMainLoopTiming(mode, value)
 Module.setVolume(percent)
 Module.toggleInput(enabled)

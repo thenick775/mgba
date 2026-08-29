@@ -37,7 +37,9 @@ Once this has completed, your compiled files can be found at:
 ./build-wasm/wasm/mgba.wasm
 ```
 
-Include the last two files above in your client's resources, and then instantiate your emulator as follows in your html/javascript:
+## Vanilla Browser Usage
+
+Serve `mgba.js` and `mgba.wasm` from the same origin as your page, then instantiate the emulator like this:
 
 ```html
 <canvas id="canvas" width="240" height="160"></canvas>
@@ -55,12 +57,16 @@ Include the last two files above in your client's resources, and then instantiat
 </script>
 ```
 
-This core uses threads, you must serve these files in a way that supports cross origin isolation:
+This core uses threads, so the page serving these files must enable cross-origin isolation:
 
 ```
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
+
+`mgba.js` must be same-origin with the page because the threaded runtime starts its pthread worker from that script URL.
+
+## Bundled Demo
 
 To test the repo's bundled vanilla sample page directly:
 
@@ -129,13 +135,6 @@ The contract is defined in these 3 files:
 ./src/platform/wasm/main.c
 ./src/platform/wasm/pre.js
 ./src/platform/wasm/mgba.d.ts
-```
-
-This core uses threads, you must serve these files with cross-origin isolation enabled:
-
-```
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: require-corp
 ```
 
 ## TODO

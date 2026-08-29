@@ -38,7 +38,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: src/platform/wasm
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build API docs
         working-directory: src/platform/wasm

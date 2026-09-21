@@ -1,0 +1,4 @@
+CompileFlags:
+  Add:
+    - -isystem
+    - /emsdk/upstream/emscripten/cache/sysroot/include/SDL2

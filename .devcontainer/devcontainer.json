@@ -1,0 +1,28 @@
+{
+  "build": {
+    "dockerfile": "../src/platform/wasm/docker/Dockerfile",
+    "context": "../src/platform/wasm/docker"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "configureZshAsDefaultShell": true
+    }
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/home/mgba/src,type=bind",
+  "workspaceFolder": "/home/mgba/src",
+  "postCreateCommand": "mkdir -p \"$BUILD_DIR\" && cd \"$BUILD_DIR\" && emcmake cmake .. -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $CMAKE_FLAGS && make install DESTDIR=install",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["llvm-vs-code-extensions.vscode-clangd"],
+      "settings": {
+        "C_Cpp.intelliSenseEngine": "disabled",
+        "clangd.path": "/emsdk/upstream/bin/clangd",
+        "clangd.arguments": [
+          "--compile-commands-dir=${workspaceFolder}/build-wasm",
+          "--query-driver=/emsdk/upstream/emscripten/emcc,/emsdk/upstream/emscripten/em++,/emsdk/upstream/bin/clang,/emsdk/upstream/bin/clang++"
+        ]
+      }
+    }
+  }
+}

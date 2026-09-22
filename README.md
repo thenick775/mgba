@@ -137,6 +137,12 @@ The contract is defined in these 3 files:
 ./src/platform/wasm/mgba.d.ts
 ```
 
+## Local Dev - Dev Container
+
+For editor support while working on the WASM port, open this repo in the provided vscode devcontainer. The devcontainer builds the pinned Emscripten image, builds the WASM target, and uses clangd with `build-wasm/compile_commands.json` for C/C++ IntelliSense.
+
+Use `Dev Containers: Rebuild and Reopen in Container`, wait for the WASM build to finish, then open files such as `src/platform/wasm/main.c`. If diagnostics appear stale, run `clangd: Restart language server`.
+
 ## TODO
 
 - Debugger

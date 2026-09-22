@@ -499,7 +499,16 @@ const coreCallbackStore = {
 // adds user callbacks to the callback store, and makes function(s) available to the core in c
 // passing null clears the callback, allowing for partial additions/removals of callbacks
 Module.addCoreCallbacks = (callbacks) => {
-  const addCoreCallbacks = cwrap('addCoreCallbacks', null, ['number']);
+  const addCoreCallbacks = cwrap('addCoreCallbacks', null, [
+    'number',
+    'number',
+    'number',
+    'number',
+    'number',
+    'number',
+    'number',
+    'number',
+  ]);
 
   Object.keys(coreCallbackStore).forEach((callbackKey) => {
     const callbackName = callbackKey.replace('CallbackPtr', 'Callback');

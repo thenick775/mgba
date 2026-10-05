@@ -75,6 +75,13 @@ declare namespace mGBA {
     message: string;
   };
 
+  export type LinkPlayer = 1 | 2; // TODO: more than 2 player support
+
+  export type LinkLocalStatus = {
+    running: boolean;
+    activePlayer: LinkPlayer | 0;
+  };
+
   export type coreSettings = {
     /**
      * Number of frames to skip rendering between screen paints.
@@ -319,6 +326,31 @@ declare namespace mGBA {
      * @returns True if the game loaded successfully, otherwise false.
      */
     loadGame(romPath: string, savePathOverride?: string): boolean;
+
+    /**
+     * Starts a local linked GBA session. Version 1 supports two players.
+     */
+    linkLocalStartSession(
+      player1RomPath: string,
+      player1SavePath: string | undefined,
+      player2RomPath: string,
+      player2SavePath?: string,
+    ): boolean;
+
+    /**
+     * Stops the active local linked session.
+     */
+    linkLocalStopSession(): void;
+
+    /**
+     * Selects which linked player is rendered and controlled by normal input APIs.
+     */
+    linkLocalSetActivePlayer(player: LinkPlayer): void;
+
+    /**
+     * Gets the current local linked session status.
+     */
+    linkLocalGetStatus(): LinkLocalStatus;
 
     /**
      * Loads a save state from a given slot.

@@ -110,7 +110,6 @@ static void _reconfigPlayers(struct GBASIOLockstepCoordinator*);
 static int32_t _untilNextSync(struct GBASIOLockstepCoordinator*, struct GBASIOLockstepPlayer*);
 static void _enqueueEvent(struct GBASIOLockstepCoordinator*, const struct GBASIOLockstepEvent*, uint32_t target);
 static void _setData(struct GBASIOLockstepCoordinator*, uint32_t id, struct GBASIO* sio);
-static uint32_t _normalDataForPlayer(struct GBASIOLockstepCoordinator*, struct GBASIOLockstepPlayer*);
 static void _setReady(struct GBASIOLockstepCoordinator*, struct GBASIOLockstepPlayer* activePlayer, int playerId, enum GBASIOMode mode);
 static void _hardSync(struct GBASIOLockstepCoordinator*, struct GBASIOLockstepPlayer*);
 
@@ -558,6 +557,7 @@ static bool GBASIOLockstepDriverStart(struct GBASIODriver* driver) {
 		mLOG(GBA_SIO, DEBUG, "Secondary player attempted to start transfer");
 		goto out;
 	}
+	mLOG(GBA_SIO, DEBUG, "Transfer starting at %08X", coordinator->cycle);
 	memset(coordinator->multiData, 0xFF, sizeof(coordinator->multiData));
 	_setData(coordinator, 0, player->driver->d.p);
 
@@ -567,11 +567,10 @@ static bool GBASIOLockstepDriverStart(struct GBASIODriver* driver) {
 		.timestamp = timestamp,
 		.finishCycle = timestamp + GBASIOTransferCycles(player->mode, player->driver->d.p->siocnt, coordinator->nAttached - 1),
 	};
-	coordinator->transferActive = true;
-	coordinator->transferFinishCycle = event.finishCycle;
 	_enqueueEvent(coordinator, &event, TARGET_SECONDARY);
 	GBASIOLockstepCoordinatorWaitOnPlayers(coordinator, player);
-	ret = false;
+	coordinator->transferActive = true;
+	ret = true;
 out:
 	MutexUnlock(&coordinator->mutex);
 	return ret;
@@ -609,12 +608,13 @@ static uint8_t GBASIOLockstepDriverFinishNormal8(struct GBASIODriver* driver) {
 	MutexLock(&coordinator->mutex);
 	if (coordinator->transferMode == GBA_SIO_NORMAL_8) {
 		struct GBASIOLockstepPlayer* player = TableLookup(&coordinator->players, lockstep->lockstepId);
-		uint32_t receivedData = _normalDataForPlayer(coordinator, player);
-		if (!player->dataReceived) {
-			mLOG(GBA_SIO, WARN, "NORMAL did not receive data. Are we running behind?");
-		} else {
-			data = receivedData;
-			mLOG(GBA_SIO, DEBUG, "NORMAL8 transfer finished: %02X", data);
+		if (player->playerId > 0) {
+			if (!player->dataReceived) {
+				mLOG(GBA_SIO, WARN, "NORMAL did not receive data. Are we running behind?");
+			} else {
+				data = coordinator->normalData[player->playerId - 1];
+				mLOG(GBA_SIO, DEBUG, "NORMAL8 transfer finished: %02X", data);
+			}
 		}
 		player->dataReceived = false;
 		if (player->playerId == 0) {
@@ -632,12 +632,13 @@ static uint32_t GBASIOLockstepDriverFinishNormal32(struct GBASIODriver* driver) 
 	MutexLock(&coordinator->mutex);
 	if (coordinator->transferMode == GBA_SIO_NORMAL_32) {
 		struct GBASIOLockstepPlayer* player = TableLookup(&coordinator->players, lockstep->lockstepId);
-		uint32_t receivedData = _normalDataForPlayer(coordinator, player);
-		if (!player->dataReceived) {
-			mLOG(GBA_SIO, WARN, "Did not receive data. Are we running behind?");
-		} else {
-			data = receivedData;
-			mLOG(GBA_SIO, DEBUG, "NORMAL32 transfer finished: %08X", data);
+		if (player->playerId > 0) {
+			if (!player->dataReceived) {
+				mLOG(GBA_SIO, WARN, "Did not receive data. Are we running behind?");
+			} else {
+				data = coordinator->normalData[player->playerId - 1];
+				mLOG(GBA_SIO, DEBUG, "NORMAL32 transfer finished: %08X", data);
+			}
 		}
 		player->dataReceived = false;
 		if (player->playerId == 0) {
@@ -843,13 +844,6 @@ static void _setData(struct GBASIOLockstepCoordinator* coordinator, uint32_t id,
 		// TODO: Should we handle this or just abort?
 		break;
 	}
-}
-
-static uint32_t _normalDataForPlayer(struct GBASIOLockstepCoordinator* coordinator, struct GBASIOLockstepPlayer* player) {
-	if (player->playerId == 0 && coordinator->nAttached > 1) {
-		return coordinator->normalData[1];
-	}
-	return coordinator->normalData[0];
 }
 
 void _setReady(struct GBASIOLockstepCoordinator* coordinator, struct GBASIOLockstepPlayer* activePlayer, int playerId, enum GBASIOMode mode) {
@@ -1079,16 +1073,6 @@ void GBASIOLockstepCoordinatorAckPlayer(struct GBASIOLockstepCoordinator* coordi
 			}
 
 			coordinator->transferActive = false;
-			struct GBASIOLockstepPlayer* runner = TableLookup(&coordinator->players, coordinator->attachedPlayers[0]);
-			if (runner) {
-				struct GBASIO* sio = runner->driver->d.p;
-				int32_t nextEvent = coordinator->transferFinishCycle - GBASIOLockstepTime(runner);
-				if (nextEvent < 1) {
-					nextEvent = 1;
-				}
-				mTimingDeschedule(&sio->p->timing, &sio->completeEvent);
-				mTimingSchedule(&sio->p->timing, &sio->completeEvent, nextEvent);
-			}
 		}
 
 		struct GBASIOLockstepPlayer* runner = TableLookup(&coordinator->players, coordinator->attachedPlayers[0]);

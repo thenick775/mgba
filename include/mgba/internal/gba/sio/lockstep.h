@@ -39,7 +39,6 @@ struct GBASIOLockstepCoordinator {
 
 	bool transferActive;
 	enum GBASIOMode transferMode;
-	int32_t transferFinishCycle;
 
 	int32_t cycle;
 	int32_t nextHardSync;

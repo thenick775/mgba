@@ -27,72 +27,6 @@ Module.loadGame = (romPath, savePathOverride) => {
   return false;
 };
 
-Module.linkLocalStartSession = (
-  player1RomPath,
-  player1SavePath,
-  player2RomPath,
-  player2SavePath,
-) => {
-  const linkLocalStartSession = cwrap("linkLocalStartSession", "boolean", [
-    "string",
-    "string",
-    "string",
-    "string",
-  ]);
-  const didStart = linkLocalStartSession(
-    player1RomPath,
-    player1SavePath ?? "",
-    player2RomPath,
-    player2SavePath ?? "",
-  );
-  if (didStart) {
-    Module.linkLocalRomPaths = [player1RomPath, player2RomPath];
-    Module.linkLocalSavePaths = [
-      player1SavePath || Module.linkLocalDefaultSaveName(player1RomPath),
-      player2SavePath || Module.linkLocalDefaultSaveName(player2RomPath),
-    ];
-    Module.gameName = Module.linkLocalRomPaths[0];
-    Module.saveName = Module.linkLocalSavePaths[0];
-  }
-  return didStart;
-};
-
-Module.linkLocalDefaultSaveName = (romPath) => {
-  if (!romPath) return undefined;
-
-  const split = romPath.split("/");
-  const fileName = split[split.length - 1];
-  const extIndex = fileName.lastIndexOf(".");
-  const baseName = extIndex > -1 ? fileName.slice(0, extIndex) : fileName;
-  return `/data/saves/${baseName}.sav`;
-};
-
-Module.linkLocalStopSession = () => {
-  const linkLocalStopSession = cwrap("linkLocalStopSession", null, []);
-  linkLocalStopSession();
-  Module.linkLocalRomPaths = undefined;
-  Module.linkLocalSavePaths = undefined;
-};
-
-Module.linkLocalSetActivePlayer = (player) => {
-  const linkLocalSetActivePlayer = cwrap("linkLocalSetActivePlayer", null, [
-    "number",
-  ]);
-  linkLocalSetActivePlayer(player);
-  Module.gameName = Module.linkLocalRomPaths?.[player - 1] ?? Module.gameName;
-  Module.saveName = Module.linkLocalSavePaths?.[player - 1] ?? Module.saveName;
-};
-
-Module.linkLocalGetStatus = () => {
-  const linkLocalIsRunning = cwrap("linkLocalIsRunning", "number", []);
-  const linkLocalGetActivePlayer = cwrap("linkLocalGetActivePlayer", "number", []);
-
-  return {
-    running: !!linkLocalIsRunning(),
-    activePlayer: linkLocalGetActivePlayer(),
-  };
-};
-
 Module.getSave = () => {
   const exists = FS.analyzePath(Module.saveName).exists;
 
@@ -681,4 +615,77 @@ Module.setCoreSettings = (coreSettings) => {
       "restoreAutoSaveStateOnLoad",
       coreSettings.restoreAutoSaveStateOnLoad,
     );
+};
+
+let linkLocalRomPaths;
+let linkLocalSavePaths;
+
+Module.linkLocalStartSession = (
+  player1RomPath,
+  player1SavePath,
+  player2RomPath,
+  player2SavePath,
+) => {
+  const linkLocalStartSession = cwrap("linkLocalStartSession", "boolean", [
+    "string",
+    "string",
+    "string",
+    "string",
+  ]);
+  const didStart = linkLocalStartSession(
+    player1RomPath,
+    player1SavePath ?? "",
+    player2RomPath,
+    player2SavePath ?? "",
+  );
+  if (didStart) {
+    linkLocalRomPaths = [player1RomPath, player2RomPath];
+    linkLocalSavePaths = [
+      player1SavePath || Module.linkLocalDefaultSaveName(player1RomPath),
+      player2SavePath || Module.linkLocalDefaultSaveName(player2RomPath),
+    ];
+    Module.gameName = linkLocalRomPaths[0];
+    Module.saveName = linkLocalSavePaths[0];
+  }
+  return didStart;
+};
+
+Module.linkLocalDefaultSaveName = (romPath) => {
+  if (!romPath) return undefined;
+
+  const split = romPath.split("/");
+  const fileName = split[split.length - 1];
+  const extIndex = fileName.lastIndexOf(".");
+  const baseName = extIndex > -1 ? fileName.slice(0, extIndex) : fileName;
+  return `/data/saves/${baseName}.sav`;
+};
+
+Module.linkLocalStopSession = () => {
+  const linkLocalStopSession = cwrap("linkLocalStopSession", null, []);
+  linkLocalStopSession();
+  linkLocalRomPaths = undefined;
+  linkLocalSavePaths = undefined;
+};
+
+Module.linkLocalSetActivePlayer = (player) => {
+  const linkLocalSetActivePlayer = cwrap("linkLocalSetActivePlayer", null, [
+    "number",
+  ]);
+  linkLocalSetActivePlayer(player);
+  Module.gameName = linkLocalRomPaths?.[player - 1] ?? Module.gameName;
+  Module.saveName = linkLocalSavePaths?.[player - 1] ?? Module.saveName;
+};
+
+Module.linkLocalGetStatus = () => {
+  const linkLocalIsRunning = cwrap("linkLocalIsRunning", "number", []);
+  const linkLocalGetActivePlayer = cwrap(
+    "linkLocalGetActivePlayer",
+    "number",
+    [],
+  );
+
+  return {
+    running: !!linkLocalIsRunning(),
+    activePlayer: linkLocalGetActivePlayer(),
+  };
 };

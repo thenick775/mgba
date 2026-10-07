@@ -26,7 +26,6 @@ typedef struct {
 	double accumulator;
 	uint32_t lockstepFrame;
 } mFixedTimestepLoop;
-
 #endif
 
 #ifndef DISABLE_THREADING

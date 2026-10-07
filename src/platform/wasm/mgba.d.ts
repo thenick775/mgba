@@ -328,7 +328,7 @@ declare namespace mGBA {
     loadGame(romPath: string, savePathOverride?: string): boolean;
 
     /**
-     * Starts a local linked GBA session. Version 1 supports two players.
+     * Starts a local linked GBA session, currently supports two players.
      */
     linkLocalStartSession(
       player1RomPath: string,
@@ -338,7 +338,7 @@ declare namespace mGBA {
     ): boolean;
 
     /**
-     * Stops the active local linked session.
+     * Stops the active local linked session, tears down the local link and running games.
      */
     linkLocalStopSession(): void;
 
@@ -348,7 +348,7 @@ declare namespace mGBA {
     linkLocalSetActivePlayer(player: LinkPlayer): void;
 
     /**
-     * Gets the current local linked session status.
+     * Gets the current local linked session status, contains the active player and whether a local link is currently running.
      */
     linkLocalGetStatus(): LinkLocalStatus;
 

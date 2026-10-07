@@ -174,22 +174,23 @@ EMSCRIPTEN_KEEPALIVE bool screenshot(char* fileName) {
 	bool success = false;
 	int mode = O_CREAT | O_TRUNC | O_WRONLY;
 	struct VFile* vf;
+	struct mCore* core = activeInputCore();
 
-	if (!renderer->core)
+	if (!core)
 		return false;
 
-	struct VDir* dir = renderer->core->dirs.screenshot;
+	struct VDir* dir = core->dirs.screenshot;
 
 	if (strlen(fileName)) {
 		vf = dir->openFile(dir, fileName, mode);
 	} else {
-		vf = VDirFindNextAvailable(dir, renderer->core->dirs.baseName, "-", ".png", mode);
+		vf = VDirFindNextAvailable(dir, core->dirs.baseName, "-", ".png", mode);
 	}
 
 	if (!vf)
 		return false;
 
-	success = mCoreTakeScreenshotVF(renderer->core, vf);
+	success = mCoreTakeScreenshotVF(core, vf);
 	vf->close(vf);
 
 	return success;
@@ -445,6 +446,15 @@ EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
 // this should work for a good variety of keys, but not all are supported yet
 EMSCRIPTEN_KEEPALIVE void bindKey(char* bindingName, int inputCode) {
 	int bindingSDLKeyCode = SDL_GetKeyFromName(bindingName);
+
+	if (linkSession && linkSession->running) {
+		for (int i = 0; i < linkSession->playerCount; ++i) {
+			struct mCore* core = linkSession->cores[i];
+			if (core)
+				mInputBindKey(&core->inputMap, SDL_BINDING_KEY, bindingSDLKeyCode, inputCode);
+		}
+		return;
+	}
 
 	if (renderer->core)
 		mInputBindKey(&renderer->core->inputMap, SDL_BINDING_KEY, bindingSDLKeyCode, inputCode);
@@ -761,53 +771,70 @@ addCoreCallbacks(void (*alarmCallbackPtr)(void*), void (*coreCrashedCallbackPtr)
                  void (*keysReadCallbackPtr)(void*), void (*saveDataUpdatedCallbackPtr)(void*),
                  void (*videoFrameEndedCallbackPtr)(void*), void (*videoFrameStartedCallbackPtr)(void*),
                  void (*autoSaveStateCapturedCallbackPtr)(void*), void (*autoSaveStateLoadedCallbackPtr)(void*)) {
+	struct mCoreCallbacks callbacks = { };
+
+	// clear ad-hoc callbacks
+	callbackStorage.autoSaveStateCaptured = NULL;
+	callbackStorage.autoSaveStateLoaded = NULL;
+
+	// store original function pointers
+	if (alarmCallbackPtr)
+		callbackStorage.alarm = alarmCallbackPtr;
+	if (coreCrashedCallbackPtr)
+		callbackStorage.coreCrashed = coreCrashedCallbackPtr;
+	if (keysReadCallbackPtr)
+		callbackStorage.keysRead = keysReadCallbackPtr;
+	if (saveDataUpdatedCallbackPtr)
+		callbackStorage.savedataUpdated = saveDataUpdatedCallbackPtr;
+	if (videoFrameEndedCallbackPtr)
+		callbackStorage.videoFrameEnded = videoFrameEndedCallbackPtr;
+	if (videoFrameStartedCallbackPtr)
+		callbackStorage.videoFrameStarted = videoFrameStartedCallbackPtr;
+
+	// store original ad-hoc function pointers
+	if (autoSaveStateCapturedCallbackPtr)
+		callbackStorage.autoSaveStateCaptured = autoSaveStateCapturedCallbackPtr;
+	if (autoSaveStateLoadedCallbackPtr)
+		callbackStorage.autoSaveStateLoaded = autoSaveStateLoadedCallbackPtr;
+
+	// assign wrapped functions
+	if (alarmCallbackPtr)
+		callbacks.alarm = wrapped_alarm;
+	if (coreCrashedCallbackPtr)
+		callbacks.coreCrashed = wrapped_coreCrashed;
+	if (keysReadCallbackPtr)
+		callbacks.keysRead = wrapped_keysRead;
+	if (saveDataUpdatedCallbackPtr)
+		callbacks.savedataUpdated = wrapped_savedataUpdated;
+	if (videoFrameEndedCallbackPtr)
+		callbacks.videoFrameEnded = wrapped_videoFrameEnded;
+	if (videoFrameStartedCallbackPtr)
+		callbacks.videoFrameStarted = wrapped_videoFrameStarted;
+
+	if (linkSession && linkSession->running) {
+		for (int i = 0; i < linkSession->playerCount; ++i) {
+			struct mCore* core = linkSession->cores[i];
+			if (!core) {
+				continue;
+			}
+
+			core->clearCoreCallbacks(core);
+			if (linkSession->threads[i])
+				mCoreThreadAddCoreCallbacks(linkSession->threads[i]);
+			core->addCoreCallbacks(core, &callbacks);
+		}
+		return;
+	}
+
 	if (renderer->core) {
-		struct mCoreCallbacks callbacks = { };
 		// clear core callbacks
 		renderer->core->clearCoreCallbacks(renderer->core);
-		// clear ad-hoc callbacks
-		callbackStorage.autoSaveStateCaptured = NULL;
-		callbackStorage.autoSaveStateLoaded = NULL;
 
 		// the thread has its own suite of callbacks where ours should overlay on top,
 		// after clearing the current core callbacks since there is not a mechanism to
 		// filter the callbacks, we need to re-add the thread callbacks
 		if (renderer->thread)
 			mCoreThreadAddCoreCallbacks(renderer->thread);
-
-		// store original function pointers
-		if (alarmCallbackPtr)
-			callbackStorage.alarm = alarmCallbackPtr;
-		if (coreCrashedCallbackPtr)
-			callbackStorage.coreCrashed = coreCrashedCallbackPtr;
-		if (keysReadCallbackPtr)
-			callbackStorage.keysRead = keysReadCallbackPtr;
-		if (saveDataUpdatedCallbackPtr)
-			callbackStorage.savedataUpdated = saveDataUpdatedCallbackPtr;
-		if (videoFrameEndedCallbackPtr)
-			callbackStorage.videoFrameEnded = videoFrameEndedCallbackPtr;
-		if (videoFrameStartedCallbackPtr)
-			callbackStorage.videoFrameStarted = videoFrameStartedCallbackPtr;
-
-		// store original ad-hoc function pointers
-		if (autoSaveStateCapturedCallbackPtr)
-			callbackStorage.autoSaveStateCaptured = autoSaveStateCapturedCallbackPtr;
-		if (autoSaveStateLoadedCallbackPtr)
-			callbackStorage.autoSaveStateLoaded = autoSaveStateLoadedCallbackPtr;
-
-		// assign wrapped functions
-		if (alarmCallbackPtr)
-			callbacks.alarm = wrapped_alarm;
-		if (coreCrashedCallbackPtr)
-			callbacks.coreCrashed = wrapped_coreCrashed;
-		if (keysReadCallbackPtr)
-			callbacks.keysRead = wrapped_keysRead;
-		if (saveDataUpdatedCallbackPtr)
-			callbacks.savedataUpdated = wrapped_savedataUpdated;
-		if (videoFrameEndedCallbackPtr)
-			callbacks.videoFrameEnded = wrapped_videoFrameEnded;
-		if (videoFrameStartedCallbackPtr)
-			callbacks.videoFrameStarted = wrapped_videoFrameStarted;
 
 		renderer->core->addCoreCallbacks(renderer->core, &callbacks);
 	}
@@ -850,6 +877,30 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->restoreAutoSaveStateOnLoad = value;
 	} else if (strcmp(settingName, "autoSaveStateTimerIntervalSeconds") == 0 && value > 0) {
 		renderer->autoSaveStateTimer.intervalSeconds = value;
+	}
+
+	if (linkSession && linkSession->running) {
+		for (int i = 0; i < linkSession->playerCount; ++i) {
+			struct mCore* core = linkSession->cores[i];
+			struct mCoreThread* thread = linkSession->threads[i];
+			if (!core) {
+				continue;
+			}
+
+			if (strcmp(settingName, "allowOpposingDirections") == 0 && (value == true || value == false)) {
+				mCoreConfigSetDefaultIntValue(&core->config, "allowOpposingDirections", value);
+				core->reloadConfigOption(core, "allowOpposingDirections", &core->config);
+			} else if (strcmp(settingName, "frameSkip") == 0 && value >= 0) {
+				mCoreConfigSetDefaultIntValue(&core->config, "frameskip", renderer->frameSkip);
+				core->reloadConfigOption(core, "frameskip", &core->config);
+			} else if (strcmp(settingName, "baseFpsTarget") == 0 && value >= 0.0 && thread) {
+				thread->impl->sync.fpsTarget = (double) value * renderer->fastForwardMultiplier;
+				mCoreConfigSetDefaultFloatValue(&core->config, "fpsTarget",
+				                                (double) value * renderer->fastForwardMultiplier);
+				core->reloadConfigOption(core, "fpsTarget", &core->config);
+			}
+		}
+		return;
 	}
 
 	// core settings when running
@@ -1033,9 +1084,13 @@ void runLoop() {
 
 				SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
 				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
+				if (renderer->showFpsCounter)
+					drawFPS(w - 35, h - LINE_HEIGHT);
 				SDL_RenderPresent(renderer->sdlRenderer);
 			}
 		}
+		if (renderer->showFpsCounter)
+			updateFPS();
 		return;
 	}
 

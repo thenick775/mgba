@@ -24,7 +24,9 @@
 typedef struct {
 	double previousTime;
 	double accumulator;
+	uint32_t lockstepFrame;
 } mFixedTimestepLoop;
+
 #endif
 
 #ifndef DISABLE_THREADING
@@ -383,6 +385,23 @@ static THREAD_ENTRY _mCoreThreadRun(void* context) {
 				mCoreConfigGetBoolValue(&core->config, "lockstepRunLoop", &lockstepRunLoop);
 				if (lockstepRunLoop) {
 					core->runLoop(core);
+					if (core->frameCounter && impl->sync.fpsTarget > 0) {
+						uint32_t frame = core->frameCounter(core);
+						if (frame != loop.lockstepFrame) {
+							double now = emscripten_get_now();
+							if (!loop.previousTime || now - loop.previousTime > 250.0) {
+								loop.previousTime = now;
+							}
+							loop.previousTime += 1000.0 / impl->sync.fpsTarget;
+							double waitMs = loop.previousTime - now;
+							if (waitMs > 0) {
+								emscripten_thread_sleep(waitMs);
+							} else {
+								sched_yield();
+							}
+							loop.lockstepFrame = frame;
+						}
+					}
 				} else {
 					bool timestepSync = false;
 					mCoreConfigGetBoolValue(&core->config, "timestepSync", &timestepSync);

@@ -219,6 +219,19 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 		return; // this is a percentage so more than 200% is insane.
 
 	int volume = (int) (vol * 0x100);
+	renderer->volume = volume;
+	if (linkSession && linkSession->running) {
+		for (int i = 0; i < linkSession->playerCount; ++i) {
+			struct mCore* core = linkSession->cores[i];
+			if (!core) {
+				continue;
+			}
+			mCoreConfigSetDefaultIntValue(&core->config, "volume", volume);
+			core->reloadConfigOption(core, "volume", &core->config);
+		}
+		return;
+	}
+
 	if (renderer->core) {
 		mCoreConfigSetDefaultIntValue(&renderer->core->config, "volume", volume);
 		renderer->core->reloadConfigOption(renderer->core, "volume", &renderer->core->config);
@@ -226,10 +239,8 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 }
 
 EMSCRIPTEN_KEEPALIVE float getVolume() {
-	if (renderer->core)
-		return (float) renderer->core->opts.volume / 0x100;
-	else
-		return 0.0;
+	struct mCore* core = activeInputCore();
+	return core ? (float) core->opts.volume / 0x100 : 0.0;
 }
 
 EMSCRIPTEN_KEEPALIVE int getMainLoopTimingMode() {
@@ -252,6 +263,21 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 
 // full handling of fast forward, interrupts and thread logic included
 void updateFastForward(double multiplier) {
+	if (linkSession && linkSession->running) {
+		for (int i = 0; i < linkSession->playerCount; ++i) {
+			struct mCore* core = linkSession->cores[i];
+			struct mCoreThread* thread = linkSession->threads[i];
+			if (!core || !thread || multiplier == 0) {
+				continue;
+			}
+			thread->impl->sync.fpsTarget = (double) renderer->baseFpsTarget * multiplier;
+			mCoreConfigSetDefaultFloatValue(&core->config, "fpsTarget",
+			                                (double) renderer->baseFpsTarget * multiplier);
+			core->reloadConfigOption(core, "fpsTarget", &core->config);
+		}
+		return;
+	}
+
 	if (renderer->thread && renderer->videoSync) {
 		mCoreThreadInterrupt(renderer->thread);
 		renderer->thread->impl->sync.videoFrameWait = (multiplier > 1) ? false : renderer->videoSync;
@@ -489,8 +515,8 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	                                          .rewindBufferInterval = renderer->rewindBufferInterval,
 	                                          .videoSync = renderer->videoSync,
 	                                          .audioSync = renderer->audioSync,
-	                                          .fpsTarget = renderer->baseFpsTarget,
-	                                          .volume = 0x100,
+	                                          .fpsTarget = renderer->baseFpsTarget * renderer->fastForwardMultiplier,
+	                                          .volume = renderer->volume,
 	                                          .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
 
 	mCoreConfigLoadDefaults(&renderer->core->config, &defaultConfigOpts);
@@ -565,8 +591,8 @@ static bool setupLinkCore(int index, const char* romPath, const char* savePathOv
 	                                          .rewindBufferInterval = renderer->rewindBufferInterval,
 	                                          .videoSync = false,
 	                                          .audioSync = false,
-	                                          .fpsTarget = renderer->baseFpsTarget,
-	                                          .volume = 0x100,
+	                                          .fpsTarget = renderer->baseFpsTarget * renderer->fastForwardMultiplier,
+	                                          .volume = renderer->volume,
 	                                          .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
 
 	mCoreConfigLoadDefaults(&core->config, &defaultConfigOpts);
@@ -1143,6 +1169,7 @@ int main() {
 	renderer->rewindBufferCapacity = 600;
 	renderer->rewindBufferInterval = 1;
 	renderer->fastForwardMultiplier = 1;
+	renderer->volume = 0x100;
 	renderer->videoSync = false;
 	renderer->audioSync = false;
 	renderer->timestepSync = true;

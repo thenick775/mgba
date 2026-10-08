@@ -44,7 +44,6 @@ typedef struct {
 	struct GBASIOLockstepCoordinator coordinator;
 	struct GBASIOLockstepDriver sioDrivers[MAX_GBAS];
 	mEmscriptenLinkUser users[MAX_GBAS];
-	bool audioInitialized;
 } mEmscriptenLinkSession;
 
 static mEmscriptenLinkSession* linkSession = NULL;
@@ -88,7 +87,7 @@ static void destroyLinkSession(void) {
 		return;
 	}
 
-	if (linkSession->audioInitialized) {
+	if (renderer->audio.core) {
 		mSDLPauseAudio(&renderer->audio);
 		mSDLDeinitAudio(&renderer->audio);
 		renderer->audio.core = NULL;
@@ -723,7 +722,6 @@ EMSCRIPTEN_KEEPALIVE bool linkLocalStartSession(const char* player1RomPath, cons
 		destroyLinkSession();
 		return false;
 	}
-	linkSession->audioInitialized = true;
 	setLinkAudioPlayer(1);
 	mSDLResumeAudio(&renderer->audio);
 

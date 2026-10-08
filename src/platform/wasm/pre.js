@@ -617,42 +617,9 @@ Module.setCoreSettings = (coreSettings) => {
     );
 };
 
-let linkLocalRomPaths;
-let linkLocalSavePaths;
+let linkLocalSession;
 
-Module.linkLocalStartSession = (
-  player1RomPath,
-  player1SavePath,
-  player2RomPath,
-  player2SavePath,
-) => {
-  const linkLocalStartSession = cwrap("linkLocalStartSession", "boolean", [
-    "string",
-    "string",
-    "string",
-    "string",
-  ]);
-  const didStart = linkLocalStartSession(
-    player1RomPath,
-    player1SavePath ?? "",
-    player2RomPath,
-    player2SavePath ?? "",
-  );
-  if (didStart) {
-    linkLocalRomPaths = [player1RomPath, player2RomPath];
-    linkLocalSavePaths = [
-      player1SavePath || Module.linkLocalDefaultSaveName(player1RomPath),
-      player2SavePath || Module.linkLocalDefaultSaveName(player2RomPath),
-    ];
-    Module.gameName = linkLocalRomPaths[0];
-    Module.saveName = linkLocalSavePaths[0];
-  }
-  return didStart;
-};
-
-Module.linkLocalDefaultSaveName = (romPath) => {
-  if (!romPath) return undefined;
-
+const linkLocalDefaultSaveName = (romPath) => {
   const split = romPath.split("/");
   const fileName = split[split.length - 1];
   const extIndex = fileName.lastIndexOf(".");
@@ -660,20 +627,54 @@ Module.linkLocalDefaultSaveName = (romPath) => {
   return `/data/saves/${baseName}.sav`;
 };
 
+Module.linkLocalStartSession = ({ player1, player2 }) => {
+  linkLocalSession = undefined;
+
+  const linkLocalStartSession = cwrap("linkLocalStartSession", "boolean", [
+    "string",
+    "string",
+    "string",
+    "string",
+  ]);
+  const didStart = linkLocalStartSession(
+    player1.romPath,
+    player1.savePath ?? "",
+    player2.romPath,
+    player2.savePath ?? "",
+  );
+  if (didStart) {
+    linkLocalSession = {
+      player1: {
+        romPath: player1.romPath,
+        savePath: player1.savePath || linkLocalDefaultSaveName(player1.romPath),
+      },
+      player2: {
+        romPath: player2.romPath,
+        savePath: player2.savePath || linkLocalDefaultSaveName(player2.romPath),
+      },
+    };
+    Module.gameName = linkLocalSession.player1.romPath;
+    Module.saveName = linkLocalSession.player1.savePath;
+  }
+  return didStart;
+};
+
 Module.linkLocalStopSession = () => {
   const linkLocalStopSession = cwrap("linkLocalStopSession", null, []);
   linkLocalStopSession();
-  linkLocalRomPaths = undefined;
-  linkLocalSavePaths = undefined;
+  linkLocalSession = undefined;
 };
 
 Module.linkLocalSetActivePlayer = (player) => {
+  if (!linkLocalSession) return;
+
   const linkLocalSetActivePlayer = cwrap("linkLocalSetActivePlayer", null, [
     "number",
   ]);
   linkLocalSetActivePlayer(player);
-  Module.gameName = linkLocalRomPaths?.[player - 1] ?? Module.gameName;
-  Module.saveName = linkLocalSavePaths?.[player - 1] ?? Module.saveName;
+  const activePlayer = player === 1 ? linkLocalSession.player1 : linkLocalSession.player2;
+  Module.gameName = activePlayer.romPath;
+  Module.saveName = activePlayer.savePath;
 };
 
 Module.linkLocalGetStatus = () => {
@@ -684,8 +685,11 @@ Module.linkLocalGetStatus = () => {
     [],
   );
 
+  const running = !!linkLocalIsRunning();
+  const activePlayer = linkLocalGetActivePlayer();
+
   return {
-    running: !!linkLocalIsRunning(),
-    activePlayer: linkLocalGetActivePlayer(),
+    running,
+    activePlayer: running ? activePlayer : undefined,
   };
 };

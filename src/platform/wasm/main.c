@@ -7,11 +7,14 @@
 
 #include <mgba-util/vfs.h>
 #include <mgba/core/core.h>
+#include <mgba/core/lockstep.h>
 #include <mgba/core/serialize.h>
 #include <mgba/core/thread.h>
 #include <mgba/core/version.h>
 #include <mgba/gba/interface.h>
 #include <mgba/internal/gba/input.h>
+#include <mgba/internal/gba/sio.h>
+#include <mgba/internal/gba/sio/lockstep.h>
 
 #include "platform/sdl/sdl-audio.h"
 #include "platform/sdl/sdl-events.h"
@@ -25,6 +28,26 @@
 // global renderer
 static struct mEmscriptenRenderer* renderer = NULL;
 
+typedef struct {
+	struct mLockstepThreadUser d;
+	int requestedId;
+} mEmscriptenLinkUser;
+
+typedef struct {
+	int playerCount;
+	int activePlayer;
+	bool running;
+
+	struct mCore* cores[MAX_GBAS];
+	struct mCoreThread* threads[MAX_GBAS];
+	mColor* outputBuffers[MAX_GBAS];
+	struct GBASIOLockstepCoordinator coordinator;
+	struct GBASIOLockstepDriver sioDrivers[MAX_GBAS];
+	mEmscriptenLinkUser users[MAX_GBAS];
+} mEmscriptenLinkSession;
+
+static mEmscriptenLinkSession* linkSession = NULL;
+
 // log utilities
 static void _log(struct mLogger*, int category, enum mLogLevel level, const char* format, va_list args);
 static struct mLogFilter logFilter;
@@ -33,6 +56,66 @@ static struct mLogger logCtx = {
 	.filter = &logFilter,
 };
 static void (*logCallback)(int, const char*, const char*) = NULL;
+
+static int linkRequestedId(struct mLockstepUser* user) {
+	mEmscriptenLinkUser* linkUser = (mEmscriptenLinkUser*) user;
+	return linkUser->requestedId;
+}
+
+static bool linkPlayerIndexValid(int player) {
+	return linkSession && player >= 1 && player <= linkSession->playerCount;
+}
+
+static struct mCore* activeInputCore(void) {
+	if (linkPlayerIndexValid(linkSession ? linkSession->activePlayer : 0)) {
+		return linkSession->cores[linkSession->activePlayer - 1];
+	}
+	return renderer ? renderer->core : NULL;
+}
+
+static void setLinkAudioPlayer(int player) {
+	if (!linkPlayerIndexValid(player) || !linkSession->threads[player - 1]) {
+		return;
+	}
+
+	renderer->audio.core = linkSession->cores[player - 1];
+	renderer->audio.sync = &linkSession->threads[player - 1]->impl->sync;
+}
+
+static void destroyLinkSession(void) {
+	if (!linkSession) {
+		return;
+	}
+
+	if (renderer->audio.core) {
+		mSDLPauseAudio(&renderer->audio);
+		mSDLDeinitAudio(&renderer->audio);
+		renderer->audio.core = NULL;
+		renderer->audio.sync = NULL;
+	}
+
+	for (int i = 0; i < linkSession->playerCount; ++i) {
+		if (linkSession->threads[i]) {
+			mCoreThreadEnd(linkSession->threads[i]);
+			mCoreThreadJoin(linkSession->threads[i]);
+			free(linkSession->threads[i]);
+			linkSession->threads[i] = NULL;
+		}
+		if (linkSession->cores[i]) {
+			linkSession->cores[i]->unloadROM(linkSession->cores[i]);
+			mCoreConfigDeinit(&linkSession->cores[i]->config);
+			mInputMapDeinit(&linkSession->cores[i]->inputMap);
+			linkSession->cores[i]->deinit(linkSession->cores[i]);
+			linkSession->cores[i] = NULL;
+		}
+		free(linkSession->outputBuffers[i]);
+		linkSession->outputBuffers[i] = NULL;
+	}
+
+	GBASIOLockstepCoordinatorDeinit(&linkSession->coordinator);
+	free(linkSession);
+	linkSession = NULL;
+}
 
 static void wrapped_log(int level, const char* categoryName, const char* message) {
 	MAIN_THREAD_EM_ASM(
@@ -90,36 +173,39 @@ EMSCRIPTEN_KEEPALIVE bool screenshot(char* fileName) {
 	bool success = false;
 	int mode = O_CREAT | O_TRUNC | O_WRONLY;
 	struct VFile* vf;
+	struct mCore* core = activeInputCore();
 
-	if (!renderer->core)
+	if (!core)
 		return false;
 
-	struct VDir* dir = renderer->core->dirs.screenshot;
+	struct VDir* dir = core->dirs.screenshot;
 
 	if (strlen(fileName)) {
 		vf = dir->openFile(dir, fileName, mode);
 	} else {
-		vf = VDirFindNextAvailable(dir, renderer->core->dirs.baseName, "-", ".png", mode);
+		vf = VDirFindNextAvailable(dir, core->dirs.baseName, "-", ".png", mode);
 	}
 
 	if (!vf)
 		return false;
 
-	success = mCoreTakeScreenshotVF(renderer->core, vf);
+	success = mCoreTakeScreenshotVF(core, vf);
 	vf->close(vf);
 
 	return success;
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonPress(int id) {
-	if (renderer->core && renderer->thread) {
-		renderer->core->addKeys(renderer->core, 1 << id);
+	struct mCore* core = activeInputCore();
+	if (core) {
+		core->addKeys(core, 1 << id);
 	}
 }
 
 EMSCRIPTEN_KEEPALIVE void buttonUnpress(int id) {
-	if (renderer->core && renderer->thread) {
-		renderer->core->clearKeys(renderer->core, 1 << id);
+	struct mCore* core = activeInputCore();
+	if (core) {
+		core->clearKeys(core, 1 << id);
 	}
 }
 
@@ -133,6 +219,19 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 		return; // this is a percentage so more than 200% is insane.
 
 	int volume = (int) (vol * 0x100);
+	renderer->volume = volume;
+	if (linkSession && linkSession->running) {
+		for (int i = 0; i < linkSession->playerCount; ++i) {
+			struct mCore* core = linkSession->cores[i];
+			if (!core) {
+				continue;
+			}
+			mCoreConfigSetDefaultIntValue(&core->config, "volume", volume);
+			core->reloadConfigOption(core, "volume", &core->config);
+		}
+		return;
+	}
+
 	if (renderer->core) {
 		mCoreConfigSetDefaultIntValue(&renderer->core->config, "volume", volume);
 		renderer->core->reloadConfigOption(renderer->core, "volume", &renderer->core->config);
@@ -140,10 +239,8 @@ EMSCRIPTEN_KEEPALIVE void setVolume(float vol) {
 }
 
 EMSCRIPTEN_KEEPALIVE float getVolume() {
-	if (renderer->core)
-		return (float) renderer->core->opts.volume / 0x100;
-	else
-		return 0.0;
+	struct mCore* core = activeInputCore();
+	return core ? (float) core->opts.volume / 0x100 : 0.0;
 }
 
 EMSCRIPTEN_KEEPALIVE int getMainLoopTimingMode() {
@@ -166,6 +263,21 @@ EMSCRIPTEN_KEEPALIVE void setMainLoopTiming(int mode, int value) {
 
 // full handling of fast forward, interrupts and thread logic included
 void updateFastForward(double multiplier) {
+	if (linkSession && linkSession->running) {
+		for (int i = 0; i < linkSession->playerCount; ++i) {
+			struct mCore* core = linkSession->cores[i];
+			struct mCoreThread* thread = linkSession->threads[i];
+			if (!core || !thread || multiplier == 0) {
+				continue;
+			}
+			thread->impl->sync.fpsTarget = (double) renderer->baseFpsTarget * multiplier;
+			mCoreConfigSetDefaultFloatValue(&core->config, "fpsTarget",
+			                                (double) renderer->baseFpsTarget * multiplier);
+			core->reloadConfigOption(core, "fpsTarget", &core->config);
+		}
+		return;
+	}
+
 	if (renderer->thread && renderer->videoSync) {
 		mCoreThreadInterrupt(renderer->thread);
 		renderer->thread->impl->sync.videoFrameWait = (multiplier > 1) ? false : renderer->videoSync;
@@ -204,6 +316,8 @@ EMSCRIPTEN_KEEPALIVE int getFastForwardMultiplier() {
 }
 
 EMSCRIPTEN_KEEPALIVE void quitGame() {
+	destroyLinkSession();
+
 	if (renderer->core && renderer->thread) {
 		emscripten_pause_main_loop();
 		mSDLPauseAudio(&renderer->audio);
@@ -332,6 +446,15 @@ EMSCRIPTEN_KEEPALIVE void setEventEnable(bool toggle) {
 EMSCRIPTEN_KEEPALIVE void bindKey(char* bindingName, int inputCode) {
 	int bindingSDLKeyCode = SDL_GetKeyFromName(bindingName);
 
+	if (linkSession && linkSession->running) {
+		for (int i = 0; i < linkSession->playerCount; ++i) {
+			struct mCore* core = linkSession->cores[i];
+			if (core)
+				mInputBindKey(&core->inputMap, SDL_BINDING_KEY, bindingSDLKeyCode, inputCode);
+		}
+		return;
+	}
+
 	if (renderer->core)
 		mInputBindKey(&renderer->core->inputMap, SDL_BINDING_KEY, bindingSDLKeyCode, inputCode);
 }
@@ -377,6 +500,8 @@ EMSCRIPTEN_KEEPALIVE bool autoLoadCheats() {
 }
 
 EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverride) {
+	destroyLinkSession();
+
 	if (renderer->thread && renderer->core) {
 		quitGame();
 	}
@@ -394,14 +519,14 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 
 	mCoreConfigInit(&renderer->core->config, "wasm");
 	struct mCoreOptions defaultConfigOpts = { .useBios = true,
-		                                      .rewindEnable = renderer->rewindEnable,
-		                                      .rewindBufferCapacity = renderer->rewindBufferCapacity,
-		                                      .rewindBufferInterval = renderer->rewindBufferInterval,
-		                                      .videoSync = renderer->videoSync,
-		                                      .audioSync = renderer->audioSync,
-		                                      .fpsTarget = renderer->baseFpsTarget,
-		                                      .volume = 0x100,
-		                                      .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
+	                                          .rewindEnable = renderer->rewindEnable,
+	                                          .rewindBufferCapacity = renderer->rewindBufferCapacity,
+	                                          .rewindBufferInterval = renderer->rewindBufferInterval,
+	                                          .videoSync = renderer->videoSync,
+	                                          .audioSync = renderer->audioSync,
+	                                          .fpsTarget = renderer->baseFpsTarget * renderer->fastForwardMultiplier,
+	                                          .volume = renderer->volume,
+	                                          .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
 
 	mCoreConfigLoadDefaults(&renderer->core->config, &defaultConfigOpts);
 	mCoreLoadConfig(renderer->core);
@@ -454,6 +579,176 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	return true;
 }
 
+static bool setupLinkCore(int index, const char* romPath, const char* savePathOverride) {
+	struct mCore* core = mCoreFind(romPath);
+	if (!core) {
+		return false;
+	}
+
+	core->init(core);
+	core->opts.savegamePath = strdup("/data/saves");
+	core->opts.savestatePath = strdup("/data/states");
+	core->opts.cheatsPath = strdup("/data/cheats");
+	core->opts.screenshotPath = strdup("/data/screenshots");
+	core->opts.patchPath = strdup("/data/patches");
+	core->opts.audioBuffers = renderer->audio.samples;
+
+	mCoreConfigInit(&core->config, "wasm");
+	struct mCoreOptions defaultConfigOpts = { .useBios = true,
+	                                          .rewindEnable = false,
+	                                          .rewindBufferCapacity = renderer->rewindBufferCapacity,
+	                                          .rewindBufferInterval = renderer->rewindBufferInterval,
+	                                          .videoSync = false,
+	                                          .audioSync = false,
+	                                          .fpsTarget = renderer->baseFpsTarget * renderer->fastForwardMultiplier,
+	                                          .volume = renderer->volume,
+	                                          .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
+
+	mCoreConfigLoadDefaults(&core->config, &defaultConfigOpts);
+	mCoreLoadConfig(core);
+	mCoreConfigSetDefaultIntValue(&core->config, "lockstepRunLoop", true);
+	mCoreConfigSetDefaultIntValue(&core->config, "timestepSync", true);
+	mCoreConfigSetDefaultValue(&core->config, "idleOptimization", "detect");
+	mCoreConfigSetDefaultIntValue(&core->config, "allowOpposingDirections", true);
+	mCoreConfigSetDefaultIntValue(&core->config, "threadedVideo", false);
+	core->reloadConfigOption(core, "idleOptimization", &core->config);
+	core->reloadConfigOption(core, "allowOpposingDirections", &core->config);
+	core->reloadConfigOption(core, "threadedVideo", &core->config);
+
+	mInputMapInit(&core->inputMap, &GBAInputInfo);
+	mDirectorySetMapOptions(&core->dirs, &core->opts);
+
+	if (!mCoreLoadFile(core, romPath)) {
+		mCoreConfigDeinit(&core->config);
+		mInputMapDeinit(&core->inputMap);
+		core->deinit(core);
+		return false;
+	}
+
+	if (savePathOverride && strlen(savePathOverride)) {
+		mCoreLoadSaveFile(core, savePathOverride, false);
+	} else {
+		mCoreAutoloadSave(core);
+	}
+	mCoreAutoloadCheats(core);
+	mCoreAutoloadPatch(core);
+	mSDLInitBindingsGBA(&core->inputMap);
+
+	unsigned w, h;
+	core->baseVideoSize(core, &w, &h);
+	linkSession->outputBuffers[index] = calloc(w * h, sizeof(mColor));
+	if (!linkSession->outputBuffers[index]) {
+		mCoreConfigDeinit(&core->config);
+		mInputMapDeinit(&core->inputMap);
+		core->deinit(core);
+		return false;
+	}
+	core->setVideoBuffer(core, linkSession->outputBuffers[index], w);
+	core->setAudioBufferSize(core, renderer->audio.samples);
+
+	mLockstepThreadUserInit(&linkSession->users[index].d, NULL);
+	linkSession->users[index].requestedId = index;
+	linkSession->users[index].d.d.requestedId = linkRequestedId;
+	GBASIOLockstepDriverCreate(&linkSession->sioDrivers[index], &linkSession->users[index].d.d);
+	GBASIOLockstepCoordinatorAttach(&linkSession->coordinator, &linkSession->sioDrivers[index]);
+	core->setPeripheral(core, mPERIPH_GBA_LINK_PORT, &linkSession->sioDrivers[index].d);
+
+	core->reset(core);
+	linkSession->cores[index] = core;
+	return true;
+}
+
+EMSCRIPTEN_KEEPALIVE bool linkLocalStartSession(const char* player1RomPath, const char* player1SavePath,
+                                                const char* player2RomPath, const char* player2SavePath) {
+	if (!renderer || !player1RomPath || !player2RomPath) {
+		return false;
+	}
+
+	if (renderer->core && renderer->thread) {
+		quitGame();
+	}
+	destroyLinkSession();
+	linkSession = calloc(1, sizeof(mEmscriptenLinkSession));
+	if (!linkSession) {
+		return false;
+	}
+
+	linkSession->playerCount = 2;
+	linkSession->activePlayer = 1;
+	linkSession->running = true;
+	GBASIOLockstepCoordinatorInit(&linkSession->coordinator);
+
+	if (!setupLinkCore(0, player1RomPath, player1SavePath)) {
+		destroyLinkSession();
+		return false;
+	}
+	if (!setupLinkCore(1, player2RomPath, player2SavePath)) {
+		destroyLinkSession();
+		return false;
+	}
+
+	unsigned w, h;
+	linkSession->cores[0]->baseVideoSize(linkSession->cores[0], &w, &h);
+	if (renderer->sdlTex) {
+		SDL_DestroyTexture(renderer->sdlTex);
+	}
+	renderer->sdlTex =
+	    SDL_CreateTexture(renderer->sdlRenderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+	SDL_SetWindowSize(renderer->window, w, h);
+	EM_ASM(
+	    {
+		    Module.canvas.width = $0;
+		    Module.canvas.height = $1;
+	    },
+	    w, h);
+
+	for (int i = 0; i < linkSession->playerCount; ++i) {
+		linkSession->threads[i] = malloc(sizeof(struct mCoreThread));
+		if (!linkSession->threads[i]) {
+			destroyLinkSession();
+			return false;
+		}
+		memset(linkSession->threads[i], 0, sizeof(struct mCoreThread));
+		linkSession->threads[i]->core = linkSession->cores[i];
+		linkSession->threads[i]->logger.logger = &logCtx;
+		linkSession->users[i].d.thread = linkSession->threads[i];
+		if (!mCoreThreadStart(linkSession->threads[i])) {
+			destroyLinkSession();
+			return false;
+		}
+	}
+
+	if (!mSDLInitAudio(&renderer->audio, linkSession->threads[0])) {
+		destroyLinkSession();
+		return false;
+	}
+	setLinkAudioPlayer(1);
+	mSDLResumeAudio(&renderer->audio);
+
+	emscripten_resume_main_loop();
+	return true;
+}
+
+EMSCRIPTEN_KEEPALIVE void linkLocalStopSession(void) {
+	destroyLinkSession();
+	emscripten_resume_main_loop();
+}
+
+EMSCRIPTEN_KEEPALIVE void linkLocalSetActivePlayer(int player) {
+	if (linkPlayerIndexValid(player)) {
+		linkSession->activePlayer = player;
+		setLinkAudioPlayer(player);
+	}
+}
+
+EMSCRIPTEN_KEEPALIVE int linkLocalGetActivePlayer(void) {
+	return linkSession ? linkSession->activePlayer : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE int linkLocalIsRunning(void) {
+	return linkSession && linkSession->running;
+}
+
 EMSCRIPTEN_KEEPALIVE bool saveStateSlot(int slot, int flags) {
 	if (!renderer->core) {
 		return false;
@@ -474,53 +769,70 @@ addCoreCallbacks(void (*alarmCallbackPtr)(void*), void (*coreCrashedCallbackPtr)
                  void (*keysReadCallbackPtr)(void*), void (*saveDataUpdatedCallbackPtr)(void*),
                  void (*videoFrameEndedCallbackPtr)(void*), void (*videoFrameStartedCallbackPtr)(void*),
                  void (*autoSaveStateCapturedCallbackPtr)(void*), void (*autoSaveStateLoadedCallbackPtr)(void*)) {
+	struct mCoreCallbacks callbacks = { };
+
+	// clear ad-hoc callbacks
+	callbackStorage.autoSaveStateCaptured = NULL;
+	callbackStorage.autoSaveStateLoaded = NULL;
+
+	// store original function pointers
+	if (alarmCallbackPtr)
+		callbackStorage.alarm = alarmCallbackPtr;
+	if (coreCrashedCallbackPtr)
+		callbackStorage.coreCrashed = coreCrashedCallbackPtr;
+	if (keysReadCallbackPtr)
+		callbackStorage.keysRead = keysReadCallbackPtr;
+	if (saveDataUpdatedCallbackPtr)
+		callbackStorage.savedataUpdated = saveDataUpdatedCallbackPtr;
+	if (videoFrameEndedCallbackPtr)
+		callbackStorage.videoFrameEnded = videoFrameEndedCallbackPtr;
+	if (videoFrameStartedCallbackPtr)
+		callbackStorage.videoFrameStarted = videoFrameStartedCallbackPtr;
+
+	// store original ad-hoc function pointers
+	if (autoSaveStateCapturedCallbackPtr)
+		callbackStorage.autoSaveStateCaptured = autoSaveStateCapturedCallbackPtr;
+	if (autoSaveStateLoadedCallbackPtr)
+		callbackStorage.autoSaveStateLoaded = autoSaveStateLoadedCallbackPtr;
+
+	// assign wrapped functions
+	if (alarmCallbackPtr)
+		callbacks.alarm = wrapped_alarm;
+	if (coreCrashedCallbackPtr)
+		callbacks.coreCrashed = wrapped_coreCrashed;
+	if (keysReadCallbackPtr)
+		callbacks.keysRead = wrapped_keysRead;
+	if (saveDataUpdatedCallbackPtr)
+		callbacks.savedataUpdated = wrapped_savedataUpdated;
+	if (videoFrameEndedCallbackPtr)
+		callbacks.videoFrameEnded = wrapped_videoFrameEnded;
+	if (videoFrameStartedCallbackPtr)
+		callbacks.videoFrameStarted = wrapped_videoFrameStarted;
+
+	if (linkSession && linkSession->running) {
+		for (int i = 0; i < linkSession->playerCount; ++i) {
+			struct mCore* core = linkSession->cores[i];
+			if (!core) {
+				continue;
+			}
+
+			core->clearCoreCallbacks(core);
+			if (linkSession->threads[i])
+				mCoreThreadAddCoreCallbacks(linkSession->threads[i]);
+			core->addCoreCallbacks(core, &callbacks);
+		}
+		return;
+	}
+
 	if (renderer->core) {
-		struct mCoreCallbacks callbacks = { };
 		// clear core callbacks
 		renderer->core->clearCoreCallbacks(renderer->core);
-		// clear ad-hoc callbacks
-		callbackStorage.autoSaveStateCaptured = NULL;
-		callbackStorage.autoSaveStateLoaded = NULL;
 
 		// the thread has its own suite of callbacks where ours should overlay on top,
 		// after clearing the current core callbacks since there is not a mechanism to
 		// filter the callbacks, we need to re-add the thread callbacks
 		if (renderer->thread)
 			mCoreThreadAddCoreCallbacks(renderer->thread);
-
-		// store original function pointers
-		if (alarmCallbackPtr)
-			callbackStorage.alarm = alarmCallbackPtr;
-		if (coreCrashedCallbackPtr)
-			callbackStorage.coreCrashed = coreCrashedCallbackPtr;
-		if (keysReadCallbackPtr)
-			callbackStorage.keysRead = keysReadCallbackPtr;
-		if (saveDataUpdatedCallbackPtr)
-			callbackStorage.savedataUpdated = saveDataUpdatedCallbackPtr;
-		if (videoFrameEndedCallbackPtr)
-			callbackStorage.videoFrameEnded = videoFrameEndedCallbackPtr;
-		if (videoFrameStartedCallbackPtr)
-			callbackStorage.videoFrameStarted = videoFrameStartedCallbackPtr;
-
-		// store original ad-hoc function pointers
-		if (autoSaveStateCapturedCallbackPtr)
-			callbackStorage.autoSaveStateCaptured = autoSaveStateCapturedCallbackPtr;
-		if (autoSaveStateLoadedCallbackPtr)
-			callbackStorage.autoSaveStateLoaded = autoSaveStateLoadedCallbackPtr;
-
-		// assign wrapped functions
-		if (alarmCallbackPtr)
-			callbacks.alarm = wrapped_alarm;
-		if (coreCrashedCallbackPtr)
-			callbacks.coreCrashed = wrapped_coreCrashed;
-		if (keysReadCallbackPtr)
-			callbacks.keysRead = wrapped_keysRead;
-		if (saveDataUpdatedCallbackPtr)
-			callbacks.savedataUpdated = wrapped_savedataUpdated;
-		if (videoFrameEndedCallbackPtr)
-			callbacks.videoFrameEnded = wrapped_videoFrameEnded;
-		if (videoFrameStartedCallbackPtr)
-			callbacks.videoFrameStarted = wrapped_videoFrameStarted;
 
 		renderer->core->addCoreCallbacks(renderer->core, &callbacks);
 	}
@@ -563,6 +875,30 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 		renderer->restoreAutoSaveStateOnLoad = value;
 	} else if (strcmp(settingName, "autoSaveStateTimerIntervalSeconds") == 0 && value > 0) {
 		renderer->autoSaveStateTimer.intervalSeconds = value;
+	}
+
+	if (linkSession && linkSession->running) {
+		for (int i = 0; i < linkSession->playerCount; ++i) {
+			struct mCore* core = linkSession->cores[i];
+			struct mCoreThread* thread = linkSession->threads[i];
+			if (!core) {
+				continue;
+			}
+
+			if (strcmp(settingName, "allowOpposingDirections") == 0 && (value == true || value == false)) {
+				mCoreConfigSetDefaultIntValue(&core->config, "allowOpposingDirections", value);
+				core->reloadConfigOption(core, "allowOpposingDirections", &core->config);
+			} else if (strcmp(settingName, "frameSkip") == 0 && value >= 0) {
+				mCoreConfigSetDefaultIntValue(&core->config, "frameskip", renderer->frameSkip);
+				core->reloadConfigOption(core, "frameskip", &core->config);
+			} else if (strcmp(settingName, "baseFpsTarget") == 0 && value >= 0.0 && thread) {
+				thread->impl->sync.fpsTarget = (double) value * renderer->fastForwardMultiplier;
+				mCoreConfigSetDefaultFloatValue(&core->config, "fpsTarget",
+				                                (double) value * renderer->fastForwardMultiplier);
+				core->reloadConfigOption(core, "fpsTarget", &core->config);
+			}
+		}
+		return;
 	}
 
 	// core settings when running
@@ -710,6 +1046,52 @@ void updateAutoSaveState() {
 void runLoop() {
 	union SDL_Event event;
 
+	if (linkSession && linkSession->running) {
+		while (SDL_PollEvent(&event)) {
+			switch (event.type) {
+			case SDL_KEYDOWN:
+			case SDL_KEYUP:
+				if (linkPlayerIndexValid(linkSession->activePlayer)) {
+					struct mCore* core = linkSession->cores[linkSession->activePlayer - 1];
+					if (core) {
+						struct mCore* previousCore = renderer->core;
+						renderer->core = core;
+						handleKeypressCore(&event.key);
+						renderer->core = previousCore;
+					}
+				}
+				break;
+			};
+		}
+
+		if (linkPlayerIndexValid(linkSession->activePlayer)) {
+			int index = linkSession->activePlayer - 1;
+			struct mCore* core = linkSession->cores[index];
+			if (core && linkSession->outputBuffers[index]) {
+				unsigned w, h;
+				core->currentVideoSize(core, &w, &h);
+				void* pixels = NULL;
+				int pitch = 0;
+				if (SDL_LockTexture(renderer->sdlTex, 0, &pixels, &pitch) == 0) {
+					for (unsigned y = 0; y < h; ++y) {
+						memcpy((uint8_t*) pixels + y * pitch, linkSession->outputBuffers[index] + y * w,
+						       w * BYTES_PER_PIXEL);
+					}
+					SDL_UnlockTexture(renderer->sdlTex);
+				}
+
+				SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
+				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
+				if (renderer->showFpsCounter)
+					drawFPS(w - 35, h - LINE_HEIGHT);
+				SDL_RenderPresent(renderer->sdlRenderer);
+			}
+		}
+		if (renderer->showFpsCounter)
+			updateFPS();
+		return;
+	}
+
 	if (renderer->core) {
 		if (!renderer->thread) {
 			renderer->thread = malloc(sizeof(struct mCoreThread));
@@ -840,6 +1222,7 @@ int main() {
 	renderer->rewindBufferCapacity = 600;
 	renderer->rewindBufferInterval = 1;
 	renderer->fastForwardMultiplier = 1;
+	renderer->volume = 0x100;
 	renderer->videoSync = false;
 	renderer->audioSync = false;
 	renderer->timestepSync = true;

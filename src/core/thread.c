@@ -24,6 +24,7 @@
 typedef struct {
 	double previousTime;
 	double accumulator;
+	uint32_t lockstepFrame;
 } mFixedTimestepLoop;
 #endif
 
@@ -379,39 +380,62 @@ static THREAD_ENTRY _mCoreThreadRun(void* context) {
 			while (impl->state == mTHREAD_RUNNING) {
 				MutexUnlock(&impl->stateMutex);
 #ifdef __EMSCRIPTEN__
-				bool timestepSync = false;
-				mCoreConfigGetBoolValue(&core->config, "timestepSync", &timestepSync);
-
-				if (timestepSync) {
-					const double stepMs     = 1000.0 / impl->sync.fpsTarget; // fixed step in ms
-					const double maxCatchup = 250.0;                         // clamp to avoid huge dt spikes
-					const double maxWaitMs  = 8.0;                           // used to avoid oversleep  
-					const int    maxSteps   = 4;                             // avoid spiral-of-death on slow frames
-
-					double now = emscripten_get_now();
-					double dt  = now - loop.previousTime;
-					if (dt > maxCatchup) dt = maxCatchup;
-					loop.previousTime = now;
-					loop.accumulator += dt;
-
-					int steps = 0;
-					while (loop.accumulator >= stepMs && steps++ < maxSteps) {
-						core->runFrame(core);
-						loop.accumulator -= stepMs;
-					}
-
-					if (steps == 0) {
-						double waitMs = stepMs - loop.accumulator;
-
-						if (waitMs > maxWaitMs) waitMs = maxWaitMs;
-						if (waitMs > 0.0) {
-							emscripten_thread_sleep(waitMs);
-						} else {
-							sched_yield();
+				bool lockstepRunLoop = false;
+				mCoreConfigGetBoolValue(&core->config, "lockstepRunLoop", &lockstepRunLoop);
+				if (lockstepRunLoop) {
+					core->runLoop(core);
+					if (core->frameCounter && impl->sync.fpsTarget > 0) {
+						uint32_t frame = core->frameCounter(core);
+						if (frame != loop.lockstepFrame) {
+							double now = emscripten_get_now();
+							if (!loop.previousTime || now - loop.previousTime > 250.0) {
+								loop.previousTime = now;
+							}
+							loop.previousTime += 1000.0 / impl->sync.fpsTarget;
+							double waitMs = loop.previousTime - now;
+							if (waitMs > 0) {
+								emscripten_thread_sleep(waitMs);
+							} else {
+								sched_yield();
+							}
+							loop.lockstepFrame = frame;
 						}
 					}
 				} else {
-					core->runFrame(core);
+					bool timestepSync = false;
+					mCoreConfigGetBoolValue(&core->config, "timestepSync", &timestepSync);
+
+					if (timestepSync) {
+						const double stepMs     = 1000.0 / impl->sync.fpsTarget; // fixed step in ms
+						const double maxCatchup = 250.0;                         // clamp to avoid huge dt spikes
+						const double maxWaitMs  = 8.0;                           // used to avoid oversleep  
+						const int    maxSteps   = 4;                             // avoid spiral-of-death on slow frames
+
+						double now = emscripten_get_now();
+						double dt  = now - loop.previousTime;
+						if (dt > maxCatchup) dt = maxCatchup;
+						loop.previousTime = now;
+						loop.accumulator += dt;
+
+						int steps = 0;
+						while (loop.accumulator >= stepMs && steps++ < maxSteps) {
+							core->runFrame(core);
+							loop.accumulator -= stepMs;
+						}
+
+						if (steps == 0) {
+							double waitMs = stepMs - loop.accumulator;
+
+							if (waitMs > maxWaitMs) waitMs = maxWaitMs;
+							if (waitMs > 0.0) {
+								emscripten_thread_sleep(waitMs);
+							} else {
+								sched_yield();
+							}
+						}
+					} else {
+						core->runFrame(core);
+					}
 				}
 #else
 				core->runLoop(core);

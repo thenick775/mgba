@@ -616,3 +616,80 @@ Module.setCoreSettings = (coreSettings) => {
       coreSettings.restoreAutoSaveStateOnLoad,
     );
 };
+
+let linkLocalSession;
+
+const linkLocalDefaultSaveName = (romPath) => {
+  const split = romPath.split("/");
+  const fileName = split[split.length - 1];
+  const extIndex = fileName.lastIndexOf(".");
+  const baseName = extIndex > -1 ? fileName.slice(0, extIndex) : fileName;
+  return `/data/saves/${baseName}.sav`;
+};
+
+Module.linkLocalStartSession = ({ player1, player2 }) => {
+  linkLocalSession = undefined;
+
+  const linkLocalStartSession = cwrap("linkLocalStartSession", "boolean", [
+    "string",
+    "string",
+    "string",
+    "string",
+  ]);
+  const didStart = linkLocalStartSession(
+    player1.romPath,
+    player1.savePath ?? "",
+    player2.romPath,
+    player2.savePath ?? "",
+  );
+  if (didStart) {
+    linkLocalSession = {
+      player1: {
+        romPath: player1.romPath,
+        savePath: player1.savePath || linkLocalDefaultSaveName(player1.romPath),
+      },
+      player2: {
+        romPath: player2.romPath,
+        savePath: player2.savePath || linkLocalDefaultSaveName(player2.romPath),
+      },
+    };
+    Module.gameName = linkLocalSession.player1.romPath;
+    Module.saveName = linkLocalSession.player1.savePath;
+  }
+  return didStart;
+};
+
+Module.linkLocalStopSession = () => {
+  const linkLocalStopSession = cwrap("linkLocalStopSession", null, []);
+  linkLocalStopSession();
+  linkLocalSession = undefined;
+};
+
+Module.linkLocalSetActivePlayer = (player) => {
+  if (!linkLocalSession) return;
+
+  const linkLocalSetActivePlayer = cwrap("linkLocalSetActivePlayer", null, [
+    "number",
+  ]);
+  linkLocalSetActivePlayer(player);
+  const activePlayer = player === 1 ? linkLocalSession.player1 : linkLocalSession.player2;
+  Module.gameName = activePlayer.romPath;
+  Module.saveName = activePlayer.savePath;
+};
+
+Module.linkLocalGetStatus = () => {
+  const linkLocalIsRunning = cwrap("linkLocalIsRunning", "number", []);
+  const linkLocalGetActivePlayer = cwrap(
+    "linkLocalGetActivePlayer",
+    "number",
+    [],
+  );
+
+  const running = !!linkLocalIsRunning();
+  const activePlayer = linkLocalGetActivePlayer();
+
+  return {
+    running,
+    activePlayer: running ? activePlayer : undefined,
+  };
+};

@@ -75,6 +75,23 @@ declare namespace mGBA {
     message: string;
   };
 
+  export type LinkPlayer = 1 | 2; // TODO: more than 2 player support
+
+  export type LinkLocalPlayerConfig = {
+    romPath: string;
+    savePath?: string;
+  };
+
+  export type LinkLocalStartSessionConfig = {
+    player1: LinkLocalPlayerConfig;
+    player2: LinkLocalPlayerConfig;
+  };
+
+  export type LinkLocalStatus = {
+    running: boolean;
+    activePlayer?: LinkPlayer;
+  };
+
   export type coreSettings = {
     /**
      * Number of frames to skip rendering between screen paints.
@@ -321,6 +338,26 @@ declare namespace mGBA {
     loadGame(romPath: string, savePathOverride?: string): boolean;
 
     /**
+     * Starts a local linked GBA session, currently supports two players.
+     */
+    linkLocalStartSession(options: LinkLocalStartSessionConfig): boolean;
+
+    /**
+     * Stops the active local linked session, tears down the local link and running games.
+     */
+    linkLocalStopSession(): void;
+
+    /**
+     * Selects which linked player is rendered and controlled by normal input APIs.
+     */
+    linkLocalSetActivePlayer(player: LinkPlayer): void;
+
+    /**
+     * Gets the current local linked session status, contains the active player and whether a local link is currently running.
+     */
+    linkLocalGetStatus(): LinkLocalStatus;
+
+    /**
      * Loads a save state from a given slot.
      *
      * @param slot - State slot index.
@@ -453,7 +490,7 @@ declare namespace mGBA {
     /**
      * Sets the main loop timing mode and value.
      *
-     * See: https://emscripten.org/docs/api_reference/emscripten.h.html#c.emscripten_set_main_loop_timing
+     * See: [emscripten_set_main_loop_timing](https://emscripten.org/docs/api_reference/emscripten.h.html#c.emscripten_set_main_loop_timing)
      *
      * @param mode - Timing mode identifier.
      * @param value - Timing value associated with the mode.

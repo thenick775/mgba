@@ -155,6 +155,13 @@ Callbacks and core settings:
 - `setCoreSettings(coreSettings)`
 - `toggleRewind(toggle)`
 
+Local link play:
+
+- `linkLocalStartSession(options)`
+- `linkLocalStopSession()`
+- `linkLocalSetActivePlayer(player)`
+- `linkLocalGetStatus()`
+
 See `dist/mgba.d.ts` for full signatures and inline documentation.
 
 ## Source

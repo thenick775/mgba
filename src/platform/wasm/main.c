@@ -62,6 +62,24 @@ static struct mLogger logCtx = {
 };
 static void (*logCallback)(int, const char*, const char*) = NULL;
 
+static void destroyGLES2Display(void) {
+	if (!renderer->glCtx) {
+		return;
+	}
+
+	if (renderer->customShader.passes) {
+		mGLES2ShaderDetach(&renderer->gl2);
+		mGLES2ShaderFree(&renderer->customShader);
+	}
+	renderer->gl2.d.deinit(&renderer->gl2.d);
+	SDL_GL_DeleteContext(renderer->glCtx);
+	renderer->glCtx = NULL;
+	free(renderer->outputBuffer);
+	renderer->outputBuffer = NULL;
+	gOutputBufW = 0;
+	gOutputBufH = 0;
+}
+
 static int linkRequestedId(struct mLockstepUser* user) {
 	mEmscriptenLinkUser* linkUser = (mEmscriptenLinkUser*) user;
 	return linkUser->requestedId;
@@ -92,6 +110,8 @@ static void destroyLinkSession(void) {
 		return;
 	}
 
+	destroyGLES2Display();
+
 	if (renderer->audio.core) {
 		mSDLPauseAudio(&renderer->audio);
 		mSDLDeinitAudio(&renderer->audio);
@@ -120,6 +140,7 @@ static void destroyLinkSession(void) {
 	GBASIOLockstepCoordinatorDeinit(&linkSession->coordinator);
 	free(linkSession);
 	linkSession = NULL;
+	renderer->core = NULL;
 }
 
 static void wrapped_log(int level, const char* categoryName, const char* message) {
@@ -341,16 +362,7 @@ EMSCRIPTEN_KEEPALIVE void quitGame() {
 
 		renderer->autoSaveStateTimer.lastTime = 0;
 
-		renderer->gl2.d.deinit(&renderer->gl2.d);
-		if (renderer->customShader.passes) {
-			mGLES2ShaderDetach(&renderer->gl2);
-			mGLES2ShaderFree(&renderer->customShader);
-		}
-		SDL_GL_DeleteContext(renderer->glCtx);
-		free(renderer->outputBuffer);
-		renderer->outputBuffer = NULL;
-		gOutputBufW = 0;
-		gOutputBufH = 0;
+		destroyGLES2Display();
 	}
 }
 
@@ -551,9 +563,6 @@ EMSCRIPTEN_KEEPALIVE bool mGLES2Init(struct mEmscriptenRenderer* renderer, int w
 	gOutputBufW = (unsigned) width;
 	gOutputBufH = (unsigned) height;
 
-	// Hook up video buffer to core
-	renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, width);
-
 	// Initialize GLES2 context
 	mGLES2ContextCreate(&renderer->gl2);
 
@@ -568,11 +577,9 @@ EMSCRIPTEN_KEEPALIVE bool mGLES2Init(struct mEmscriptenRenderer* renderer, int w
 	struct mRectangle dims = { .x = 0, .y = 0, .width = width, .height = height };
 	renderer->gl2.d.setLayerDimensions(&renderer->gl2.d, VIDEO_LAYER_IMAGE, &dims);
 
-	// Store base resolution so `mGLES2ContextResized` can lock properly
-	unsigned w, h;
-	renderer->core->currentVideoSize(renderer->core, &w, &h);
-	renderer->gl2.width = w;
-	renderer->gl2.height = h;
+	// Store base resolution so `mGLES2ContextResized` can lock properly.
+	renderer->gl2.width = width;
+	renderer->gl2.height = height;
 
 	double dpr = emscripten_get_device_pixel_ratio();
 	int pixelWidth = width * dpr;
@@ -583,7 +590,11 @@ EMSCRIPTEN_KEEPALIVE bool mGLES2Init(struct mEmscriptenRenderer* renderer, int w
 }
 
 EMSCRIPTEN_KEEPALIVE void loadShader(char* shaderPath) {
-	mCoreThreadInterrupt(renderer->thread);
+	if (!renderer->glCtx) {
+		return;
+	}
+	if (renderer->thread)
+		mCoreThreadInterrupt(renderer->thread);
 	if (renderer->customShader.passes) {
 		mGLES2ShaderDetach(&renderer->gl2);
 		mGLES2ShaderFree(&renderer->customShader);
@@ -595,15 +606,18 @@ EMSCRIPTEN_KEEPALIVE void loadShader(char* shaderPath) {
 		                   renderer->customShader.nPasses);
 	}
 	currentShaderDir->close(currentShaderDir);
-	mCoreThreadContinue(renderer->thread);
+	if (renderer->thread)
+		mCoreThreadContinue(renderer->thread);
 }
 
 EMSCRIPTEN_KEEPALIVE void unloadShader() {
-	if (renderer->customShader.passes) {
-		mCoreThreadInterrupt(renderer->thread);
+	if (renderer->glCtx && renderer->customShader.passes) {
+		if (renderer->thread)
+			mCoreThreadInterrupt(renderer->thread);
 		mGLES2ShaderDetach(&renderer->gl2);
 		mGLES2ShaderFree(&renderer->customShader);
-		mCoreThreadContinue(renderer->thread);
+		if (renderer->thread)
+			mCoreThreadContinue(renderer->thread);
 	}
 }
 
@@ -678,6 +692,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	w = w * renderer->highResolutionScale;
 	h = h * renderer->highResolutionScale;
 	mGLES2Init(renderer, w, h);
+	renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, w);
 	SDL_SetWindowSize(renderer->window, w, h);
 	EM_ASM(
 	    {
@@ -716,6 +731,12 @@ static bool setupLinkCore(int index, const char* romPath, const char* savePathOv
 	                                          .volume = renderer->volume,
 	                                          .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
 
+	unsigned w, h;
+	core->baseVideoSize(core, &w, &h);
+	defaultConfigOpts.width = w * renderer->highResolutionScale;
+	defaultConfigOpts.height = h * renderer->highResolutionScale;
+
+	mCoreInitConfig(core, PORT);
 	mCoreConfigLoadDefaults(&core->config, &defaultConfigOpts);
 	mCoreLoadConfig(core);
 	mCoreConfigSetDefaultIntValue(&core->config, "lockstepRunLoop", true);
@@ -746,8 +767,7 @@ static bool setupLinkCore(int index, const char* romPath, const char* savePathOv
 	mCoreAutoloadPatch(core);
 	mSDLInitBindingsGBA(&core->inputMap);
 
-	unsigned w, h;
-	core->baseVideoSize(core, &w, &h);
+	core->currentVideoSize(core, &w, &h);
 	linkSession->outputBuffers[index] = calloc(w * h, sizeof(mColor));
 	if (!linkSession->outputBuffers[index]) {
 		mCoreConfigDeinit(&core->config);
@@ -800,17 +820,18 @@ EMSCRIPTEN_KEEPALIVE bool linkLocalStartSession(const char* player1RomPath, cons
 	}
 
 	unsigned w, h;
-	linkSession->cores[0]->baseVideoSize(linkSession->cores[0], &w, &h);
-	if (renderer->sdlTex) {
-		SDL_DestroyTexture(renderer->sdlTex);
+	linkSession->cores[0]->currentVideoSize(linkSession->cores[0], &w, &h);
+	renderer->core = linkSession->cores[0];
+	if (!mGLES2Init(renderer, w, h)) {
+		destroyLinkSession();
+		return false;
 	}
-	renderer->sdlTex =
-	    SDL_CreateTexture(renderer->sdlRenderer, SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, w, h);
 	SDL_SetWindowSize(renderer->window, w, h);
 	EM_ASM(
 	    {
-		    Module.canvas.width = $0;
-		    Module.canvas.height = $1;
+		    const dpr = window.devicePixelRatio || 1;
+		    Module.canvas.width = $0 * dpr;
+		    Module.canvas.height = $1 * dpr;
 	    },
 	    w, h);
 
@@ -1094,7 +1115,8 @@ static void handleKeypressCore(const struct SDL_KeyboardEvent* event) {
 		return;
 	}
 	if (event->keysym.sym == SDLK_r) {
-		mCoreThreadSetRewinding(renderer->thread, event->type == SDL_KEYDOWN);
+		if (renderer->thread)
+			mCoreThreadSetRewinding(renderer->thread, event->type == SDL_KEYDOWN);
 		return;
 	}
 	int key = -1;
@@ -1175,23 +1197,14 @@ void runLoop() {
 			int index = linkSession->activePlayer - 1;
 			struct mCore* core = linkSession->cores[index];
 			if (core && linkSession->outputBuffers[index]) {
-				unsigned w, h;
-				core->currentVideoSize(core, &w, &h);
-				void* pixels = NULL;
-				int pitch = 0;
-				if (SDL_LockTexture(renderer->sdlTex, 0, &pixels, &pitch) == 0) {
-					for (unsigned y = 0; y < h; ++y) {
-						memcpy((uint8_t*) pixels + y * pitch, linkSession->outputBuffers[index] + y * w,
-						       w * BYTES_PER_PIXEL);
-					}
-					SDL_UnlockTexture(renderer->sdlTex);
+				if (renderer->showFpsCounter) {
+					drawFPSOverlayIntoOutputBuffer(2, 2, gOutputBufW, gOutputBufH,
+					                               (uint8_t*) linkSession->outputBuffers[index],
+					                               renderer->fpsCounter.fps);
 				}
-
-				SDL_Rect rect = { .x = 0, .y = 0, .w = w, .h = h };
-				SDL_RenderCopy(renderer->sdlRenderer, renderer->sdlTex, &rect, &rect);
-				if (renderer->showFpsCounter)
-					drawFPS(w - 35, h - LINE_HEIGHT);
-				SDL_RenderPresent(renderer->sdlRenderer);
+				renderer->gl2.d.setImage(&renderer->gl2.d, VIDEO_LAYER_IMAGE, linkSession->outputBuffers[index]);
+				renderer->gl2.d.drawFrame(&renderer->gl2.d);
+				renderer->gl2.d.swap(&renderer->gl2.d);
 			}
 		}
 		if (renderer->showFpsCounter)

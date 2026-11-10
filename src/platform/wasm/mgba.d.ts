@@ -592,6 +592,11 @@ declare namespace mGBA {
      */
     setCoreSettings(coreSettings: coreSettings): void;
 
+    /**
+     * Returns common filesystem path strings used by this build.
+     */
+    filePaths(): filePaths;
+
     // custom variables
     version: {
       projectName: string;
@@ -599,9 +604,9 @@ declare namespace mGBA {
     };
 
     /**
-     * Returns common filesystem path strings used by this build.
+     * Canvas used for video output.
      */
-    filePaths(): filePaths;
+    canvas: HTMLCanvasElement;
 
     /**
      * Last loaded ROM path set after `loadGame` succeeds.
@@ -648,14 +653,15 @@ declare namespace mGBA {
    * This core uses threads, your app must be served with cross-origin isolation enabled
    * (`COOP: same-origin` + `COEP: require-corp`), otherwise it will not run correctly.
    *
-   * @param options - Module options.
-   * @param options.canvas - Canvas used for video output.
-   * @returns The initialized emulator `Module`.
+   * @param moduleOverrides - Optional Emscripten Module overrides.
+   * @param moduleOverrides.canvas - Required canvas used for video output.
+   * @returns The initialized mGBA emulator `Module`.
+   *
+   * @function
    */
+  const mGBA: EmscriptenModuleFactory<mGBAEmulator>;
   // eslint-disable-next-line import/no-default-export
-  export default function mGBA(options: {
-    canvas: HTMLCanvasElement;
-  }): Promise<mGBAEmulator>;
+  export default mGBA;
 }
 
 export = mGBA;

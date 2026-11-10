@@ -29,11 +29,10 @@ uniform float lineBrightness;
 void main() {
   vec4 color = texture2D(tex, texCoord);
 
-  // Compute the Y coordinate in pixel space
-  float y = texCoord.y * texSize.y;
+  // The pass is 2x high, so alternate output rows as the desktop shader does.
+  float y = floor(texCoord.y * texSize.y * 2.0);
 
-  // Use floor and mod to get even/odd row
-  if (mod(floor(y), 2.0) < 1.0) {
+  if (mod(y, 2.0) == 0.0) {
     color.rgb *= lineBrightness;
   }
 

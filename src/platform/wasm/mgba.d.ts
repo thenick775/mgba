@@ -78,7 +78,9 @@ declare namespace mGBA {
   export type LinkPlayer = 1 | 2; // TODO: more than 2 player support
 
   export type LinkLocalPlayerConfig = {
+    /** The file path for the link cable player's ROM */
     romPath: string;
+    /** The file path for the link cable player's save data */
     savePath?: string;
   };
 
@@ -88,7 +90,9 @@ declare namespace mGBA {
   };
 
   export type LinkLocalStatus = {
+    /** Whether the local link cable session is currently running. */
     running: boolean;
+    /** The current active player in the local link cable session. */
     activePlayer?: LinkPlayer;
   };
 
@@ -329,21 +333,21 @@ declare namespace mGBA {
     listSaves(): string[];
 
     /**
-     * Loads a rom into the emulator and runs the game, optionally overriding the save path used.
+     * Loads a ROM into the emulator and runs the game, optionally overriding the save path used.
      *
-     * @param romPath - Path to the rom file within the emulated filesystem.
+     * @param romPath - Path to the ROM file within the emulated filesystem.
      * @param savePathOverride - Optional override for the save path.
      * @returns True if the game loaded successfully, otherwise false.
      */
     loadGame(romPath: string, savePathOverride?: string): boolean;
 
     /**
-     * Starts a local linked GBA session, currently supports two players.
+     * Starts a local link cable session, currently supports two players.
      */
     linkLocalStartSession(options: LinkLocalStartSessionConfig): boolean;
 
     /**
-     * Stops the active local linked session, tears down the local link and running games.
+     * Stops the active local link cable session, tears down the local link cable and running games.
      */
     linkLocalStopSession(): void;
 
@@ -353,7 +357,7 @@ declare namespace mGBA {
     linkLocalSetActivePlayer(player: LinkPlayer): void;
 
     /**
-     * Gets the current local linked session status, contains the active player and whether a local link is currently running.
+     * Gets the current local link cable session status, contains the active player and whether a local link cable session is currently running.
      */
     linkLocalGetStatus(): LinkLocalStatus;
 

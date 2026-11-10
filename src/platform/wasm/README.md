@@ -155,7 +155,7 @@ Callbacks and core settings:
 - `setCoreSettings(coreSettings)`
 - `toggleRewind(toggle)`
 
-Local link play:
+Local link cable play:
 
 - `linkLocalStartSession(options)`
 - `linkLocalStopSession()`

@@ -8,14 +8,14 @@ declare namespace mGBA {
    * these are needed for building paths when you’re reading/writing files via `Module.FS`.
    */
   export interface filePaths {
-    root: string;
-    cheatsPath: string;
-    gamePath: string;
-    savePath: string;
-    saveStatePath: string;
-    screenshotsPath: string;
-    patchPath: string;
-    autosave: string;
+    readonly root: string;
+    readonly cheatsPath: string;
+    readonly gamePath: string;
+    readonly savePath: string;
+    readonly saveStatePath: string;
+    readonly screenshotsPath: string;
+    readonly patchPath: string;
+    readonly autosave: string;
   }
 
   export type coreCallbacks = {
@@ -234,6 +234,56 @@ declare namespace mGBA {
      */
     restoreAutoSaveStateOnLoad?: boolean;
   };
+
+  /**
+   * Options applied while creating an mGBA emulator instance. Only the canvas is required.
+   */
+  export interface mGBAInitOptions {
+    /**
+     * WebGL 2 canvas used by mGBA for video output.
+     */
+    canvas: mGBAEmulator["canvas"];
+
+    /**
+     * Resolves URLs for the Wasm binary and other Emscripten runtime assets.
+     */
+    locateFile?: EmscriptenModule["locateFile"];
+
+    /**
+     * Runs before C/C++ global initializers, for early filesystem setup.
+     */
+    preInit?: EmscriptenModule["preInit"];
+
+    /**
+     * Runs after runtime setup and before mGBA's `main()`.
+     */
+    preRun?: EmscriptenModule["preRun"];
+
+    /**
+     * Runs if mGBA's `main()` returns.
+     */
+    postRun?: EmscriptenModule["postRun"];
+
+    /**
+     * Receives the reason when the Emscripten runtime aborts.
+     */
+    onAbort?: EmscriptenModule["onAbort"];
+
+    /**
+     * Runs after asynchronous runtime initialization has completed.
+     */
+    onRuntimeInitialized?: EmscriptenModule["onRuntimeInitialized"];
+
+    /**
+     * Receives standard output from the emulator runtime.
+     */
+    print?: EmscriptenModule["print"];
+
+    /**
+     * Receives standard error from the emulator runtime.
+     */
+    printErr?: EmscriptenModule["printErr"];
+  }
 
   export interface mGBAEmulator extends EmscriptenModule {
     // custom methods from preamble
@@ -592,40 +642,45 @@ declare namespace mGBA {
      */
     setCoreSettings(coreSettings: coreSettings): void;
 
-    // custom variables
-    version: {
-      projectName: string;
-      projectVersion: string;
-    };
-
     /**
      * Returns common filesystem path strings used by this build.
      */
     filePaths(): filePaths;
 
+    // custom variables
+    readonly version: {
+      readonly projectName: string;
+      readonly projectVersion: string;
+    };
+
+    /**
+     * WebGL 2 canvas used by mGBA for video output.
+     */
+    readonly canvas: HTMLCanvasElement;
+
     /**
      * Last loaded ROM path set after `loadGame` succeeds.
      */
-    gameName?: string;
+    readonly gameName?: string;
 
     /**
      * Save path used for the current game set after `loadGame` succeeds.
      */
-    saveName?: string;
+    readonly saveName?: string;
 
     /**
      * Auto save state path and file name used for the current game set after `loadGame` succeeds.
      */
-    autoSaveStateName?: string;
+    readonly autoSaveStateName?: string;
     // extra exported runtime methods
-    FS: typeof FS;
+    readonly FS: typeof FS;
     // SDL2
-    SDL2: {
-      audio: {
-        currentOutputBuffer: AudioBuffer;
-        scriptProcessorNode: ScriptProcessorNode;
+    readonly SDL2: {
+      readonly audio: {
+        readonly currentOutputBuffer: AudioBuffer;
+        readonly scriptProcessorNode: ScriptProcessorNode;
       };
-      audioContext: AudioContext;
+      readonly audioContext: AudioContext;
     };
   }
 
@@ -648,14 +703,14 @@ declare namespace mGBA {
    * This core uses threads, your app must be served with cross-origin isolation enabled
    * (`COOP: same-origin` + `COEP: require-corp`), otherwise it will not run correctly.
    *
-   * @param options - Module options.
-   * @param options.canvas - Canvas used for video output.
-   * @returns The initialized emulator `Module`.
+   * @param moduleOverrides - Emscripten Module overrides.
+   * @param moduleOverrides.canvas - Required WebGL 2 canvas element used by mGBA for video output, no webgl initialization needed.
+   * @returns The initialized mGBA emulator `Module`.
    */
   // eslint-disable-next-line import/no-default-export
-  export default function mGBA(options: {
-    canvas: HTMLCanvasElement;
-  }): Promise<mGBAEmulator>;
+  export default function mGBA(
+    moduleOverrides: mGBAInitOptions,
+  ): Promise<mGBAEmulator>;
 }
 
 export = mGBA;

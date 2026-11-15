@@ -19,7 +19,7 @@
     "typedoc": "typedoc --options typedoc.json"
   },
   "devDependencies": {
-    "@types/emscripten": "^1.41.5",
+    "@types/emscripten": "^1.41.6",
     "typedoc": "^0.28.20",
     "typedoc-github-theme": "^0.4.0",
     "typescript": "^6.0.3"

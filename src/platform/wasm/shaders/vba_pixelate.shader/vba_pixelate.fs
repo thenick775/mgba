@@ -30,8 +30,9 @@ void main()
 {
     vec4 color = texture2D(tex, texCoord);
 
-    float x = floor(texCoord.s * texSize.x);
-    float y = floor(texCoord.t * texSize.y);
+    // The pass is 2x in each dimension, so alternate output pixels.
+    float x = floor(texCoord.s * texSize.x * 2.0);
+    float y = floor(texCoord.t * texSize.y * 2.0);
 
     bool onVerticalLine = mod(x, 2.0) == 0.0;
     bool onHorizontalLine = mod(y, 2.0) == 0.0;

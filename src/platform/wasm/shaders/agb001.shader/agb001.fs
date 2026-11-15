@@ -1,31 +1,26 @@
 varying vec2 texCoord;
 uniform sampler2D tex;
 uniform vec2 texSize;
-uniform vec2 outputSize;
-
-#ifdef GL_FRAGMENT_PRECISION_HIGH
-precision highp float;
-#else
-precision mediump float;
-#endif
 
 void main() {
-  vec3 c = texture2D(tex, texCoord).rgb;
+	vec4 color = texture2D(tex, texCoord);
+	color.rgb = pow(color.rgb * vec3(0.8, 0.8, 0.8), vec3(1.8, 1.8, 1.8)) + vec3(0.16, 0.16, 0.16);
 
-  // gamma-ish shaping the original shader intended
-  c = pow(c * vec3(0.8), vec3(1.8)) + vec3(0.16);
+	// GLSL ES 1.00 cannot dynamically index locally written arrays.
+	float x = mod(texCoord.s * texSize.x * 3.0, 3.0);
+	if (x < 1.0) {
+		color.rgb *= vec3(0.2, 0.2, 1.0);
+	} else if (x < 2.0) {
+		color.rgb *= vec3(0.2, 1.0, 0.2);
+	} else {
+		color.rgb *= vec3(1.0, 0.2, 0.2);
+	}
 
-  // Stripe mask aligned to OUTPUT pixels (stable across scale factors)
-  float x = mod(floor(gl_FragCoord.x), 3.0);
-  vec3 maskX =
-    (x < 0.5) ? vec3(0.2, 0.2, 1.0) :
-    (x < 1.5) ? vec3(0.2, 1.0, 0.2) :
-                vec3(1.0, 0.2, 0.2);
+	float y = mod(texCoord.t * texSize.y * 4.0, 4.0);
+	if (y >= 3.0) {
+		color.rgb *= vec3(0.8, 0.8, 0.8);
+	}
 
-  float y = mod(floor(gl_FragCoord.y), 4.0);
-  vec3 maskY = (y < 3.5) ? vec3(1.0) : vec3(0.8);
-
-  c *= (maskX * maskY);
-
-  gl_FragColor = vec4(c, 1.0);
+	color.a = 0.5;
+	gl_FragColor = color;
 }

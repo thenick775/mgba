@@ -689,18 +689,20 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	renderer->core->reset(renderer->core);
 
 	renderer->core->currentVideoSize(renderer->core, &w, &h);
-	w = w * renderer->highResolutionScale;
-	h = h * renderer->highResolutionScale;
 	mGLES2Init(renderer, w, h);
 	renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, w);
-	SDL_SetWindowSize(renderer->window, w, h);
+
+	double dpr = emscripten_get_device_pixel_ratio();
+	unsigned displayW = w * renderer->highResolutionScale * dpr;
+	unsigned displayH = h * renderer->highResolutionScale * dpr;
+	SDL_SetWindowSize(renderer->window, displayW, displayH);
+	renderer->gl2.d.contextResized(&renderer->gl2.d, displayW, displayH, 0, 0);
 	EM_ASM(
 	    {
-		    const dpr = window.devicePixelRatio || 1;
-		    Module.canvas.width = $0 * dpr;
-		    Module.canvas.height = $1 * dpr;
+		    Module.canvas.width = $0;
+		    Module.canvas.height = $1;
 	    },
-	    w, h);
+	    displayW, displayH);
 
 	emscripten_resume_main_loop();
 	return true;

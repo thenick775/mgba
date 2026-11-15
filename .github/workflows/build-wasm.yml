@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   change-detect:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       should_skip: ${{ steps.skip_check.outputs.should_skip }}
 
@@ -28,7 +28,7 @@ jobs:
   wasm-docker-build:
     needs: change-detect
     if: needs.change-detect.outputs.should_skip != 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - name: Checkout

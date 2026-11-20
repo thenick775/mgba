@@ -59,6 +59,8 @@ Extract these files from `package/dist/` and serve them from the same origin as 
 
 - `mgba.js`
 - `mgba.wasm`
+- `mgba.data`
+- `mgba.wrapper.js`
 
 Then instantiate the emulator as follows:
 
@@ -66,7 +68,7 @@ Then instantiate the emulator as follows:
 <canvas id="canvas" width="240" height="160"></canvas>
 
 <script type="module">
-  import mGBA from "./mgba.js";
+  import mGBA from "./mgba.wrapper.js";
 
   const canvas = document.getElementById("canvas");
   const Module = await mGBA({ canvas });
@@ -87,7 +89,7 @@ Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-`mgba.js` must be same-origin with the page because the threaded runtime starts its pthread worker from that script URL.
+All four files must be same-origin with the page because the threaded runtime starts its pthread worker from `mgba.js`.
 
 ## API
 

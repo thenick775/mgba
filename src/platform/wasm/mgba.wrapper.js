@@ -1,7 +1,7 @@
 import createMGBA from './mgba.js';
 
-import wasmUrl from './mgba.wasm?url';
-import dataUrl from './mgba.data?url';
+const wasmUrl = new URL('./mgba.wasm', import.meta.url).href;
+const dataUrl = new URL('./mgba.data', import.meta.url).href;
 
 export default (options = {}) =>
   createMGBA({

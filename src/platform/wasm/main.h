@@ -6,7 +6,6 @@
 #include "platform/sdl/sdl-events.h"
 
 #include "platform/opengl/gles2.h"
-#include "platform/sdl/gl-common.h"
 
 #include <mgba/core/thread.h>
 

@@ -12,7 +12,6 @@
 #include <mgba/core/thread.h>
 #include <mgba/core/version.h>
 #include <mgba/gba/interface.h>
-#include <mgba/internal/gb/gb.h>
 #include <mgba/internal/gba/input.h>
 #include <mgba/internal/gba/sio.h>
 #include <mgba/internal/gba/sio/lockstep.h>
@@ -74,6 +73,10 @@ static void destroyGLES2Display(void) {
 	renderer->gl2.d.deinit(&renderer->gl2.d);
 	SDL_GL_DeleteContext(renderer->glCtx);
 	renderer->glCtx = NULL;
+	if (renderer->window) {
+		SDL_DestroyWindow(renderer->window);
+		renderer->window = NULL;
+	}
 	free(renderer->outputBuffer);
 	renderer->outputBuffer = NULL;
 	gOutputBufW = 0;
@@ -531,7 +534,7 @@ void mGLCommonSwap(struct VideoBackend* context) {
 	SDL_GL_SwapWindow(renderer->window);
 }
 
-EMSCRIPTEN_KEEPALIVE bool mGLES2Init(struct mEmscriptenRenderer* renderer, int width, int height) {
+bool mGLES2Init(struct mEmscriptenRenderer* renderer, int width, int height) {
 	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
@@ -548,6 +551,7 @@ EMSCRIPTEN_KEEPALIVE bool mGLES2Init(struct mEmscriptenRenderer* renderer, int w
 	renderer->glCtx = SDL_GL_CreateContext(renderer->window);
 	if (!renderer->glCtx) {
 		SDL_DestroyWindow(renderer->window);
+		renderer->window = NULL;
 		return false;
 	}
 	SDL_GL_MakeCurrent(renderer->window, renderer->glCtx);
@@ -601,6 +605,11 @@ EMSCRIPTEN_KEEPALIVE void loadShader(char* shaderPath) {
 	}
 
 	struct VDir* currentShaderDir = VDirOpen(shaderPath);
+	if (!currentShaderDir) {
+		if (renderer->thread)
+			mCoreThreadContinue(renderer->thread);
+		return;
+	}
 	if (mGLES2ShaderLoad(&renderer->customShader, currentShaderDir)) {
 		mGLES2ShaderAttach(&renderer->gl2, (struct mGLES2Shader*) renderer->customShader.passes,
 		                   renderer->customShader.nPasses);
@@ -650,16 +659,6 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 	                                          .volume = renderer->volume,
 	                                          .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
 
-	unsigned w, h;
-	renderer->core->baseVideoSize(renderer->core, &w, &h);
-	if (w == SGB_VIDEO_HORIZONTAL_PIXELS && h == SGB_VIDEO_VERTICAL_PIXELS) {
-		w = GB_VIDEO_HORIZONTAL_PIXELS;
-		h = GB_VIDEO_VERTICAL_PIXELS;
-	}
-
-	defaultConfigOpts.width = w * renderer->highResolutionScale;
-	defaultConfigOpts.height = h * renderer->highResolutionScale;
-
 	mCoreInitConfig(renderer->core, PORT);
 	mCoreConfigLoadDefaults(&renderer->core->config, &defaultConfigOpts);
 	mCoreLoadConfig(renderer->core);
@@ -688,6 +687,7 @@ EMSCRIPTEN_KEEPALIVE bool loadGame(const char* name, const char* savePathOverrid
 
 	renderer->core->reset(renderer->core);
 
+	unsigned w, h;
 	renderer->core->currentVideoSize(renderer->core, &w, &h);
 	mGLES2Init(renderer, w, h);
 	renderer->core->setVideoBuffer(renderer->core, renderer->outputBuffer, w);
@@ -733,11 +733,6 @@ static bool setupLinkCore(int index, const char* romPath, const char* savePathOv
 	                                          .volume = renderer->volume,
 	                                          .logLevel = mLOG_WARN | mLOG_ERROR | mLOG_FATAL };
 
-	unsigned w, h;
-	core->baseVideoSize(core, &w, &h);
-	defaultConfigOpts.width = w * renderer->highResolutionScale;
-	defaultConfigOpts.height = h * renderer->highResolutionScale;
-
 	mCoreInitConfig(core, PORT);
 	mCoreConfigLoadDefaults(&core->config, &defaultConfigOpts);
 	mCoreLoadConfig(core);
@@ -769,6 +764,7 @@ static bool setupLinkCore(int index, const char* romPath, const char* savePathOv
 	mCoreAutoloadPatch(core);
 	mSDLInitBindingsGBA(&core->inputMap);
 
+	unsigned w, h;
 	core->currentVideoSize(core, &w, &h);
 	linkSession->outputBuffers[index] = calloc(w * h, sizeof(mColor));
 	if (!linkSession->outputBuffers[index]) {
@@ -1075,11 +1071,7 @@ EMSCRIPTEN_KEEPALIVE void setIntegerCoreSetting(char* settingName, int value) {
 			renderer->core->reloadConfigOption(renderer->core, "timestepSync", &renderer->core->config);
 		} else if (strcmp(settingName, "highResolutionScale") == 0 && value > 0) {
 			unsigned w, h;
-			renderer->core->baseVideoSize(renderer->core, &w, &h);
-			if (w == SGB_VIDEO_HORIZONTAL_PIXELS && h == SGB_VIDEO_VERTICAL_PIXELS) {
-				w = GB_VIDEO_HORIZONTAL_PIXELS;
-				h = GB_VIDEO_VERTICAL_PIXELS;
-			}
+			renderer->core->currentVideoSize(renderer->core, &w, &h);
 			double dpr = emscripten_get_device_pixel_ratio();
 			w = w * renderer->highResolutionScale * dpr;
 			h = h * renderer->highResolutionScale * dpr;

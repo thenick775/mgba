@@ -33,19 +33,21 @@ Once this has completed, your compiled files can be found at:
 
 ```
 ./build-wasm/wasm/mgba.d.ts
+./build-wasm/wasm/mgba.wrapper.js
 ./build-wasm/wasm/mgba.js
 ./build-wasm/wasm/mgba.wasm
+./build-wasm/wasm/mgba.data
 ```
 
 ## Vanilla Browser Usage
 
-Serve `mgba.js` and `mgba.wasm` from the same origin as your page, then instantiate the emulator:
+Serve `mgba.wrapper.js`, `mgba.js`, `mgba.wasm`, and `mgba.data` from the same origin as your page, then instantiate the emulator:
 
 ```html
 <canvas id="canvas" width="240" height="160"></canvas>
 
 <script type="module">
-  import mGBA from "./mgba.js";
+  import mGBA from "./mgba.wrapper.js";
 
   const canvas = document.getElementById("canvas");
   const Module = await mGBA({ canvas });
@@ -64,7 +66,7 @@ Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-`mgba.js` must be same-origin with the page because the threaded runtime starts its pthread worker from that script URL.
+All four files must be same-origin with the page because the threaded runtime starts its pthread worker from `mgba.js`.
 
 ## Bundled Demo
 

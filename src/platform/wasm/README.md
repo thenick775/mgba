@@ -164,6 +164,12 @@ Local link cable play:
 - `linkLocalSetActivePlayer(player)`
 - `linkLocalGetStatus()`
 
+Video shaders:
+
+- `listShaders()`
+- `loadShader(shaderPath)`
+- `unloadShader()`
+
 See `dist/mgba.d.ts` for full signatures and inline documentation.
 
 ## Source
